@@ -55,7 +55,7 @@ export function useCreateSurvey() {
 export function useUpdateSurvey() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<z.infer<typeof insertSurveySchema>> }) => {
+    mutationFn: async ({ id, orgId, data }: { id: number; orgId?: number; data: Partial<z.infer<typeof insertSurveySchema>> }) => {
       const url = buildUrl(api.surveys.update.path, { id });
       const res = await fetch(url, {
         method: "PATCH",
@@ -64,10 +64,13 @@ export function useUpdateSurvey() {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to update survey");
-      return api.surveys.update.responses[200].parse(await res.json());
+      return { survey: api.surveys.update.responses[200].parse(await res.json()), orgId };
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: [api.surveys.get.path, variables.id] });
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: [api.surveys.get.path, result.survey.id] });
+      if (result.orgId) {
+        queryClient.invalidateQueries({ queryKey: [api.surveys.list.path, result.orgId] });
+      }
       queryClient.invalidateQueries({ queryKey: [api.surveys.list.path] });
     },
   });

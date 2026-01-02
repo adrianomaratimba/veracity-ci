@@ -13,7 +13,11 @@ import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 import Onboarding from "@/pages/onboarding";
 import DashboardOverview from "@/pages/dashboard/overview";
+import SurveysPage from "@/pages/dashboard/surveys";
+import SurveyEditorPage from "@/pages/dashboard/survey-editor";
 import SurveyAnalytics from "@/pages/dashboard/survey-analytics";
+import TeamPage from "@/pages/dashboard/team";
+import SettingsPage from "@/pages/dashboard/settings";
 import InterviewSession from "@/pages/collection/interview-session";
 
 function AuthenticatedRoutes() {
@@ -40,8 +44,12 @@ function AuthenticatedRoutes() {
     <Switch>
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/org/:orgId/dashboard" component={DashboardOverview} />
+      <Route path="/org/:orgId/surveys" component={SurveysPage} />
+      <Route path="/org/:orgId/surveys/new" component={SurveyEditorPage} />
+      <Route path="/org/:orgId/surveys/:id" component={SurveyEditorPage} />
       <Route path="/org/:orgId/surveys/:id/analytics" component={SurveyAnalytics} />
-      {/* Add more dashboard routes here */}
+      <Route path="/org/:orgId/team" component={TeamPage} />
+      <Route path="/org/:orgId/settings" component={SettingsPage} />
       
       {/* PWA / Mobile Collection Routes */}
       <Route path="/collect/:surveyId" component={InterviewSession} />
