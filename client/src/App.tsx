@@ -28,11 +28,11 @@ function AuthenticatedRoutes() {
   useEffect(() => {
     // If user loaded but not auth, handled by landing.
     // If auth but no orgs, go to onboarding.
-    // If auth and orgs and at /dashboard (root dash), go to first org.
+    // If auth and orgs and at / or /dashboard, go to first org dashboard.
     if (!isLoading && user && !orgsLoading) {
       if (orgs && orgs.length === 0 && location !== "/onboarding") {
         setLocation("/onboarding");
-      } else if (orgs && orgs.length > 0 && location === "/dashboard") {
+      } else if (orgs && orgs.length > 0 && (location === "/" || location === "/dashboard")) {
         setLocation(`/org/${orgs[0].id}/dashboard`);
       }
     }
@@ -42,6 +42,10 @@ function AuthenticatedRoutes() {
 
   return (
     <Switch>
+      {/* Root redirect - shows loading while useEffect redirects */}
+      <Route path="/">{() => <LoadingScreen />}</Route>
+      <Route path="/dashboard">{() => <LoadingScreen />}</Route>
+      
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/org/:orgId/dashboard" component={DashboardOverview} />
       <Route path="/org/:orgId/surveys" component={SurveysPage} />
