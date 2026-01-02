@@ -4,7 +4,6 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { users } from "./models/auth";
 
-// RE-EXPORT AUTH TABLES FOR DRIZZLE KIT
 export * from "./models/auth";
 
 // === ENUMS ===
@@ -162,14 +161,19 @@ export const insertMemberSchema = createInsertSchema(organizationMembers).omit({
 
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+
 export type Member = typeof organizationMembers.$inferSelect;
 export type InsertMember = z.infer<typeof insertMemberSchema>;
+
 export type Survey = typeof surveys.$inferSelect;
 export type InsertSurvey = z.infer<typeof insertSurveySchema>;
+
 export type Question = typeof questions.$inferSelect;
 export type InsertQuestion = z.infer<typeof insertQuestionSchema>;
+
 export type Response = typeof responses.$inferSelect;
 export type InsertResponse = z.infer<typeof insertResponseSchema>;
+
 export type Answer = typeof answers.$inferSelect;
 export type InsertAnswer = z.infer<typeof insertAnswerSchema>;
 
