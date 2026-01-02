@@ -107,6 +107,7 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
                     <th className="px-4 py-3">ID</th>
                     <th className="px-4 py-3">Data/Hora</th>
                     <th className="px-4 py-3">Entrevistador</th>
+                    <th className="px-4 py-3">Localização</th>
                     <th className="px-4 py-3">Precisão GPS</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Áudio</th>
@@ -118,6 +119,9 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground">#{resp.id}</td>
                       <td className="px-4 py-3">{new Date(resp.createdAt!).toLocaleString('pt-BR')}</td>
                       <td className="px-4 py-3">{resp.interviewerId}</td>
+                      <td className="px-4 py-3 font-mono text-xs">
+                        {resp.latitude?.toFixed(6)}, {resp.longitude?.toFixed(6)}
+                      </td>
                       <td className="px-4 py-3">{resp.accuracy.toFixed(1)}m</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
@@ -129,7 +133,7 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                         <a href={`/objects${resp.audioUrl}`} target="_blank" className="text-blue-600 hover:underline">
+                         <a href={resp.audioUrl} target="_blank" className="text-blue-600 hover:underline">
                            Ouvir
                          </a>
                       </td>

@@ -211,13 +211,13 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                   </RadioGroup>
                 )}
                 {(survey.questions[currentQuestionIndex].type === 'scale' || survey.questions[currentQuestionIndex].type === 'escala') && (
-                  <div className="flex flex-wrap justify-center gap-2">
+                  <div className="flex flex-wrap justify-center gap-3">
                     {(survey.questions[currentQuestionIndex].options as string[] || ['1','2','3','4','5','6','7','8','9','10']).map((opt, idx) => (
                        <Button 
                          key={`scale-${idx}`}
                          variant={answers[survey.questions[currentQuestionIndex].id] === opt ? "default" : "outline"}
-                         size="icon"
                          onClick={() => handleAnswer(survey.questions[currentQuestionIndex].id, opt)}
+                         className="min-w-[80px]"
                        >
                          {opt}
                        </Button>
