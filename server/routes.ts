@@ -58,7 +58,13 @@ export async function registerRoutes(
   app.patch(api.organizations.members.updateRole.path, isAuthenticated, async (req, res) => {
     try {
       const memberId = Number(req.params.memberId);
+      const member = await storage.getMemberById(memberId);
+      if (!member) return res.status(404).json({ message: "Membro não encontrado" });
+      if (member.role === 'owner') return res.status(403).json({ message: "Não é possível alterar a função do proprietário" });
+      
       const input = api.organizations.members.updateRole.input.parse(req.body);
+      if (input.role === 'owner') return res.status(403).json({ message: "Não é possível promover para proprietário" });
+      
       const updated = await storage.updateMemberRole(memberId, input.role);
       res.json(updated);
     } catch (err) {
@@ -70,6 +76,10 @@ export async function registerRoutes(
   app.delete(api.organizations.members.remove.path, isAuthenticated, async (req, res) => {
     try {
       const memberId = Number(req.params.memberId);
+      const member = await storage.getMemberById(memberId);
+      if (!member) return res.status(404).json({ message: "Membro não encontrado" });
+      if (member.role === 'owner') return res.status(403).json({ message: "Não é possível remover o proprietário" });
+      
       await storage.removeMember(memberId);
       res.status(204).send();
     } catch (err) {

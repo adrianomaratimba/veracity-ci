@@ -80,8 +80,7 @@ export function useInviteMember() {
       return api.organizations.members.invite.responses[201].parse(await res.json());
     },
     onSuccess: (_, variables) => {
-      const url = buildUrl(api.organizations.members.list.path, { id: variables.orgId });
-      queryClient.invalidateQueries({ queryKey: [url] });
+      queryClient.invalidateQueries({ queryKey: [api.organizations.members.list.path, variables.orgId] });
     },
   });
 }
@@ -102,8 +101,7 @@ export function useUpdateMemberRole() {
       return res.json();
     },
     onSuccess: (_, variables) => {
-      const url = buildUrl(api.organizations.members.list.path, { id: variables.orgId });
-      queryClient.invalidateQueries({ queryKey: [url] });
+      queryClient.invalidateQueries({ queryKey: [api.organizations.members.list.path, variables.orgId] });
     },
   });
 }
@@ -121,8 +119,7 @@ export function useRemoveMember() {
       if (!res.ok) throw new Error("Failed to remove member");
     },
     onSuccess: (_, variables) => {
-      const url = buildUrl(api.organizations.members.list.path, { id: variables.orgId });
-      queryClient.invalidateQueries({ queryKey: [url] });
+      queryClient.invalidateQueries({ queryKey: [api.organizations.members.list.path, variables.orgId] });
     },
   });
 }

@@ -21,6 +21,7 @@ export interface IStorage {
   getOrganizationMembers(orgId: number): Promise<(Member & { user: User })[]>;
   addMember(member: InsertMember): Promise<Member>;
   getMemberByUserId(userId: string, orgId: number): Promise<Member | undefined>;
+  getMemberById(memberId: number): Promise<Member | undefined>;
   updateMemberRole(memberId: number, role: string): Promise<Member>;
   removeMember(memberId: number): Promise<void>;
 
@@ -99,6 +100,13 @@ export class DatabaseStorage implements IStorage {
         eq(organizationMembers.userId, userId),
         eq(organizationMembers.organizationId, orgId)
       ));
+    return member;
+  }
+
+  async getMemberById(memberId: number): Promise<Member | undefined> {
+    const [member] = await db.select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.id, memberId));
     return member;
   }
 
