@@ -1,0 +1,213 @@
+Você é um arquiteto de software sênior especializado em SaaS multi-tenant, sistemas eleitorais, dashboards analíticos, antifraude, LGPD e aplicações escaláveis.
+
+Crie uma PLATAFORMA SaaS MULTI-TENANT DE PESQUISAS ELEITORAIS, pronta para comercialização, com isolamento de dados por organização, cobrança recorrente, controle de planos, coleta antifraude em campo e dashboards analíticos profissionais.
+
+================================================================
+1. CONCEITO DE SaaS MULTI-TENANT
+================================================================
+
+- Cada cliente representa uma ORGANIZAÇÃO (tenant).
+- Todos os dados devem ser isolados logicamente por `organization_id`.
+- Nenhum dado pode ser acessado entre organizações.
+- Toda requisição autenticada deve validar `organization_id`.
+
+================================================================
+2. MODELO DE ASSINATURA E PLANOS
+================================================================
+
+Implementar sistema de planos com cobrança recorrente:
+
+PLANOS:
+- BASIC
+- PRO
+- ENTERPRISE
+
+Cada plano deve controlar:
+- Número máximo de pesquisas
+- Número máximo de entrevistadores
+- Retenção de áudios (em dias)
+- Acesso a relatórios
+- White label (somente planos avançados)
+
+Os limites devem ser aplicados NO BACKEND (não apenas no frontend).
+
+================================================================
+3. USUÁRIOS E PERMISSÕES (RBAC + TENANT)
+================================================================
+
+Papéis:
+- SUPER ADMIN (plataforma)
+- ADMIN DA ORGANIZAÇÃO
+- COORDENADOR
+- ENTREVISTADOR
+- CLIENTE (leitura)
+
+Regras:
+- SUPER ADMIN pode ver todas as organizações
+- Usuários comuns só acessam sua organização
+- Clientes não acessam dados sensíveis
+
+================================================================
+4. ONBOARDING DO CLIENTE
+================================================================
+
+Fluxo automático:
+1. Cadastro do cliente
+2. Criação da organização
+3. Escolha do plano
+4. Pagamento aprovado
+5. Organização ativada
+6. Limites aplicados automaticamente
+
+================================================================
+5. GESTÃO DE PESQUISAS
+================================================================
+
+Cada pesquisa pertence a uma organização e contém:
+- Nome
+- Tipo
+- Localidade
+- Período
+- Universo
+- Margem de erro
+- Status
+- Questionário dinâmico
+
+================================================================
+6. QUESTIONÁRIOS DINÂMICOS
+================================================================
+
+- Múltipla escolha
+- Escolha única
+- Escalas
+- Texto
+- Lógica condicional
+
+================================================================
+7. PWA DO ENTREVISTADOR (OBRIGATÓRIO)
+================================================================
+
+Criar um Progressive Web App que:
+
+- Funcione offline
+- Sincronize automaticamente
+- Seja mobile-first
+- Exija HTTPS
+
+### AO INICIAR UMA ENTREVISTA (REGRAS OBRIGATÓRIAS):
+
+Antes de exibir perguntas:
+- Capturar GPS com alta precisão
+- Capturar timestamp
+- Gravar áudio automático do ENTREVISTADOR
+- Gerar hash SHA-256 do áudio
+- Enviar áudio + GPS ao backend
+
+Se GPS ou áudio falharem → BLOQUEAR entrevista.
+
+================================================================
+8. DADOS SALVOS POR ENTREVISTA
+================================================================
+
+Salvar:
+- organization_id
+- survey_id
+- interviewer_id
+- GPS (lat, lng, precisão, timestamp)
+- URL do áudio
+- Hash do áudio
+- Dispositivo
+- Status (válida, suspeita, inválida)
+
+================================================================
+9. ANTIFRAUDE
+================================================================
+
+Implementar flags automáticas:
+- GPS repetido
+- Áudio silencioso
+- Entrevistas rápidas
+- Localização inconsistente
+
+Criar tabela de auditoria imutável.
+
+================================================================
+10. DASHBOARD ANALÍTICO
+================================================================
+
+Por organização:
+- Gráficos (pizza, barras, linhas)
+- Cruzamentos estatísticos
+- Evolução temporal
+- Mapas com pins
+- Player de áudio
+- Filtros avançados
+
+Clientes veem apenas dados agregados.
+
+================================================================
+11. RELATÓRIOS
+================================================================
+
+- PDF profissional
+- Excel
+- CSV
+- Controle por plano
+
+================================================================
+12. WHITE LABEL
+================================================================
+
+Para planos avançados:
+- Logo customizável
+- Cores customizáveis
+- Domínio próprio
+
+================================================================
+13. LGPD E SEGURANÇA
+================================================================
+
+- Áudio apenas do entrevistador
+- Consentimento explícito
+- Retenção configurável
+- Criptografia
+- JWT
+- Rate limit por organização
+- Logs de acesso
+
+================================================================
+14. ARQUITETURA TÉCNICA
+================================================================
+
+BACKEND:
+- Node.js + NestJS
+- API REST
+- RBAC
+- Multi-tenant
+- Webhooks de pagamento
+- Storage S3 compatível
+
+BANCO:
+- PostgreSQL
+- Índices por organization_id
+- Auditoria
+
+FRONTEND:
+- React + Next.js
+- Dashboards
+- PWA entrevistador
+
+================================================================
+15. ENTREGÁVEIS
+================================================================
+
+Gerar:
+- Estrutura completa do projeto
+- Banco de dados SQL
+- Backend funcional
+- Frontend funcional
+- PWA funcional
+- Código comentado
+- Organização pronta para produção
+
+Crie o sistema como um SaaS profissional real, com foco em segurança, escalabilidade, confiabilidade e uso comercial.

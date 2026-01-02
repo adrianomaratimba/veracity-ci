@@ -1,0 +1,226 @@
+Você é um arquiteto de software sênior especializado em sistemas governamentais, pesquisas eleitorais, dashboards analíticos e aplicações antifraude.
+
+Crie uma PLATAFORMA COMPLETA DE GERENCIAMENTO DE PESQUISAS ELEITORAIS, robusta, escalável, segura e profissional, com frontend, backend, banco de dados, autenticação, controle de permissões, coleta de dados em campo, auditoria e dashboards analíticos.
+
+================================================================
+1. VISÃO GERAL DO SISTEMA
+================================================================
+
+O sistema deve funcionar como uma plataforma profissional de pesquisas eleitorais (nível IBOPE/Datafolha), permitindo:
+
+- Gerenciamento completo de pesquisas
+- Coleta de dados por entrevistadores em campo
+- Captura obrigatória de geolocalização GPS
+- Gravação obrigatória de áudio do entrevistador no início de cada entrevista
+- Dashboards analíticos para administradores e contratantes
+- Relatórios profissionais
+- Auditoria e prevenção de fraudes
+- Conformidade com LGPD
+
+O sistema deve ser dividido em:
+- Backend (API)
+- Frontend administrativo (dashboard)
+- Frontend de coleta (PWA para entrevistadores)
+
+================================================================
+2. TIPOS DE USUÁRIOS E PERMISSÕES
+================================================================
+
+Implemente controle de acesso baseado em papéis (RBAC):
+
+1. SUPER ADMIN
+- Controle total do sistema
+- Gerencia usuários, pesquisas, permissões
+- Visualiza, valida ou invalida entrevistas
+- Acessa áudios, mapas, logs e auditorias
+
+2. COORDENADOR DE PESQUISA
+- Acompanha progresso das pesquisas
+- Monitora entrevistadores
+- Visualiza entrevistas e flags antifraude
+
+3. ENTREVISTADOR
+- Acessa apenas pesquisas atribuídas
+- Realiza entrevistas
+- NÃO pode ver resultados
+- NÃO pode editar entrevistas após envio
+
+4. CLIENTE / CONTRATANTE
+- Acesso SOMENTE LEITURA
+- Visualiza dashboards, gráficos e relatórios
+- Não acessa dados sensíveis (GPS bruto, áudios brutos se não autorizado)
+
+================================================================
+3. GESTÃO DE PESQUISAS
+================================================================
+
+Cada pesquisa deve conter:
+- Nome
+- Tipo (eleitoral, opinião pública, avaliação)
+- Localidade (cidade, estado, zona eleitoral)
+- Período de coleta
+- Universo da pesquisa
+- Margem de erro
+- Status (rascunho, em campo, finalizada)
+- Questionário associado
+
+================================================================
+4. QUESTIONÁRIOS DINÂMICOS
+================================================================
+
+Implemente um sistema de questionários com:
+- Perguntas de múltipla escolha
+- Perguntas de escolha única
+- Escalas (ex: ótimo/bom/regular/ruim/péssimo)
+- Texto livre
+- Lógica condicional (ex: se resposta X, mostrar pergunta Y)
+- Ordenação customizável
+
+================================================================
+5. APLICATIVO DO ENTREVISTADOR (PWA)
+================================================================
+
+Crie um PWA (Progressive Web App) mobile-first que:
+
+- Funcione em celular e tablet
+- Funcione offline com sincronização posterior
+- Exija HTTPS
+
+### REGRAS OBRIGATÓRIAS AO INICIAR UMA ENTREVISTA:
+
+Antes de exibir qualquer pergunta, o sistema DEVE:
+
+1. Solicitar e VALIDAR GPS OBRIGATÓRIO
+   - Usar alta precisão
+   - Capturar latitude, longitude, accuracy e timestamp
+   - Bloquear entrevista se GPS não for concedido
+
+2. Solicitar e INICIAR GRAVAÇÃO DE ÁUDIO OBRIGATÓRIA
+   - Gravar automaticamente o áudio do entrevistador
+   - Duração mínima configurável (ex: 10–20 segundos)
+   - Formato webm ou mp3
+   - Sem opção de pular ou cancelar
+   - Upload automático para o backend
+   - Gerar hash SHA-256 do arquivo
+
+Se GPS ou áudio falharem → BLOQUEAR a entrevista.
+
+================================================================
+6. DADOS REGISTRADOS POR ENTREVISTA
+================================================================
+
+Para cada entrevista, salvar:
+
+- ID da pesquisa
+- ID do entrevistador
+- Data/hora de início e fim
+- Latitude, longitude, precisão e timestamp
+- URL do áudio
+- Hash do áudio
+- Informações do dispositivo
+- Status da entrevista (válida, suspeita, invalidada)
+
+================================================================
+7. ANTIFRAUDE E AUDITORIA
+================================================================
+
+Implemente regras automáticas de antifraude:
+
+- Marcar como suspeita se:
+  - GPS com baixa precisão
+  - Entrevistas muito rápidas
+  - Localização repetida excessiva
+  - Áudio silencioso ou inválido
+  - Muitos registros no mesmo ponto
+
+- Criar logs imutáveis de auditoria:
+  - Ações do usuário
+  - IP
+  - User-Agent
+  - Timestamp
+
+================================================================
+8. DASHBOARD ADMINISTRATIVO
+================================================================
+
+Criar dashboards com:
+
+- Gráficos (pizza, barras, linhas)
+- Evolução temporal de votos
+- Comparações entre candidatos
+- Cruzamentos estatísticos:
+  - Voto x idade
+  - Voto x bairro
+  - Avaliação x escolaridade
+- Filtros avançados
+- Mapa com pins das entrevistas
+- Player de áudio embutido por entrevista
+- Status visual (válida / suspeita / inválida)
+
+================================================================
+9. RELATÓRIOS
+================================================================
+
+Implementar geração de relatórios:
+
+- PDF profissional com:
+  - Gráficos
+  - Metodologia
+  - Margem de erro
+- Exportação Excel e CSV
+- Controle de acesso aos relatórios
+
+================================================================
+10. LGPD E SEGURANÇA
+================================================================
+
+O sistema DEVE:
+
+- Coletar apenas áudio do ENTREVISTADOR
+- Exibir termo de consentimento
+- Anonimizar entrevistados
+- Permitir política de retenção (ex: apagar áudio após X dias)
+- Usar autenticação JWT
+- Usar criptografia para dados sensíveis
+- HTTPS obrigatório
+
+================================================================
+11. ARQUITETURA TÉCNICA
+================================================================
+
+Sugestão de stack (pode ajustar mantendo o conceito):
+
+BACKEND:
+- Node.js com NestJS
+- API REST
+- Autenticação JWT
+- RBAC
+- Upload de arquivos com streaming
+- Storage S3 compatível
+
+BANCO DE DADOS:
+- PostgreSQL
+- Tabelas normalizadas
+- Logs de auditoria
+- Backups
+
+FRONTEND:
+- React + Next.js
+- Dashboards com gráficos
+- Mapas com Leaflet
+- PWA para entrevistadores
+
+================================================================
+12. ENTREGÁVEIS ESPERADOS
+================================================================
+
+Gere:
+- Estrutura completa do projeto
+- Modelo de banco de dados (SQL)
+- Backend funcional
+- Frontend administrativo funcional
+- PWA do entrevistador funcional
+- Comentários explicativos no código
+- Organização profissional pronta para produção
+
+Crie o sistema de forma modular, escalável e com foco em confiabilidade, segurança e uso profissional em pesquisas eleitorais reais.
