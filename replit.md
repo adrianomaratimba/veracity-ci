@@ -15,6 +15,15 @@ Key capabilities:
 
 Preferred communication style: Simple, everyday language.
 
+### Language Convention
+- **UI/Interface**: Portuguese (Brazil) - all user-facing text in Portuguese
+- **Internal Code**: English - all database values, enums, variable names, queries
+- **Translation Layer**: `shared/i18n/labels.ts` provides mappings from English values to Portuguese labels
+  - Status: draft, active, paused, completed, archived
+  - Question Types: single_choice, multiple_choice, text, number, scale, date, boolean
+  - Survey Types: electoral, opinion, market, census
+  - Roles: owner, admin, coordinator, interviewer, viewer
+
 ## System Architecture
 
 ### Frontend Architecture
@@ -46,7 +55,7 @@ Preferred communication style: Simple, everyday language.
 ### Authentication & Authorization
 - **Auth Provider**: Replit Auth (OIDC-based)
 - **Session Storage**: PostgreSQL with 7-day TTL
-- **RBAC Roles**: proprietario (owner), admin, coordenador, entrevistador, visualizador
+- **RBAC Roles**: owner, admin, coordinator, interviewer, viewer (stored in English)
 - **Tenant Isolation**: All data queries filtered by organization_id
 
 ### Project Structure
