@@ -1,4 +1,4 @@
-import { useOrganizations, useOrganization } from "@/hooks/use-organizations";
+import { useOrganization, useOrganizationStats } from "@/hooks/use-organizations";
 import { useSurveys } from "@/hooks/use-surveys";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,24 +11,29 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
   const orgId = parseInt(params.orgId);
   const { data: org, isLoading: orgLoading } = useOrganization(orgId);
   const { data: surveys, isLoading: surveysLoading } = useSurveys(orgId);
+  const { data: stats, isLoading: statsLoading } = useOrganizationStats(orgId);
   const [, setLocation] = useLocation();
 
-  if (orgLoading || surveysLoading) return <LoadingScreen message="Carregando Painel..." />;
+  if (orgLoading || surveysLoading || statsLoading) return <LoadingScreen message="Carregando Painel..." />; 
   if (!org) return <div>Organização não encontrada</div>;
-
-  const activeSurveys = surveys?.filter(s => s.status === 'active') || [];
-  const draftSurveys = surveys?.filter(s => s.status === 'draft') || [];
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       'active': 'Ativa',
+      'ativo': 'Ativa',
       'draft': 'Rascunho',
+      'rascunho': 'Rascunho',
       'paused': 'Pausada',
+      'pausado': 'Pausada',
       'completed': 'Concluída',
-      'archived': 'Arquivada'
+      'concluido': 'Concluída',
+      'archived': 'Arquivada',
+      'arquivado': 'Arquivada'
     };
     return labels[status] || status;
   };
+
+  const isActiveStatus = (status: string) => status === 'active' || status === 'ativo';
 
   return (
     <DashboardLayout orgId={params.orgId}>
@@ -54,7 +59,7 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                   <Activity className="w-6 h-6" />
                 </div>
                 <div>
-                  <span className="text-3xl font-bold font-display">{activeSurveys.length}</span>
+                  <span className="text-3xl font-bold font-display" data-testid="text-active-surveys">{stats?.activeSurveys ?? 0}</span>
                   <p className="text-xs text-muted-foreground">Coletando dados atualmente</p>
                 </div>
               </div>
@@ -71,7 +76,7 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                   <FileText className="w-6 h-6" />
                 </div>
                 <div>
-                  <span className="text-3xl font-bold font-display">{draftSurveys.length}</span>
+                  <span className="text-3xl font-bold font-display" data-testid="text-draft-surveys">{stats?.draftSurveys ?? 0}</span>
                   <p className="text-xs text-muted-foreground">Prontos para lançar</p>
                 </div>
               </div>
@@ -88,7 +93,7 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                   <Users className="w-6 h-6" />
                 </div>
                 <div>
-                  <span className="text-3xl font-bold font-display">0</span>
+                  <span className="text-3xl font-bold font-display" data-testid="text-total-interviews">{stats?.interviewsThisMonth ?? 0}</span>
                   <p className="text-xs text-muted-foreground">Este mês</p>
                 </div>
               </div>
@@ -106,7 +111,7 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                     <h3 className="font-semibold text-primary">{survey.title}</h3>
                     <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
-                        survey.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        isActiveStatus(survey.status) ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
                       }`}>
                         {getStatusLabel(survey.status)}
                       </span>

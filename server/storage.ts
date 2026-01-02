@@ -40,6 +40,12 @@ export interface IStorage {
   
   // Analytics
   getSurveyAnalytics(surveyId: number): Promise<any>;
+  getOrganizationStats(orgId: number): Promise<{
+    totalInterviews: number;
+    interviewsThisMonth: number;
+    activeSurveys: number;
+    draftSurveys: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -143,7 +149,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- RESPONSES ---
-  async createResponse(responseData: InsertResponse, answersData: InsertAnswer[]): Promise<Response> {
+  async createResponse(responseData: InsertResponse & { status?: string; flagReason?: string | null }, answersData: InsertAnswer[]): Promise<Response> {
     return await db.transaction(async (tx) => {
       // 1. Create Response Header
       const [response] = await tx.insert(responses).values(responseData).returning();
@@ -194,6 +200,44 @@ export class DatabaseStorage implements IStorage {
       suspiciousResponses: suspicious,
       averageDuration: Math.round(avgDuration),
       locations
+    };
+  }
+
+  async getOrganizationStats(orgId: number): Promise<{
+    totalInterviews: number;
+    interviewsThisMonth: number;
+    activeSurveys: number;
+    draftSurveys: number;
+  }> {
+    const orgSurveys = await db.select().from(surveys).where(eq(surveys.organizationId, orgId));
+    const surveyIds = orgSurveys.map(s => s.id);
+    
+    let allResponses: Response[] = [];
+    if (surveyIds.length > 0) {
+      allResponses = await db.select().from(responses).where(
+        sql`${responses.surveyId} IN (${sql.join(surveyIds.map(id => sql`${id}`), sql`, `)})`
+      );
+    }
+    
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const interviewsThisMonth = allResponses.filter(r => 
+      r.createdAt && new Date(r.createdAt) >= startOfMonth
+    ).length;
+    
+    const activeSurveys = orgSurveys.filter(s => 
+      s.status === 'active' || s.status === 'ativo'
+    ).length;
+    
+    const draftSurveys = orgSurveys.filter(s => 
+      s.status === 'draft' || s.status === 'rascunho'
+    ).length;
+    
+    return {
+      totalInterviews: allResponses.length,
+      interviewsThisMonth,
+      activeSurveys,
+      draftSurveys,
     };
   }
 }

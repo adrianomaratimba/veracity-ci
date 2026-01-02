@@ -204,5 +204,10 @@ export async function registerRoutes(
     res.json(analytics);
   });
 
+  app.get(api.analytics.organizationStats.path, isAuthenticated, async (req, res) => {
+    const stats = await storage.getOrganizationStats(Number(req.params.id));
+    res.json(stats);
+  });
+
   return httpServer;
 }

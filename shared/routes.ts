@@ -216,7 +216,19 @@ export const api = {
           locations: z.array(z.object({ lat: z.number(), lng: z.number(), status: z.string() })),
         }),
       },
-    }
+    },
+    organizationStats: {
+      method: 'GET' as const,
+      path: '/api/organizations/:id/stats',
+      responses: {
+        200: z.object({
+          totalInterviews: z.number(),
+          interviewsThisMonth: z.number(),
+          activeSurveys: z.number(),
+          draftSurveys: z.number(),
+        }),
+      },
+    },
   }
 };
 

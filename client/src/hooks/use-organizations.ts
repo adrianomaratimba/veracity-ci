@@ -85,3 +85,18 @@ export function useInviteMember() {
     },
   });
 }
+
+// Organization Stats
+export function useOrganizationStats(orgId: number) {
+  return useQuery({
+    queryKey: [api.analytics.organizationStats.path, orgId],
+    queryFn: async () => {
+      if (!orgId) return null;
+      const url = buildUrl(api.analytics.organizationStats.path, { id: orgId });
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch organization stats");
+      return api.analytics.organizationStats.responses[200].parse(await res.json());
+    },
+    enabled: !!orgId,
+  });
+}
