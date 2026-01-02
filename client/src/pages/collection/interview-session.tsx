@@ -88,7 +88,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
           latitude: gpsCoords.latitude,
           longitude: gpsCoords.longitude,
           accuracy: gpsCoords.accuracy,
-          gpsTimestamp: new Date(gpsCoords.timestamp || Date.now()),
+          gpsTimestamp: new Date(),
           audioUrl: uploadRes.objectPath,
           audioHash: "mock-hash",
           audioDuration: 0,
@@ -180,7 +180,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               <h3 className="text-xl font-medium mb-6">{survey.questions[currentQuestionIndex].text}</h3>
 
               <div className="flex-1">
-                {survey.questions[currentQuestionIndex].type === 'text' && (
+                {(survey.questions[currentQuestionIndex].type === 'text' || survey.questions[currentQuestionIndex].type === 'texto') && (
                   <Input 
                     placeholder="Digite sua resposta..." 
                     value={answers[survey.questions[currentQuestionIndex].id] || ''}
@@ -188,7 +188,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     className="text-lg py-6"
                   />
                 )}
-                {survey.questions[currentQuestionIndex].type === 'number' && (
+                {(survey.questions[currentQuestionIndex].type === 'number' || survey.questions[currentQuestionIndex].type === 'numero') && (
                   <Input 
                     type="number"
                     placeholder="Digite um número..." 
@@ -197,31 +197,79 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     className="text-lg py-6"
                   />
                 )}
-                {survey.questions[currentQuestionIndex].type === 'single_choice' && (
+                {(survey.questions[currentQuestionIndex].type === 'single_choice' || survey.questions[currentQuestionIndex].type === 'escolha_unica') && (
                   <RadioGroup 
                     value={answers[survey.questions[currentQuestionIndex].id]} 
                     onValueChange={(val) => handleAnswer(survey.questions[currentQuestionIndex].id, val)}
                   >
-                    {(survey.questions[currentQuestionIndex].options as string[]).map((opt) => (
-                       <div key={opt} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                         <RadioGroupItem value={opt} id={opt} />
-                         <Label htmlFor={opt} className="text-base cursor-pointer flex-1">{opt}</Label>
+                    {(survey.questions[currentQuestionIndex].options as string[]).map((opt, idx) => (
+                       <div key={`${opt}-${idx}`} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                         <RadioGroupItem value={opt} id={`opt-${currentQuestionIndex}-${idx}`} />
+                         <Label htmlFor={`opt-${currentQuestionIndex}-${idx}`} className="text-base cursor-pointer flex-1">{opt}</Label>
                        </div>
                     ))}
                   </RadioGroup>
                 )}
-                {survey.questions[currentQuestionIndex].type === 'scale' && (
-                  <RadioGroup 
-                    value={answers[survey.questions[currentQuestionIndex].id]} 
-                    onValueChange={(val) => handleAnswer(survey.questions[currentQuestionIndex].id, val)}
-                  >
-                    {(survey.questions[currentQuestionIndex].options as string[]).map((opt) => (
-                       <div key={opt} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                         <RadioGroupItem value={opt} id={opt} />
-                         <Label htmlFor={opt} className="text-base cursor-pointer flex-1">{opt}</Label>
-                       </div>
+                {(survey.questions[currentQuestionIndex].type === 'scale' || survey.questions[currentQuestionIndex].type === 'escala') && (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {(survey.questions[currentQuestionIndex].options as string[] || ['1','2','3','4','5','6','7','8','9','10']).map((opt, idx) => (
+                       <Button 
+                         key={`scale-${idx}`}
+                         variant={answers[survey.questions[currentQuestionIndex].id] === opt ? "default" : "outline"}
+                         size="icon"
+                         onClick={() => handleAnswer(survey.questions[currentQuestionIndex].id, opt)}
+                       >
+                         {opt}
+                       </Button>
                     ))}
-                  </RadioGroup>
+                  </div>
+                )}
+                {(survey.questions[currentQuestionIndex].type === 'multiple_choice' || survey.questions[currentQuestionIndex].type === 'multipla_escolha') && (
+                  <div className="space-y-2">
+                    {(survey.questions[currentQuestionIndex].options as string[]).map((opt, idx) => {
+                      const currentVal = answers[survey.questions[currentQuestionIndex].id] || [];
+                      const isSelected = Array.isArray(currentVal) && currentVal.includes(opt);
+                      return (
+                        <div 
+                          key={`${opt}-${idx}`} 
+                          className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'}`}
+                          onClick={() => {
+                            const arr = Array.isArray(currentVal) ? [...currentVal] : [];
+                            if (isSelected) {
+                              handleAnswer(survey.questions[currentQuestionIndex].id, arr.filter(v => v !== opt));
+                            } else {
+                              handleAnswer(survey.questions[currentQuestionIndex].id, [...arr, opt]);
+                            }
+                          }}
+                        >
+                          <div className={`w-5 h-5 border rounded flex items-center justify-center ${isSelected ? 'bg-primary border-primary text-primary-foreground' : ''}`}>
+                            {isSelected && <CheckCircle className="w-4 h-4" />}
+                          </div>
+                          <span className="text-base flex-1">{opt}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {survey.questions[currentQuestionIndex].type === 'booleano' && (
+                  <div className="flex gap-4 justify-center">
+                    <Button 
+                      variant={answers[survey.questions[currentQuestionIndex].id] === 'true' ? "default" : "outline"}
+                      size="lg"
+                      className="flex-1 max-w-32"
+                      onClick={() => handleAnswer(survey.questions[currentQuestionIndex].id, 'true')}
+                    >
+                      Sim
+                    </Button>
+                    <Button 
+                      variant={answers[survey.questions[currentQuestionIndex].id] === 'false' ? "default" : "outline"}
+                      size="lg"
+                      className="flex-1 max-w-32"
+                      onClick={() => handleAnswer(survey.questions[currentQuestionIndex].id, 'false')}
+                    >
+                      Não
+                    </Button>
+                  </div>
                 )}
               </div>
 

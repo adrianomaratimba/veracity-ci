@@ -9,6 +9,7 @@ import {
   surveys,
   questions,
   responses,
+  answers,
   organizationMembers,
   planTypeEnum,
   surveyTypeEnum,
@@ -164,9 +165,18 @@ export const api = {
       method: 'POST' as const,
       path: '/api/surveys/:surveyId/responses',
       input: z.object({
-        response: insertResponseSchema.omit({ 
-          surveyId: true, 
-          interviewerId: true 
+        response: z.object({
+          latitude: z.number(),
+          longitude: z.number(),
+          accuracy: z.number(),
+          gpsTimestamp: z.union([z.date(), z.string()]).transform(v => typeof v === 'string' ? new Date(v) : v),
+          audioUrl: z.string(),
+          audioHash: z.string(),
+          audioDuration: z.number().optional(),
+          deviceInfo: z.any().optional(),
+          startTime: z.union([z.date(), z.string()]).transform(v => typeof v === 'string' ? new Date(v) : v),
+          endTime: z.union([z.date(), z.string()]).transform(v => typeof v === 'string' ? new Date(v) : v),
+          duration: z.number().optional(),
         }),
         answers: z.array(insertAnswerSchema.omit({ responseId: true })),
       }),
