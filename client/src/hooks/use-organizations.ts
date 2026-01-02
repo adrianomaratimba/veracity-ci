@@ -86,6 +86,47 @@ export function useInviteMember() {
   });
 }
 
+// Update Member Role
+export function useUpdateMemberRole() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ memberId, role, orgId }: { memberId: number; role: z.infer<typeof userRoleEnum>; orgId: number }) => {
+      const url = buildUrl(api.organizations.members.updateRole.path, { memberId });
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update member role");
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      const url = buildUrl(api.organizations.members.list.path, { id: variables.orgId });
+      queryClient.invalidateQueries({ queryKey: [url] });
+    },
+  });
+}
+
+// Remove Member
+export function useRemoveMember() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ memberId, orgId }: { memberId: number; orgId: number }) => {
+      const url = buildUrl(api.organizations.members.remove.path, { memberId });
+      const res = await fetch(url, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to remove member");
+    },
+    onSuccess: (_, variables) => {
+      const url = buildUrl(api.organizations.members.list.path, { id: variables.orgId });
+      queryClient.invalidateQueries({ queryKey: [url] });
+    },
+  });
+}
+
 // Organization Stats
 export function useOrganizationStats(orgId: number) {
   return useQuery({

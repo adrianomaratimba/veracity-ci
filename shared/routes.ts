@@ -88,6 +88,26 @@ export const api = {
           400: errorSchemas.validation,
           404: errorSchemas.notFound,
         }
+      },
+      updateRole: {
+        method: 'PATCH' as const,
+        path: '/api/members/:memberId',
+        input: z.object({
+          role: userRoleEnum,
+        }),
+        responses: {
+          200: z.custom<typeof organizationMembers.$inferSelect>(),
+          400: errorSchemas.validation,
+          404: errorSchemas.notFound,
+        }
+      },
+      remove: {
+        method: 'DELETE' as const,
+        path: '/api/members/:memberId',
+        responses: {
+          204: z.void(),
+          404: errorSchemas.notFound,
+        }
       }
     }
   },

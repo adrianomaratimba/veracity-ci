@@ -21,6 +21,8 @@ export interface IStorage {
   getOrganizationMembers(orgId: number): Promise<(Member & { user: User })[]>;
   addMember(member: InsertMember): Promise<Member>;
   getMemberByUserId(userId: string, orgId: number): Promise<Member | undefined>;
+  updateMemberRole(memberId: number, role: string): Promise<Member>;
+  removeMember(memberId: number): Promise<void>;
 
   // Surveys
   getSurveys(orgId: number): Promise<Survey[]>;
@@ -98,6 +100,18 @@ export class DatabaseStorage implements IStorage {
         eq(organizationMembers.organizationId, orgId)
       ));
     return member;
+  }
+
+  async updateMemberRole(memberId: number, role: string): Promise<Member> {
+    const [updated] = await db.update(organizationMembers)
+      .set({ role })
+      .where(eq(organizationMembers.id, memberId))
+      .returning();
+    return updated;
+  }
+
+  async removeMember(memberId: number): Promise<void> {
+    await db.delete(organizationMembers).where(eq(organizationMembers.id, memberId));
   }
 
   // --- SURVEYS ---

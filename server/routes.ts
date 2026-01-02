@@ -55,6 +55,28 @@ export async function registerRoutes(
     res.json(members);
   });
 
+  app.patch(api.organizations.members.updateRole.path, isAuthenticated, async (req, res) => {
+    try {
+      const memberId = Number(req.params.memberId);
+      const input = api.organizations.members.updateRole.input.parse(req.body);
+      const updated = await storage.updateMemberRole(memberId, input.role);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      res.status(500).json({ message: "Erro ao atualizar membro" });
+    }
+  });
+
+  app.delete(api.organizations.members.remove.path, isAuthenticated, async (req, res) => {
+    try {
+      const memberId = Number(req.params.memberId);
+      await storage.removeMember(memberId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao remover membro" });
+    }
+  });
+
   app.patch("/api/organizations/:id", isAuthenticated, async (req, res) => {
     try {
       const orgId = Number(req.params.id);
