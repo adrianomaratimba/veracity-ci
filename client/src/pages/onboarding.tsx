@@ -23,7 +23,6 @@ export default function Onboarding() {
   });
 
   const onSubmit = (data: z.infer<typeof insertOrganizationSchema>) => {
-    // Generate a simple slug from name if not provided (though Zod handles validation)
     if (!data.slug) {
       data.slug = data.name.toLowerCase().replace(/\s+/g, '-');
     }
@@ -39,17 +38,17 @@ export default function Onboarding() {
     <div className="min-h-screen flex items-center justify-center bg-muted/20 p-4">
       <Card className="max-w-md w-full shadow-lg border-primary/10">
         <CardHeader>
-          <CardTitle className="text-2xl font-display text-primary">Create Organization</CardTitle>
+          <CardTitle className="text-2xl font-display text-primary">Criar Organização</CardTitle>
           <CardDescription>
-            Set up your workspace to start creating surveys.
+            Configure seu espaço de trabalho para começar a criar pesquisas.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Organization Name</label>
+              <label className="text-sm font-medium">Nome da Organização</label>
               <Input 
-                placeholder="Acme Research Institute" 
+                placeholder="Instituto de Pesquisa ABC" 
                 {...form.register("name")}
                 className="h-11"
               />
@@ -59,11 +58,11 @@ export default function Onboarding() {
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium">Workspace Slug</label>
+              <label className="text-sm font-medium">Identificador (Slug)</label>
               <div className="flex items-center">
                 <span className="bg-muted px-3 py-3 border border-r-0 rounded-l-md text-muted-foreground text-sm">votoaudit.com/</span>
                 <Input 
-                  placeholder="acme-research" 
+                  placeholder="instituto-abc" 
                   {...form.register("slug")}
                   className="rounded-l-none h-11"
                 />
@@ -77,10 +76,10 @@ export default function Onboarding() {
               {isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating Workspace...
+                  Criando Espaço de Trabalho...
                 </>
               ) : (
-                "Create Workspace"
+                "Criar Espaço de Trabalho"
               )}
             </Button>
           </form>

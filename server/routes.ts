@@ -60,7 +60,7 @@ export async function registerRoutes(
 
   app.get(api.surveys.get.path, isAuthenticated, async (req, res) => {
     const survey = await storage.getSurvey(Number(req.params.id));
-    if (!survey) return res.status(404).json({ message: "Survey not found" });
+    if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
     res.json(survey);
   });
 
@@ -103,21 +103,21 @@ export async function registerRoutes(
       let status = "valid";
       let flagReason = null;
 
-      // 1. GPS Accuracy Check
+      // 1. Verificação de Precisão GPS
       if (responseMeta.accuracy > 50) {
         status = "suspicious";
-        flagReason = "Low GPS Accuracy (>50m)";
+        flagReason = "Precisão GPS baixa (>50m)";
       }
 
-      // 2. Audio Validation (Basic check existence)
+      // 2. Validação de Áudio (verificação básica de existência)
       if (!responseMeta.audioUrl || !responseMeta.audioHash) {
-         return res.status(400).json({ message: "Missing mandatory audio evidence" });
+         return res.status(400).json({ message: "Evidência de áudio obrigatória não encontrada" });
       }
       
-      // 3. Duration Check (Example: too fast)
+      // 3. Verificação de Duração (Exemplo: muito rápido)
       if (responseMeta.duration && responseMeta.duration < 10) {
         status = "suspicious";
-        flagReason = flagReason ? `${flagReason}, Duration too short` : "Duration too short (<10s)";
+        flagReason = flagReason ? `${flagReason}, Duração muito curta` : "Duração muito curta (<10s)";
       }
 
       const newResponse = await storage.createResponse(

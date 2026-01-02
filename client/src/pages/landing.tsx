@@ -8,7 +8,6 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Hero Section */}
       <header className="border-b bg-card/50 backdrop-blur-sm fixed w-full z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -18,11 +17,11 @@ export default function Landing() {
           <div className="flex items-center gap-4">
             {user ? (
                <Link href="/dashboard">
-                 <Button>Go to Dashboard</Button>
+                 <Button>Ir para o Painel</Button>
                </Link>
             ) : (
                <Link href="/api/login">
-                 <Button>Sign In</Button>
+                 <Button>Entrar</Button>
                </Link>
             )}
           </div>
@@ -34,44 +33,43 @@ export default function Landing() {
           <div className="text-center max-w-3xl mx-auto mb-16">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 text-primary text-sm font-medium mb-6">
               <ShieldCheck className="w-4 h-4" />
-              <span>Secure Election Intelligence Platform</span>
+              <span>Plataforma Segura de Pesquisas Eleitorais</span>
             </div>
             <h1 className="text-5xl md:text-6xl font-display font-bold text-foreground mb-6 leading-tight">
-              Audit-Ready Polling <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">With Real-Time Proof</span>
+              Pesquisas com Auditoria <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">e Provas em Tempo Real</span>
             </h1>
             <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
-              Conduct electoral surveys with confidence. Capture GPS, audio evidence, and device fingerprints for every single interview.
+              Realize pesquisas eleitorais com confiança. Capture GPS, evidências de áudio e impressões digitais do dispositivo para cada entrevista.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/api/login">
                 <Button size="lg" className="w-full sm:w-auto px-8 h-12 text-lg">
-                  Start Free Trial
+                  Iniciar Teste Grátis
                 </Button>
               </Link>
               <Button size="lg" variant="outline" className="w-full sm:w-auto px-8 h-12 text-lg">
-                View Demo
+                Ver Demonstração
               </Button>
             </div>
           </div>
 
-          {/* Features Grid */}
           <div className="grid md:grid-cols-3 gap-8 mt-20">
             {[
               {
                 icon: Radio,
-                title: "Audio Audit",
-                description: "Mandatory audio recording for every interview ensures data integrity and allows for post-survey verification."
+                title: "Auditoria de Áudio",
+                description: "Gravação obrigatória de áudio para cada entrevista garante a integridade dos dados e permite verificação pós-pesquisa."
               },
               {
                 icon: CheckCircle2,
-                title: "GPS Verification",
-                description: "Precise location tracking locks interviews to specific geofences, preventing fraud and ensuring coverage."
+                title: "Verificação GPS",
+                description: "Rastreamento preciso de localização vincula entrevistas a geofences específicas, prevenindo fraudes e garantindo cobertura."
               },
               {
                 icon: BarChart3,
-                title: "Real-time Analytics",
-                description: "Watch results stream in live. Detect anomalies instantly with our AI-powered fraud detection engine."
+                title: "Análises em Tempo Real",
+                description: "Acompanhe os resultados ao vivo. Detecte anomalias instantaneamente com nosso motor de detecção de fraudes."
               }
             ].map((feature, i) => (
               <div key={i} className="bg-card p-8 rounded-2xl border shadow-sm hover:shadow-md transition-shadow">
@@ -84,11 +82,9 @@ export default function Landing() {
             ))}
           </div>
 
-          {/* Social Proof / Trust */}
           <div className="mt-32 border-t pt-16 text-center">
-            <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-8">Trusted by Research Institutes</p>
+            <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-8">Utilizado por Institutos de Pesquisa</p>
             <div className="flex flex-wrap justify-center gap-12 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
-               {/* Placeholders for logos */}
                <div className="h-8 w-32 bg-foreground/10 rounded animate-pulse" />
                <div className="h-8 w-32 bg-foreground/10 rounded animate-pulse" />
                <div className="h-8 w-32 bg-foreground/10 rounded animate-pulse" />

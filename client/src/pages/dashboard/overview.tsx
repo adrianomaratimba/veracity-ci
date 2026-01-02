@@ -13,31 +13,40 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
   const { data: surveys, isLoading: surveysLoading } = useSurveys(orgId);
   const [, setLocation] = useLocation();
 
-  if (orgLoading || surveysLoading) return <LoadingScreen message="Loading Dashboard..." />;
-  if (!org) return <div>Organization not found</div>;
+  if (orgLoading || surveysLoading) return <LoadingScreen message="Carregando Painel..." />;
+  if (!org) return <div>Organização não encontrada</div>;
 
   const activeSurveys = surveys?.filter(s => s.status === 'active') || [];
   const draftSurveys = surveys?.filter(s => s.status === 'draft') || [];
 
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      'active': 'Ativa',
+      'draft': 'Rascunho',
+      'paused': 'Pausada',
+      'completed': 'Concluída',
+      'archived': 'Arquivada'
+    };
+    return labels[status] || status;
+  };
+
   return (
     <DashboardLayout orgId={params.orgId}>
       <div className="flex flex-col gap-8">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-primary">{org.name}</h1>
-            <p className="text-muted-foreground">Overview of your research activities</p>
+            <p className="text-muted-foreground">Visão geral das suas atividades de pesquisa</p>
           </div>
           <Button onClick={() => setLocation(`/org/${orgId}/surveys/new`)} className="gap-2">
-            <Plus className="w-4 h-4" /> New Survey
+            <Plus className="w-4 h-4" /> Nova Pesquisa
           </Button>
         </div>
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="shadow-sm border-l-4 border-l-primary hover:shadow-md transition-all">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Surveys</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Pesquisas Ativas</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4">
@@ -46,7 +55,7 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                 </div>
                 <div>
                   <span className="text-3xl font-bold font-display">{activeSurveys.length}</span>
-                  <p className="text-xs text-muted-foreground">Currently collecting data</p>
+                  <p className="text-xs text-muted-foreground">Coletando dados atualmente</p>
                 </div>
               </div>
             </CardContent>
@@ -54,7 +63,7 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
 
           <Card className="shadow-sm border-l-4 border-l-secondary hover:shadow-md transition-all">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Drafts</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Rascunhos</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4">
@@ -63,7 +72,7 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                 </div>
                 <div>
                   <span className="text-3xl font-bold font-display">{draftSurveys.length}</span>
-                  <p className="text-xs text-muted-foreground">Ready to launch</p>
+                  <p className="text-xs text-muted-foreground">Prontos para lançar</p>
                 </div>
               </div>
             </CardContent>
@@ -71,7 +80,7 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
 
           <Card className="shadow-sm border-l-4 border-l-accent hover:shadow-md transition-all">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Interviews</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total de Entrevistas</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4">
@@ -80,16 +89,15 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                 </div>
                 <div>
                   <span className="text-3xl font-bold font-display">0</span>
-                  <p className="text-xs text-muted-foreground">This month</p>
+                  <p className="text-xs text-muted-foreground">Este mês</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Recent Activity / Surveys List */}
         <div>
-          <h2 className="text-xl font-display font-bold mb-4">Recent Surveys</h2>
+          <h2 className="text-xl font-display font-bold mb-4">Pesquisas Recentes</h2>
           <div className="bg-card rounded-xl border shadow-sm divide-y">
             {surveys && surveys.length > 0 ? (
               surveys.map(survey => (
@@ -100,20 +108,20 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
                         survey.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {survey.status}
+                        {getStatusLabel(survey.status)}
                       </span>
                       <span>•</span>
-                      <span>Created {new Date(survey.createdAt!).toLocaleDateString()}</span>
+                      <span>Criada em {new Date(survey.createdAt!).toLocaleDateString('pt-BR')}</span>
                     </div>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}`)}>
-                    Manage
+                    Gerenciar
                   </Button>
                 </div>
               ))
             ) : (
               <div className="p-12 text-center text-muted-foreground">
-                <p>No surveys yet. Create your first one to get started.</p>
+                <p>Nenhuma pesquisa ainda. Crie a primeira para começar.</p>
               </div>
             )}
           </div>
