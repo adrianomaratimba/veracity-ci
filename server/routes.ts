@@ -18,11 +18,14 @@ export async function registerRoutes(
 
   // 2. Organizations
   app.get(api.organizations.list.path, isAuthenticated, async (req, res) => {
-    // In a real multi-tenant app, filter by what user has access to
-    // For now, listing all or just the one user belongs to
-    // const userId = (req.user as any).claims.sub;
     const orgs = await storage.getOrganizations();
     res.json(orgs);
+  });
+
+  app.get("/api/organizations/:id", isAuthenticated, async (req, res) => {
+    const org = await storage.getOrganization(Number(req.params.id));
+    if (!org) return res.status(404).json({ message: "Organização não encontrada" });
+    res.json(org);
   });
 
   app.post(api.organizations.create.path, isAuthenticated, async (req, res) => {
