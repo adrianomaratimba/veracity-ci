@@ -4,11 +4,12 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { users } from "./models/auth";
 
+// RE-EXPORT AUTH TABLES FOR DRIZZLE KIT
 export * from "./models/auth";
 
-// === ENUMS (Traduzidos) ===
+// === ENUMS ===
 export const planTypeEnum = z.enum(["basico", "pro", "enterprise"]);
-export const userRoleEnum = z.enum(["proprietario", "administrador", "coordenador", "entrevistador", "visualizador"]);
+export const userRoleEnum = z.enum(["proprietario", "admin", "coordenador", "entrevistador", "visualizador"]);
 export const surveyTypeEnum = z.enum(["eleitoral", "opiniao", "mercado", "censo"]);
 export const surveyStatusEnum = z.enum(["rascunho", "ativo", "pausado", "concluido", "arquivado"]);
 export const questionTypeEnum = z.enum(["escolha_unica", "multipla_escolha", "texto", "numero", "escala", "data", "booleano"]);
