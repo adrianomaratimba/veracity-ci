@@ -55,6 +55,38 @@ export async function registerRoutes(
     res.json(members);
   });
 
+  app.post(api.organizations.members.invite.path, isAuthenticated, async (req, res) => {
+    try {
+      const orgId = Number(req.params.id);
+      const input = api.organizations.members.invite.input.parse(req.body);
+      
+      if (input.role === 'owner') {
+        return res.status(403).json({ message: "Não é possível convidar como proprietário" });
+      }
+
+      const user = await storage.getUserByEmail(input.email);
+      if (!user) {
+        return res.status(404).json({ message: "Usuário não encontrado. O usuário precisa fazer login no sistema primeiro." });
+      }
+
+      const existingMember = await storage.getMemberByUserId(user.id, orgId);
+      if (existingMember) {
+        return res.status(400).json({ message: "Este usuário já é membro da organização" });
+      }
+
+      const member = await storage.addMember({
+        organizationId: orgId,
+        userId: user.id,
+        role: input.role
+      });
+
+      res.status(201).json(member);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      res.status(500).json({ message: "Erro ao convidar membro" });
+    }
+  });
+
   app.patch(api.organizations.members.updateRole.path, isAuthenticated, async (req, res) => {
     try {
       const memberId = Number(req.params.memberId);
