@@ -120,7 +120,14 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
                       <td className="px-4 py-3">{new Date(resp.createdAt!).toLocaleString('pt-BR')}</td>
                       <td className="px-4 py-3">{resp.interviewerId}</td>
                       <td className="px-4 py-3 font-mono text-xs">
-                        {resp.latitude?.toFixed(6)}, {resp.longitude?.toFixed(6)}
+                        <a 
+                          href={`https://www.google.com/maps?q=${resp.latitude},${resp.longitude}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
+                          {resp.latitude?.toFixed(6)}, {resp.longitude?.toFixed(6)}
+                        </a>
                       </td>
                       <td className="px-4 py-3">{resp.accuracy.toFixed(1)}m</td>
                       <td className="px-4 py-3">

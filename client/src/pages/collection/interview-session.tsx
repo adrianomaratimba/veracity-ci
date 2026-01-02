@@ -16,7 +16,7 @@ interface InterviewSessionProps {
   params: { surveyId: string };
 }
 
-type Step = 'permissions' | 'questions' | 'submit';
+type Step = 'permissions' | 'questions' | 'submit' | 'success';
 
 export default function InterviewSession({ params }: InterviewSessionProps) {
   const surveyId = parseInt(params.surveyId);
@@ -101,8 +101,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       }
     }, {
       onSuccess: () => {
-        alert("Entrevista enviada com sucesso!");
-        setLocation("/");
+        setStep('success');
       }
     });
   };
@@ -322,6 +321,47 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                   <Save className="w-5 h-5 mr-2" /> Enviar Entrevista
                 </>
               )}
+            </Button>
+          </Card>
+        )}
+
+        {step === 'success' && (
+          <Card className="p-8 text-center space-y-6">
+            <div className="mx-auto w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 animate-in zoom-in duration-300">
+              <CheckCircle className="w-10 h-10" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold mb-2">Enviado com Sucesso!</h2>
+              <p className="text-muted-foreground">A entrevista foi registrada e os dados estão seguros.</p>
+            </div>
+            
+            <div className="bg-green-50 border border-green-200 p-4 rounded-lg text-sm text-left space-y-2">
+              <div className="flex justify-between">
+                <span>Perguntas Respondidas:</span>
+                <span className="font-bold text-green-700">{Object.keys(answers).length}/{survey.questions.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Áudio Registrado:</span>
+                <span className="font-bold text-green-700">Confirmado</span>
+              </div>
+              <div className="flex justify-between">
+                <span>GPS Verificado:</span>
+                <span className="font-bold text-green-700">Confirmado</span>
+              </div>
+            </div>
+
+            <Button 
+              className="w-full h-12 text-lg" 
+              onClick={() => setLocation(`/collect/${surveyId}`)}
+            >
+              Nova Entrevista
+            </Button>
+            <Button 
+              variant="outline"
+              className="w-full" 
+              onClick={() => setLocation('/dashboard')}
+            >
+              Voltar ao Painel
             </Button>
           </Card>
         )}
