@@ -28,7 +28,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const [newSurvey, setNewSurvey] = useState({
     title: "",
     description: "",
-    type: "eleitoral",
+    type: "electoral",
     location: "",
     targetSample: 400
   });
@@ -54,7 +54,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
       });
       toast({ title: "Sucesso", description: "Pesquisa criada com sucesso!" });
       setIsCreateOpen(false);
-      setNewSurvey({ title: "", description: "", type: "eleitoral", location: "", targetSample: 400 });
+      setNewSurvey({ title: "", description: "", type: "electoral", location: "", targetSample: 400 });
       setLocation(`/org/${orgId}/surveys/${survey.id}`);
     } catch (error) {
       toast({ title: "Erro", description: "Falha ao criar pesquisa", variant: "destructive" });
@@ -64,15 +64,10 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const getStatusBadge = (status: string) => {
     const config: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
       'draft': { label: 'Rascunho', variant: 'secondary' },
-      'rascunho': { label: 'Rascunho', variant: 'secondary' },
       'active': { label: 'Ativa', variant: 'default' },
-      'ativo': { label: 'Ativa', variant: 'default' },
       'paused': { label: 'Pausada', variant: 'outline' },
-      'pausado': { label: 'Pausada', variant: 'outline' },
-      'completed': { label: 'Concluida', variant: 'secondary' },
-      'concluido': { label: 'Concluida', variant: 'secondary' },
+      'completed': { label: 'Concluída', variant: 'secondary' },
       'archived': { label: 'Arquivada', variant: 'outline' },
-      'arquivado': { label: 'Arquivada', variant: 'outline' },
     };
     const c = config[status] || { label: status, variant: 'secondary' as const };
     return <Badge variant={c.variant}>{c.label}</Badge>;
@@ -80,10 +75,10 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
 
   const getTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      'eleitoral': 'Eleitoral',
-      'opiniao': 'Opiniao',
-      'mercado': 'Mercado',
-      'censo': 'Censo'
+      'electoral': 'Eleitoral',
+      'opinion': 'Opinião',
+      'market': 'Mercado',
+      'census': 'Censo'
     };
     return labels[type] || type;
   };
@@ -136,10 +131,10 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="eleitoral">Eleitoral</SelectItem>
-                        <SelectItem value="opiniao">Opiniao</SelectItem>
-                        <SelectItem value="mercado">Mercado</SelectItem>
-                        <SelectItem value="censo">Censo</SelectItem>
+                        <SelectItem value="electoral">Eleitoral</SelectItem>
+                        <SelectItem value="opinion">Opinião</SelectItem>
+                        <SelectItem value="market">Mercado</SelectItem>
+                        <SelectItem value="census">Censo</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

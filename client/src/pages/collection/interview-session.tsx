@@ -179,7 +179,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               <h3 className="text-xl font-medium mb-6">{survey.questions[currentQuestionIndex].text}</h3>
 
               <div className="flex-1">
-                {(survey.questions[currentQuestionIndex].type === 'text' || survey.questions[currentQuestionIndex].type === 'texto') && (
+                {survey.questions[currentQuestionIndex].type === 'text' && (
                   <Input 
                     placeholder="Digite sua resposta..." 
                     value={answers[survey.questions[currentQuestionIndex].id] || ''}
@@ -187,7 +187,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     className="text-lg py-6"
                   />
                 )}
-                {(survey.questions[currentQuestionIndex].type === 'number' || survey.questions[currentQuestionIndex].type === 'numero') && (
+                {survey.questions[currentQuestionIndex].type === 'number' && (
                   <Input 
                     type="number"
                     placeholder="Digite um número..." 
@@ -196,7 +196,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     className="text-lg py-6"
                   />
                 )}
-                {(survey.questions[currentQuestionIndex].type === 'single_choice' || survey.questions[currentQuestionIndex].type === 'escolha_unica') && (
+                {survey.questions[currentQuestionIndex].type === 'single_choice' && (
                   <RadioGroup 
                     value={answers[survey.questions[currentQuestionIndex].id]} 
                     onValueChange={(val) => handleAnswer(survey.questions[currentQuestionIndex].id, val)}
@@ -209,7 +209,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     ))}
                   </RadioGroup>
                 )}
-                {(survey.questions[currentQuestionIndex].type === 'scale' || survey.questions[currentQuestionIndex].type === 'escala') && (
+                {survey.questions[currentQuestionIndex].type === 'scale' && (
                   <div className="flex flex-wrap justify-center gap-3">
                     {(survey.questions[currentQuestionIndex].options as string[] || ['1','2','3','4','5','6','7','8','9','10']).map((opt, idx) => (
                        <Button 
@@ -223,7 +223,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     ))}
                   </div>
                 )}
-                {(survey.questions[currentQuestionIndex].type === 'multiple_choice' || survey.questions[currentQuestionIndex].type === 'multipla_escolha') && (
+                {survey.questions[currentQuestionIndex].type === 'multiple_choice' && (
                   <div className="space-y-2">
                     {(survey.questions[currentQuestionIndex].options as string[]).map((opt, idx) => {
                       const currentVal = answers[survey.questions[currentQuestionIndex].id] || [];
@@ -250,7 +250,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     })}
                   </div>
                 )}
-                {survey.questions[currentQuestionIndex].type === 'booleano' && (
+                {survey.questions[currentQuestionIndex].type === 'boolean' && (
                   <div className="flex gap-4 justify-center">
                     <Button 
                       variant={answers[survey.questions[currentQuestionIndex].id] === 'true' ? "default" : "outline"}

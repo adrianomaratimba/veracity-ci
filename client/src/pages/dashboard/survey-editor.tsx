@@ -46,10 +46,10 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
   const [surveyForm, setSurveyForm] = useState({
     title: "",
     description: "",
-    type: "eleitoral",
+    type: "electoral",
     location: "",
     targetSample: 400,
-    status: "rascunho"
+    status: "draft"
   });
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
@@ -60,10 +60,10 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
       setSurveyForm({
         title: survey.title || "",
         description: survey.description || "",
-        type: survey.type || "eleitoral",
+        type: survey.type || "electoral",
         location: survey.location || "",
         targetSample: survey.targetSample || 400,
-        status: survey.status || "rascunho"
+        status: survey.status || "draft"
       });
       if (survey.questions) {
         setQuestions(survey.questions.map(q => ({
@@ -167,8 +167,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
   const handleAddQuestion = () => {
     const newQuestion: QuestionForm = {
       text: "",
-      type: "escolha_unica",
-      options: ["Opcao 1", "Opcao 2"],
+      type: "single_choice",
+      options: ["Opção 1", "Opção 2"],
       required: true,
       order: questions.length + 1
     };
@@ -211,27 +211,13 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     setHasChanges(true);
   };
 
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      'rascunho': 'Rascunho',
-      'draft': 'Rascunho',
-      'ativo': 'Ativa',
-      'active': 'Ativa',
-      'pausado': 'Pausada',
-      'paused': 'Pausada',
-      'concluido': 'Concluida',
-      'completed': 'Concluida'
-    };
-    return labels[status] || status;
-  };
-
   const questionTypes = [
-    { value: "escolha_unica", label: "Escolha Unica" },
-    { value: "multipla_escolha", label: "Multipla Escolha" },
-    { value: "texto", label: "Texto Livre" },
-    { value: "numero", label: "Numero" },
-    { value: "escala", label: "Escala (1-10)" },
-    { value: "booleano", label: "Sim/Nao" },
+    { value: "single_choice", label: "Escolha Única" },
+    { value: "multiple_choice", label: "Múltipla Escolha" },
+    { value: "text", label: "Texto Livre" },
+    { value: "number", label: "Número" },
+    { value: "scale", label: "Escala (1-10)" },
+    { value: "boolean", label: "Sim/Não" },
   ];
 
   return (
@@ -245,8 +231,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-display font-bold">{surveyForm.title || "Nova Pesquisa"}</h1>
-                <Badge variant={surveyForm.status === 'ativo' || surveyForm.status === 'active' ? 'default' : 'secondary'}>
-                  {getStatusLabel(surveyForm.status)}
+                <Badge variant={surveyForm.status === 'active' ? 'default' : 'secondary'}>
+                  {surveyForm.status === 'active' ? 'Ativa' : surveyForm.status === 'draft' ? 'Rascunho' : surveyForm.status === 'paused' ? 'Pausada' : 'Concluída'}
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">Edite os detalhes e perguntas da pesquisa</p>
@@ -308,7 +294,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                             </Select>
                           </div>
 
-                          {(q.type === "escolha_unica" || q.type === "multipla_escolha") && (
+                          {(q.type === "single_choice" || q.type === "multiple_choice") && (
                             <div className="space-y-2 pl-4 border-l-2 border-muted">
                               {q.options.map((opt, optIndex) => (
                                 <div key={optIndex} className="flex items-center gap-2">
@@ -461,10 +447,10 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="rascunho">Rascunho</SelectItem>
-                        <SelectItem value="ativo">Ativa</SelectItem>
-                        <SelectItem value="pausado">Pausada</SelectItem>
-                        <SelectItem value="concluido">Concluida</SelectItem>
+                        <SelectItem value="draft">Rascunho</SelectItem>
+                        <SelectItem value="active">Ativa</SelectItem>
+                        <SelectItem value="paused">Pausada</SelectItem>
+                        <SelectItem value="completed">Concluída</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { Plus, Users, FileText, Activity } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { getSurveyStatusLabel } from "@shared/i18n/labels";
 
 export default function DashboardOverview({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
@@ -16,24 +17,6 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
 
   if (orgLoading || surveysLoading || statsLoading) return <LoadingScreen message="Carregando Painel..." />; 
   if (!org) return <div>Organização não encontrada</div>;
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      'active': 'Ativa',
-      'ativo': 'Ativa',
-      'draft': 'Rascunho',
-      'rascunho': 'Rascunho',
-      'paused': 'Pausada',
-      'pausado': 'Pausada',
-      'completed': 'Concluída',
-      'concluido': 'Concluída',
-      'archived': 'Arquivada',
-      'arquivado': 'Arquivada'
-    };
-    return labels[status] || status;
-  };
-
-  const isActiveStatus = (status: string) => status === 'active' || status === 'ativo';
 
   return (
     <DashboardLayout orgId={params.orgId}>
@@ -111,9 +94,9 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                     <h3 className="font-semibold text-primary">{survey.title}</h3>
                     <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
-                        isActiveStatus(survey.status) ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+                        survey.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
                       }`}>
-                        {getStatusLabel(survey.status)}
+                        {getSurveyStatusLabel(survey.status)}
                       </span>
                       <span>•</span>
                       <span>Criada em {new Date(survey.createdAt!).toLocaleDateString('pt-BR')}</span>

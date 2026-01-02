@@ -225,13 +225,8 @@ export class DatabaseStorage implements IStorage {
       r.createdAt && new Date(r.createdAt) >= startOfMonth
     ).length;
     
-    const activeSurveys = orgSurveys.filter(s => 
-      s.status === 'active' || s.status === 'ativo'
-    ).length;
-    
-    const draftSurveys = orgSurveys.filter(s => 
-      s.status === 'draft' || s.status === 'rascunho'
-    ).length;
+    const activeSurveys = orgSurveys.filter(s => s.status === 'active').length;
+    const draftSurveys = orgSurveys.filter(s => s.status === 'draft').length;
     
     return {
       totalInterviews: allResponses.length,
