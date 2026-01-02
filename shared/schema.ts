@@ -6,13 +6,13 @@ import { users } from "./models/auth";
 
 export * from "./models/auth";
 
-// === ENUMS ===
-export const planTypeEnum = z.enum(["basico", "pro", "enterprise"]);
-export const userRoleEnum = z.enum(["proprietario", "admin", "coordenador", "entrevistador", "visualizador"]);
-export const surveyTypeEnum = z.enum(["eleitoral", "opiniao", "mercado", "censo"]);
-export const surveyStatusEnum = z.enum(["rascunho", "ativo", "pausado", "concluido", "arquivado"]);
-export const questionTypeEnum = z.enum(["escolha_unica", "multipla_escolha", "texto", "numero", "escala", "data", "booleano"]);
-export const responseStatusEnum = z.enum(["valido", "suspeito", "invalido"]);
+// === ENUMS (English internally, Portuguese in UI via translation layer) ===
+export const planTypeEnum = z.enum(["basic", "pro", "enterprise"]);
+export const userRoleEnum = z.enum(["owner", "admin", "coordinator", "interviewer", "viewer"]);
+export const surveyTypeEnum = z.enum(["electoral", "opinion", "market", "census"]);
+export const surveyStatusEnum = z.enum(["draft", "active", "paused", "completed", "archived"]);
+export const questionTypeEnum = z.enum(["single_choice", "multiple_choice", "text", "number", "scale", "date", "boolean"]);
+export const responseStatusEnum = z.enum(["valid", "suspicious", "invalid"]);
 
 // === TABLES ===
 
@@ -20,7 +20,7 @@ export const organizations = pgTable("organizations", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").unique().notNull(),
-  plan: text("plan").default("basico").notNull(),
+  plan: text("plan").default("basic").notNull(),
   maxInterviews: integer("max_interviews").default(100),
   maxUsers: integer("max_users").default(5),
   settings: jsonb("settings").default({}),
@@ -32,7 +32,7 @@ export const organizationMembers = pgTable("organization_members", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
-  role: text("role").default("visualizador").notNull(),
+  role: text("role").default("viewer").notNull(),
   joinedAt: timestamp("joined_at").defaultNow(),
 });
 
@@ -42,7 +42,7 @@ export const surveys = pgTable("surveys", {
   title: text("title").notNull(),
   description: text("description"),
   type: text("type").notNull(),
-  status: text("status").default("rascunho").notNull(),
+  status: text("status").default("draft").notNull(),
   location: text("location"),
   targetSample: integer("target_sample"),
   marginOfError: doublePrecision("margin_of_error"),
@@ -76,7 +76,7 @@ export const responses = pgTable("responses", {
   audioHash: text("audio_hash").notNull(),
   audioDuration: integer("audio_duration"),
   deviceInfo: jsonb("device_info"),
-  status: text("status").default("valido").notNull(),
+  status: text("status").default("valid").notNull(),
   flagReason: text("flag_reason"),
   duration: integer("duration"),
   startTime: timestamp("start_time").notNull(),
