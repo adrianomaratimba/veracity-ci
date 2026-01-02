@@ -58,7 +58,8 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
       setIsInviteOpen(false);
       setInviteForm({ email: "", role: "interviewer" });
     } catch (error) {
-      toast({ title: "Erro", description: "Falha ao enviar convite", variant: "destructive" });
+      const message = error instanceof Error ? error.message : "Falha ao enviar convite";
+      toast({ title: "Erro", description: message, variant: "destructive" });
     }
   };
 

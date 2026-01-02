@@ -76,7 +76,10 @@ export function useInviteMember() {
         body: JSON.stringify({ email, role }),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to invite member");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to invite member");
+      }
       return api.organizations.members.invite.responses[201].parse(await res.json());
     },
     onSuccess: (_, variables) => {
