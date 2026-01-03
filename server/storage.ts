@@ -7,7 +7,9 @@ import {
   questions, Question, InsertQuestion,
   responses, Response, InsertResponse,
   answers, Answer, InsertAnswer,
-  surveyAssignments, SurveyAssignment, InsertSurveyAssignment
+  surveyAssignments, SurveyAssignment, InsertSurveyAssignment,
+  memberPermissionOverrides, MemberPermissionOverride, InsertMemberPermissionOverride,
+  accessAuditLog, AccessAuditLog, InsertAccessAuditLog
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -94,6 +96,17 @@ export interface IStorage {
   assignInterviewer(data: InsertSurveyAssignment): Promise<SurveyAssignment>;
   unassignInterviewer(surveyId: number, interviewerId: string): Promise<void>;
   isInterviewerAssigned(surveyId: number, interviewerId: string): Promise<boolean>;
+
+  // Permission Overrides
+  getMemberPermissionOverrides(memberId: number): Promise<MemberPermissionOverride[]>;
+  getOrgPermissionOverrides(orgId: number): Promise<(MemberPermissionOverride & { member: Member & { user: User } })[]>;
+  addPermissionOverride(data: InsertMemberPermissionOverride): Promise<MemberPermissionOverride>;
+  removePermissionOverride(id: number): Promise<void>;
+  hasEffectivePermission(memberId: number, baseRole: string, permission: string): Promise<boolean>;
+
+  // Access Audit Log
+  logAccess(data: InsertAccessAuditLog): Promise<AccessAuditLog>;
+  getAccessLogs(orgId: number, limit?: number): Promise<(AccessAuditLog & { user: User })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -658,6 +671,79 @@ export class DatabaseStorage implements IStorage {
     }
 
     return timeline;
+  }
+
+  // --- PERMISSION OVERRIDES ---
+  async getMemberPermissionOverrides(memberId: number): Promise<MemberPermissionOverride[]> {
+    return await db.select()
+      .from(memberPermissionOverrides)
+      .where(eq(memberPermissionOverrides.memberId, memberId));
+  }
+
+  async getOrgPermissionOverrides(orgId: number): Promise<(MemberPermissionOverride & { member: Member & { user: User } })[]> {
+    const results = await db.select({
+      override: memberPermissionOverrides,
+      member: organizationMembers,
+      user: users
+    })
+      .from(memberPermissionOverrides)
+      .innerJoin(organizationMembers, eq(memberPermissionOverrides.memberId, organizationMembers.id))
+      .innerJoin(users, eq(organizationMembers.userId, users.id))
+      .where(eq(organizationMembers.organizationId, orgId));
+
+    return results.map(r => ({
+      ...r.override,
+      member: { ...r.member, user: r.user }
+    }));
+  }
+
+  async addPermissionOverride(data: InsertMemberPermissionOverride): Promise<MemberPermissionOverride> {
+    const [override] = await db.insert(memberPermissionOverrides)
+      .values(data)
+      .returning();
+    return override;
+  }
+
+  async removePermissionOverride(id: number): Promise<void> {
+    await db.delete(memberPermissionOverrides)
+      .where(eq(memberPermissionOverrides.id, id));
+  }
+
+  async hasEffectivePermission(memberId: number, baseRole: string, permission: string): Promise<boolean> {
+    const overrides = await this.getMemberPermissionOverrides(memberId);
+    const specificOverride = overrides.find(o => o.permission === permission);
+    
+    if (specificOverride) {
+      if (specificOverride.expiresAt && new Date(specificOverride.expiresAt) < new Date()) {
+        return false;
+      }
+      return specificOverride.allowed;
+    }
+    
+    const { hasPermission } = await import("@shared/rbac");
+    return hasPermission(baseRole as any, permission as any);
+  }
+
+  // --- ACCESS AUDIT LOG ---
+  async logAccess(data: InsertAccessAuditLog): Promise<AccessAuditLog> {
+    const [log] = await db.insert(accessAuditLog)
+      .values(data)
+      .returning();
+    return log;
+  }
+
+  async getAccessLogs(orgId: number, limit: number = 100): Promise<(AccessAuditLog & { user: User })[]> {
+    const results = await db.select({
+      log: accessAuditLog,
+      user: users
+    })
+      .from(accessAuditLog)
+      .innerJoin(users, eq(accessAuditLog.userId, users.id))
+      .where(eq(accessAuditLog.organizationId, orgId))
+      .orderBy(desc(accessAuditLog.createdAt))
+      .limit(limit);
+
+    return results.map(r => ({ ...r.log, user: r.user }));
   }
 }
 

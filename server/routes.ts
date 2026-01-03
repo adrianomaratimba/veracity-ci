@@ -845,5 +845,134 @@ export async function registerRoutes(
     }
   });
 
+  // === ACCESS CONTROL & PERMISSIONS ===
+  
+  // Get role matrix (permissions for each role)
+  app.get("/api/organizations/:id/access/roles", isAuthenticated, requireOrgAccess("id", "members:view"), async (req, res) => {
+    try {
+      const { getPermissions } = await import("@shared/rbac");
+      const roles = ['owner', 'admin', 'coordinator', 'interviewer', 'viewer'] as const;
+      const permissions = [
+        "org:view", "org:edit", "org:delete", "org:manage_billing", "org:manage_branding",
+        "members:view", "members:invite", "members:edit_role", "members:remove",
+        "surveys:view", "surveys:view_assigned", "surveys:create", "surveys:edit", "surveys:delete", "surveys:publish",
+        "responses:view", "responses:view_own", "responses:submit", "responses:audit", "responses:invalidate",
+        "analytics:view", "analytics:view_aggregate",
+        "audio:listen", "gps:view", "audit_logs:view"
+      ];
+      
+      const matrix = roles.map(role => ({
+        role,
+        permissions: permissions.map(perm => ({
+          permission: perm,
+          allowed: getPermissions(role).includes(perm as any)
+        }))
+      }));
+      
+      res.json({ roles, permissions, matrix });
+    } catch (err) {
+      console.error("Erro ao buscar matriz de permissões:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Get permission overrides for organization
+  app.get("/api/organizations/:id/access/overrides", isAuthenticated, requireOrgAccess("id", "members:view"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      const overrides = await storage.getOrgPermissionOverrides(orgId);
+      res.json(overrides);
+    } catch (err) {
+      console.error("Erro ao buscar overrides:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Add permission override
+  app.post("/api/organizations/:id/access/overrides", isAuthenticated, requireOrgAccess("id", "members:edit_role"), async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { memberId, permission, allowed, reason, expiresAt } = req.body;
+      
+      if (!memberId || !permission || allowed === undefined) {
+        return res.status(400).json({ message: "Dados incompletos" });
+      }
+      
+      const override = await storage.addPermissionOverride({
+        memberId,
+        permission,
+        allowed,
+        grantedBy: userId,
+        reason: reason || null,
+        expiresAt: expiresAt ? new Date(expiresAt) : null
+      });
+      
+      res.status(201).json(override);
+    } catch (err) {
+      console.error("Erro ao adicionar override:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Remove permission override
+  app.delete("/api/organizations/:id/access/overrides/:overrideId", isAuthenticated, requireOrgAccess("id", "members:edit_role"), async (req, res) => {
+    try {
+      const overrideId = Number(req.params.overrideId);
+      await storage.removePermissionOverride(overrideId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Erro ao remover override:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Get access audit logs
+  app.get("/api/organizations/:id/access/logs", isAuthenticated, requireOrgAccess("id", "audit_logs:view"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      const limit = Number(req.query.limit) || 100;
+      const logs = await storage.getAccessLogs(orgId, limit);
+      res.json(logs);
+    } catch (err) {
+      console.error("Erro ao buscar logs de acesso:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Get viewable surveys for current user (for viewer portal)
+  app.get("/api/organizations/:id/viewable-surveys", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const orgId = Number(req.params.id);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const role = member.role as UserRole;
+      
+      // Interviewers only see assigned surveys
+      if (isInterviewerRole(role)) {
+        const assignedSurveys = await storage.getAssignedSurveys(userId, orgId);
+        return res.json(assignedSurveys.filter(s => s.status === 'active'));
+      }
+      
+      // Viewers and others with surveys:view can see all active/completed surveys
+      if (hasPermission(role, "surveys:view")) {
+        const allSurveys = await storage.getSurveys(orgId);
+        const viewableSurveys = allSurveys.filter(s => 
+          s.status === 'active' || s.status === 'completed' || s.status === 'paused'
+        );
+        return res.json(viewableSurveys);
+      }
+      
+      res.json([]);
+    } catch (err) {
+      console.error("Erro ao buscar pesquisas visíveis:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
   return httpServer;
 }
