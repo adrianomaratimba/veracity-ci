@@ -245,17 +245,17 @@ export default function AuthPage() {
                       <FormItem>
                         <FormLabel>Email</FormLabel>
                         <FormControl>
-                          <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                            <Input 
-                              type="email"
-                              autoComplete="email"
-                              placeholder="seu@email.com" 
-                              className="pl-10" 
-                              data-testid="input-register-email"
-                              {...field} 
-                            />
-                          </div>
+                          <Input 
+                            type="email"
+                            autoComplete="email"
+                            placeholder="seu@email.com"
+                            data-testid="input-register-email"
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
