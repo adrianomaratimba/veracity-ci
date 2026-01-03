@@ -1,6 +1,7 @@
 import { users, type User, type UpsertUser } from "@shared/models/auth";
+import { pendingInvitations, organizationMembers } from "@shared/schema";
 import { db } from "../../db";
-import { eq } from "drizzle-orm";
+import { eq, and, ilike } from "drizzle-orm";
 
 // Interface for auth storage operations
 // (IMPORTANT) These user operations are mandatory for Replit Auth.
@@ -27,7 +28,46 @@ class AuthStorage implements IAuthStorage {
         },
       })
       .returning();
+    
+    if (user.email) {
+      await this.acceptPendingInvitationsForUser(user.id, user.email);
+    }
+    
     return user;
+  }
+
+  private async acceptPendingInvitationsForUser(userId: string, email: string): Promise<void> {
+    try {
+      const invitations = await db.select()
+        .from(pendingInvitations)
+        .where(and(
+          ilike(pendingInvitations.email, email),
+          eq(pendingInvitations.status, 'pending')
+        ));
+
+      for (const invitation of invitations) {
+        const existingMember = await db.select()
+          .from(organizationMembers)
+          .where(and(
+            eq(organizationMembers.userId, userId),
+            eq(organizationMembers.organizationId, invitation.organizationId)
+          ));
+
+        if (existingMember.length === 0) {
+          await db.insert(organizationMembers).values({
+            organizationId: invitation.organizationId,
+            userId: userId,
+            role: invitation.role
+          });
+        }
+
+        await db.update(pendingInvitations)
+          .set({ status: 'accepted', respondedAt: new Date() })
+          .where(eq(pendingInvitations.id, invitation.id));
+      }
+    } catch (error) {
+      console.error('Error accepting pending invitations:', error);
+    }
   }
 }
 
