@@ -61,11 +61,19 @@ Preferred communication style: Simple, everyday language.
   - Email verification tokens
   - Password reset functionality
   - Auto-acceptance of pending invitations on registration/login
+- **Member Addition Flow**:
+  - Admins add members directly by email (no invitation emails)
+  - Users are created with `authProvider='pending'` status
+  - Users can complete setup via:
+    1. Password reset flow (sets up password-based auth)
+    2. Replit Auth login (links to their Replit account)
+  - `replit_user_id` column maps Replit external IDs to internal UUIDs
 - **Session Storage**: PostgreSQL with 7-day TTL
 - **RBAC Roles**: owner, admin, coordinator, interviewer, viewer (stored in English)
 - **Tenant Isolation**: All data queries filtered by organization_id
 - **Key Auth Files**:
   - `server/auth-service.ts`: Native authentication service
+  - `server/replit_integrations/auth/storage.ts`: Replit Auth user storage with identity mapping
   - `server/replit_integrations/auth/routes.ts`: Auth endpoints
   - `client/src/pages/auth.tsx`: Login/register UI
 
