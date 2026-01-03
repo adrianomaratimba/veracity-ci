@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, getUserId } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { z } from "zod";
 
@@ -18,13 +18,13 @@ export async function registerRoutes(
 
   // 2. Organizations - SECURED: Only show orgs where user is a member
   app.get(api.organizations.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = getUserId(req);
     const orgs = await storage.getOrganizationsByUserId(userId);
     res.json(orgs);
   });
 
   app.get("/api/organizations/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = getUserId(req);
     const orgId = Number(req.params.id);
     
     // Security check: User must be member of the organization
@@ -46,7 +46,7 @@ export async function registerRoutes(
       const org = await storage.createOrganization({ ...input, slug });
       
       // Auto-add creator as 'owner'
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       await storage.addMember({
         organizationId: org.id,
         userId,
@@ -61,7 +61,7 @@ export async function registerRoutes(
   });
 
   app.get(api.organizations.members.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = getUserId(req);
     const orgId = Number(req.params.id);
     
     const isMember = await storage.isUserMemberOfOrg(userId, orgId);
@@ -76,7 +76,7 @@ export async function registerRoutes(
   app.post(api.organizations.members.invite.path, isAuthenticated, async (req, res) => {
     try {
       const orgId = Number(req.params.id);
-      const inviterId = (req.user as any).claims.sub;
+      const inviterId = getUserId(req);
       
       // Authorization check - must be member of org to invite
       const isMember = await storage.isUserMemberOfOrg(inviterId, orgId);
@@ -128,7 +128,7 @@ export async function registerRoutes(
 
   app.get(api.organizations.invitations.list.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const orgId = Number(req.params.id);
       
       const isMember = await storage.isUserMemberOfOrg(userId, orgId);
@@ -157,7 +157,7 @@ export async function registerRoutes(
 
   app.delete(api.organizations.invitations.cancel.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const orgId = Number(req.params.id);
       const inviteId = Number(req.params.inviteId);
       
@@ -180,7 +180,7 @@ export async function registerRoutes(
 
   app.patch(api.organizations.members.updateRole.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const orgId = Number(req.params.id);
       const memberId = Number(req.params.memberId);
       
@@ -207,7 +207,7 @@ export async function registerRoutes(
 
   app.delete(api.organizations.members.remove.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const orgId = Number(req.params.id);
       const memberId = Number(req.params.memberId);
       
@@ -230,7 +230,7 @@ export async function registerRoutes(
 
   app.patch("/api/organizations/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const orgId = Number(req.params.id);
       
       // Authorization check - must be member of org
@@ -254,7 +254,7 @@ export async function registerRoutes(
 
   // 3. Surveys - SECURED
   app.get(api.surveys.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = getUserId(req);
     const orgId = Number(req.params.orgId);
     
     const isMember = await storage.isUserMemberOfOrg(userId, orgId);
@@ -267,7 +267,7 @@ export async function registerRoutes(
   });
 
   app.get(api.surveys.get.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = getUserId(req);
     const survey = await storage.getSurvey(Number(req.params.id));
     if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
     
@@ -282,7 +282,7 @@ export async function registerRoutes(
 
   app.post(api.surveys.create.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const orgId = Number(req.params.orgId);
       
       // Authorization check - must be member of org
@@ -305,7 +305,7 @@ export async function registerRoutes(
 
   app.patch(api.surveys.update.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const surveyId = Number(req.params.id);
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa nao encontrada" });
@@ -328,7 +328,7 @@ export async function registerRoutes(
   // 4. Questions - SECURED
   app.post(api.questions.create.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const surveyId = Number(req.params.surveyId);
       
       // Get survey to check org membership
@@ -354,7 +354,7 @@ export async function registerRoutes(
 
   app.patch(api.questions.update.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const surveyId = Number(req.params.surveyId);
       const questionId = Number(req.params.id);
       
@@ -378,7 +378,7 @@ export async function registerRoutes(
 
   app.delete(api.questions.delete.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const surveyId = Number(req.params.surveyId);
       const questionId = Number(req.params.id);
       
@@ -401,7 +401,7 @@ export async function registerRoutes(
   // 5. Responses (Collection) - CRITICAL: GPS & Audio Validation - SECURED
   app.post(api.responses.submit.path, isAuthenticated, async (req, res) => {
     try {
-      const interviewerId = (req.user as any).claims.sub;
+      const interviewerId = getUserId(req);
       const surveyId = Number(req.params.surveyId);
       
       // Get survey to check org membership
@@ -471,7 +471,7 @@ export async function registerRoutes(
   });
 
   app.get(api.responses.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = getUserId(req);
     const surveyId = Number(req.params.surveyId);
     
     // Get survey to check org membership
@@ -488,7 +488,7 @@ export async function registerRoutes(
   });
 
   app.get(api.analytics.surveySummary.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = getUserId(req);
     const surveyId = Number(req.params.id);
     
     // Get survey to check org membership
@@ -505,7 +505,7 @@ export async function registerRoutes(
   });
 
   app.get(api.analytics.organizationStats.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = getUserId(req);
     const orgId = Number(req.params.id);
     
     const isMember = await storage.isUserMemberOfOrg(userId, orgId);
@@ -520,7 +520,7 @@ export async function registerRoutes(
   // === AUDIT / RESPONSE STATUS ===
   app.patch(api.responses.updateStatus.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = getUserId(req);
       const responseId = Number(req.params.id);
       
       const response = await storage.getResponse(responseId);
@@ -548,7 +548,7 @@ export async function registerRoutes(
   });
 
   app.get(api.responses.listByOrg.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = getUserId(req);
     const orgId = Number(req.params.orgId);
     
     const isMember = await storage.isUserMemberOfOrg(userId, orgId);
