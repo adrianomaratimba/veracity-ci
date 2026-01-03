@@ -1,4 +1,4 @@
-import { useOrganization, useOrganizationMembers, useInviteMember, useUpdateMemberRole, useRemoveMember } from "@/hooks/use-organizations";
+import { useOrganization, useOrganizationMembers, useCurrentMember, useInviteMember, useUpdateMemberRole, useRemoveMember } from "@/hooks/use-organizations";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
   const { data: org, isLoading: orgLoading } = useOrganization(orgId);
   const { data: members, isLoading: membersLoading } = useOrganizationMembers(orgId);
+  const { data: currentMember, isLoading: currentMemberLoading } = useCurrentMember(orgId);
   const inviteMember = useInviteMember();
   const updateMemberRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
@@ -40,8 +41,28 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{ id: number; name: string } | null>(null);
 
-  if (orgLoading || membersLoading) return <LoadingScreen message="Carregando equipe..." />;
+  if (orgLoading || membersLoading || currentMemberLoading) return <LoadingScreen message="Carregando equipe..." />;
   if (!org) return <div>Organização não encontrada</div>;
+
+  const isOwner = currentMember?.role === 'owner';
+  const isAdmin = currentMember?.role === 'admin';
+  const canManageMembers = isOwner || isAdmin;
+
+  // Determine which roles the current user can manage
+  const getManageableRoles = () => {
+    if (isOwner) return ['admin', 'coordinator', 'interviewer', 'viewer'];
+    if (isAdmin) return ['coordinator', 'interviewer', 'viewer'];
+    return [];
+  };
+
+  // Check if current user can manage a specific member
+  const canManageMember = (memberRole: string) => {
+    if (isOwner) return memberRole !== 'owner';
+    if (isAdmin) return ['coordinator', 'interviewer', 'viewer'].includes(memberRole);
+    return false;
+  };
+
+  const manageableRoles = getManageableRoles();
 
   const handleInvite = async () => {
     if (!inviteForm.email.trim()) {
@@ -100,7 +121,8 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
     return 'outline';
   };
 
-  const inviteRoleOptions = roleOptions.filter(r => r.value !== 'owner');
+  // Role options for inviting - filter based on current user's permissions
+  const inviteRoleOptions = roleOptions.filter(r => manageableRoles.includes(r.value));
 
   return (
     <DashboardLayout orgId={params.orgId}>
@@ -110,12 +132,13 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
             <h1 className="text-3xl font-display font-bold">Equipe</h1>
             <p className="text-muted-foreground">Gerencie os membros da sua organização</p>
           </div>
-          <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2" data-testid="button-invite-member">
-                <UserPlus className="w-4 h-4" /> Adicionar Membro
-              </Button>
-            </DialogTrigger>
+          {canManageMembers && (
+            <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2" data-testid="button-invite-member">
+                  <UserPlus className="w-4 h-4" /> Adicionar Membro
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Adicionar Novo Membro</DialogTitle>
@@ -156,7 +179,8 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
                 </Button>
               </DialogFooter>
             </DialogContent>
-          </Dialog>
+            </Dialog>
+          )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
@@ -240,7 +264,7 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
                     </div>
                     <div className="flex items-center gap-3">
                       <Badge variant={getRoleBadgeVariant(member.role)}>{getRoleLabel(member.role)}</Badge>
-                      {member.role !== 'owner' && (
+                      {canManageMember(member.role) && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" data-testid={`button-member-menu-${index}`}>

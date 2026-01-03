@@ -146,6 +146,19 @@ export const api = {
           })),
         }
       },
+      me: {
+        method: 'GET' as const,
+        path: '/api/organizations/:id/members/me',
+        responses: {
+          200: z.object({
+            id: z.number(),
+            userId: z.string(),
+            role: z.string(),
+            organizationId: z.number(),
+          }),
+          404: errorSchemas.notFound,
+        }
+      },
       invite: {
         method: 'POST' as const,
         path: '/api/organizations/:id/members',

@@ -72,6 +72,22 @@ export function useOrganizationMembers(orgId: number) {
   });
 }
 
+// Get current user's membership
+export function useCurrentMember(orgId: number) {
+  return useQuery({
+    queryKey: [api.organizations.members.me.path, orgId],
+    queryFn: async () => {
+      if (!orgId) return null;
+      const url = buildUrl(api.organizations.members.me.path, { id: orgId });
+      const res = await fetch(url, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch current member");
+      return api.organizations.members.me.responses[200].parse(await res.json());
+    },
+    enabled: !!orgId,
+  });
+}
+
 // Invite Member
 export function useInviteMember() {
   const queryClient = useQueryClient();

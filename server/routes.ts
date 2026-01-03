@@ -66,13 +66,48 @@ export async function registerRoutes(
     const userId = getUserId(req);
     const orgId = Number(req.params.id);
     
-    const isMember = await storage.isUserMemberOfOrg(userId, orgId);
-    if (!isMember) {
+    const currentMember = await storage.getMemberByUserId(userId, orgId);
+    if (!currentMember) {
       return res.status(403).json({ message: "Acesso negado" });
     }
     
-    const members = await storage.getOrganizationMembers(orgId);
-    res.json(members);
+    const allMembers = await storage.getOrganizationMembers(orgId);
+    
+    // Owner sees all members
+    // Admin sees all except other admins and owner (can only manage coordinator, interviewer, viewer)
+    // Others see all members but can't take actions (handled in frontend)
+    if (currentMember.role === 'owner') {
+      res.json(allMembers);
+    } else if (currentMember.role === 'admin') {
+      // Admin sees: themselves, owner (read-only), and roles they can manage
+      const visibleMembers = allMembers.filter(m => 
+        m.userId === userId || // themselves
+        m.role === 'owner' || // owner (read-only)
+        ['coordinator', 'interviewer', 'viewer'].includes(m.role)
+      );
+      res.json(visibleMembers);
+    } else {
+      // Others see all members (read-only)
+      res.json(allMembers);
+    }
+  });
+
+  // Get current user's membership in organization
+  app.get(api.organizations.members.me.path, isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    const orgId = Number(req.params.id);
+    
+    const member = await storage.getMemberByUserId(userId, orgId);
+    if (!member) {
+      return res.status(404).json({ message: "Você não é membro desta organização" });
+    }
+    
+    res.json({
+      id: member.id,
+      userId: member.userId,
+      role: member.role,
+      organizationId: member.organizationId,
+    });
   });
 
   app.post(api.organizations.members.invite.path, isAuthenticated, requireOrgAccess("id", "members:invite"), async (req, res) => {
