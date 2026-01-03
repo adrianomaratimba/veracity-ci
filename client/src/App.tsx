@@ -56,6 +56,8 @@ import SurveyResults from "@/pages/dashboard/survey-results";
 import TeamPage from "@/pages/dashboard/team";
 import SettingsPage from "@/pages/dashboard/settings";
 import AuditPage from "@/pages/dashboard/audit";
+import ViewerPortal from "@/pages/dashboard/viewer-portal";
+import AccessControlPage from "@/pages/dashboard/access-control";
 import InterviewSession from "@/pages/collection/interview-session";
 import VerifyEmailPage from "@/pages/verify-email";
 import ResetPasswordPage from "@/pages/reset-password";
@@ -99,6 +101,8 @@ function AuthenticatedRoutes() {
       <Route path="/org/:orgId/team" component={TeamPage} />
       <Route path="/org/:orgId/audit" component={AuditPage} />
       <Route path="/org/:orgId/settings" component={SettingsPage} />
+      <Route path="/org/:orgId/portal" component={ViewerPortal} />
+      <Route path="/org/:orgId/access" component={AccessControlPage} />
       
       {/* PWA / Mobile Collection Routes */}
       <Route path="/collect/:surveyId" component={InterviewSession} />

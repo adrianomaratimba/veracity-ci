@@ -10,7 +10,9 @@ import {
   Menu, 
   X,
   Plus,
-  ShieldAlert
+  ShieldAlert,
+  Shield,
+  Eye
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -47,11 +49,20 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
       ];
     }
     
+    // Viewers veem o portal de pesquisas e resultados
+    if (userRole === 'viewer') {
+      return [
+        { name: 'Portal', href: `/org/${orgId}/portal`, icon: Eye, permission: 'surveys:view' as Permission },
+        { name: 'Equipe', href: `/org/${orgId}/team`, icon: Users, permission: 'members:view' as Permission },
+      ];
+    }
+    
     const allItems = [
       { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard, permission: 'analytics:view' as Permission },
       { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText, permission: 'surveys:view' as Permission },
       { name: 'Auditoria', href: `/org/${orgId}/audit`, icon: ShieldAlert, permission: 'responses:audit' as Permission },
       { name: 'Equipe', href: `/org/${orgId}/team`, icon: Users, permission: 'members:view' as Permission },
+      { name: 'Controle de Acesso', href: `/org/${orgId}/access`, icon: Shield, permission: 'members:view' as Permission },
       { name: 'Configurações', href: `/org/${orgId}/settings`, icon: Settings, permission: 'org:edit' as Permission },
     ];
 
