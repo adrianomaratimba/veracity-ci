@@ -116,3 +116,30 @@ The `shared/routes.ts` file defines a typed API contract with:
 - `ISSUER_URL`: OIDC issuer (defaults to Replit)
 - `REPL_ID`: Replit deployment identifier
 - `PUBLIC_OBJECT_SEARCH_PATHS`: Object storage paths configuration
+
+## SaaS Features
+
+### Subscription Plans
+- **Básico**: 1 survey, 100 interviews/month, 5 users
+- **Profissional**: Multiple surveys, 1000 interviews/month, 20 users
+- **Enterprise**: Unlimited surveys, unlimited interviews, custom SLA
+
+### White Label (Branding)
+- Custom logo upload per organization (stored in object storage)
+- Primary and secondary color customization
+- Custom branding name to replace "VotoAudit"
+- Option to hide VotoAudit branding entirely
+- Settings page: `/org/:orgId/settings` -> "Marca" tab
+
+### Custom Domains
+- Automatic subdomain: `{org-slug}.votoaudit.app`
+- Custom domain support (Enterprise plan) - schema ready, UI pending full implementation
+- DNS verification and SSL provisioning (future)
+- Database table: `organization_domains`
+
+### Pending Implementations
+- **Stripe Integration**: Payment processing for subscriptions is NOT yet configured. User declined Replit integration setup. When ready, configure Stripe API keys as secrets and implement:
+  - Checkout sessions for new subscriptions
+  - Webhook handlers for subscription events
+  - Customer portal for self-service billing
+  - Use fields: `stripeCustomerId`, `stripeSubscriptionId`, `billingStatus` in organizations table
