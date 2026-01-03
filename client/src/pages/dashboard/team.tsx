@@ -1,10 +1,10 @@
-import { useOrganization, useOrganizationMembers, useInviteMember, useUpdateMemberRole, useRemoveMember, usePendingInvitations, useCancelInvitation } from "@/hooks/use-organizations";
+import { useOrganization, useOrganizationMembers, useInviteMember, useUpdateMemberRole, useRemoveMember } from "@/hooks/use-organizations";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, Shield, MoreVertical, UserPlus, Trash2, UserCog, Clock, X, Mail } from "lucide-react";
+import { Users, Shield, MoreVertical, UserPlus, Trash2, UserCog } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -22,11 +22,9 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
   const { data: org, isLoading: orgLoading } = useOrganization(orgId);
   const { data: members, isLoading: membersLoading } = useOrganizationMembers(orgId);
-  const { data: pendingInvitations, isLoading: invitationsLoading } = usePendingInvitations(orgId);
   const inviteMember = useInviteMember();
   const updateMemberRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
-  const cancelInvitation = useCancelInvitation();
   const { toast } = useToast();
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -42,10 +40,7 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{ id: number; name: string } | null>(null);
 
-  const [cancelInviteDialogOpen, setCancelInviteDialogOpen] = useState(false);
-  const [inviteToCancel, setInviteToCancel] = useState<{ id: number; email: string } | null>(null);
-
-  if (orgLoading || membersLoading || invitationsLoading) return <LoadingScreen message="Carregando equipe..." />;
+  if (orgLoading || membersLoading) return <LoadingScreen message="Carregando equipe..." />;
   if (!org) return <div>Organização não encontrada</div>;
 
   const handleInvite = async () => {
@@ -96,22 +91,6 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
       setMemberToDelete(null);
     } catch (error) {
       toast({ title: "Erro", description: "Falha ao remover membro", variant: "destructive" });
-    }
-  };
-
-  const handleCancelInvitation = async () => {
-    if (!inviteToCancel) return;
-    try {
-      await cancelInvitation.mutateAsync({
-        inviteId: inviteToCancel.id,
-        orgId
-      });
-      toast({ title: "Convite cancelado", description: `Convite para ${inviteToCancel.email} foi cancelado` });
-      setCancelInviteDialogOpen(false);
-      setInviteToCancel(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao cancelar convite";
-      toast({ title: "Erro", description: message, variant: "destructive" });
     }
   };
 
@@ -307,56 +286,6 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
           </CardContent>
         </Card>
 
-        {pendingInvitations && pendingInvitations.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="w-5 h-5" />
-                Convites Pendentes
-              </CardTitle>
-              <CardDescription>Convites aguardando aceite</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="divide-y">
-                {pendingInvitations.map((invitation, index) => (
-                  <div key={invitation.id} className="py-4 flex items-center justify-between gap-4" data-testid={`row-invitation-${index}`}>
-                    <div className="flex items-center gap-4">
-                      <Avatar>
-                        <AvatarFallback className="bg-muted">
-                          <Mail className="w-4 h-4" />
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{invitation.email}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Convidado por {invitation.inviter?.firstName} {invitation.inviter?.lastName}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant="outline">{getRoleLabel(invitation.role)}</Badge>
-                      <Badge variant="secondary" className="gap-1">
-                        <Clock className="w-3 h-3" />
-                        Pendente
-                      </Badge>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => {
-                          setInviteToCancel({ id: invitation.id, email: invitation.email });
-                          setCancelInviteDialogOpen(true);
-                        }}
-                        data-testid={`button-cancel-invite-${index}`}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
@@ -412,26 +341,6 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={cancelInviteDialogOpen} onOpenChange={setCancelInviteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar Convite</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja cancelar o convite para {inviteToCancel?.email}? A pessoa não poderá mais usar este convite para entrar na equipe.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Voltar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleCancelInvitation}
-              className="bg-destructive text-destructive-foreground"
-              data-testid="button-confirm-cancel-invite"
-            >
-              {cancelInvitation.isPending ? "Cancelando..." : "Cancelar Convite"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </DashboardLayout>
   );
 }
