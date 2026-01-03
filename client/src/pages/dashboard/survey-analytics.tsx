@@ -24,12 +24,30 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
   if (surveyLoading || responsesLoading) return <LoadingScreen message="Processando dados..." />;
   if (!survey || !responses) return <div>Dados não disponíveis</div>;
 
-  const chartData = [
-    { name: 'Candidato A', votos: 45 },
-    { name: 'Candidato B', votos: 32 },
-    { name: 'Candidato C', votos: 15 },
-    { name: 'Indeciso', votos: 8 },
-  ];
+  // Calculate real metrics from responses
+  const totalResponses = responses.length;
+  const validResponses = responses.filter(r => r.status === 'valid').length;
+  const suspiciousResponses = responses.filter(r => r.status === 'suspicious').length;
+  
+  const averageDuration = totalResponses > 0 
+    ? Math.round(responses.reduce((acc, r) => acc + (r.duration || 0), 0) / totalResponses)
+    : 0;
+  
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  const completionRate = survey.targetSample && survey.targetSample > 0
+    ? Math.min(100, Math.round((totalResponses / survey.targetSample) * 100))
+    : 100;
+
+  // Generate chart data based on response status
+  const statusChartData = [
+    { name: 'Válidas', count: validResponses, fill: 'hsl(var(--primary))' },
+    { name: 'Suspeitas', count: suspiciousResponses, fill: 'hsl(var(--destructive))' },
+  ].filter(d => d.count > 0);
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
@@ -51,37 +69,71 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
            <Card>
              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total de Respostas</CardTitle></CardHeader>
-             <CardContent><div className="text-2xl font-bold">{responses.length}</div></CardContent>
+             <CardContent>
+               <div className="text-2xl font-bold" data-testid="text-total-responses">{totalResponses}</div>
+               {survey.targetSample && (
+                 <p className="text-xs text-muted-foreground">Meta: {survey.targetSample}</p>
+               )}
+             </CardContent>
            </Card>
            <Card>
              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Taxa de Conclusão</CardTitle></CardHeader>
-             <CardContent><div className="text-2xl font-bold">100%</div></CardContent>
+             <CardContent>
+               <div className="text-2xl font-bold" data-testid="text-completion-rate">{completionRate}%</div>
+               <div className="w-full bg-muted rounded-full h-1.5 mt-2">
+                 <div 
+                   className="bg-primary h-1.5 rounded-full transition-all" 
+                   style={{ width: `${completionRate}%` }}
+                 />
+               </div>
+             </CardContent>
            </Card>
            <Card>
              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Duração Média</CardTitle></CardHeader>
-             <CardContent><div className="text-2xl font-bold">2m 14s</div></CardContent>
+             <CardContent>
+               <div className="text-2xl font-bold" data-testid="text-avg-duration">{formatDuration(averageDuration)}</div>
+               <p className="text-xs text-muted-foreground">Por entrevista</p>
+             </CardContent>
            </Card>
            <Card>
              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Marcadas como Suspeitas</CardTitle></CardHeader>
-             <CardContent><div className="text-2xl font-bold text-red-500">0</div></CardContent>
+             <CardContent>
+               <div className={`text-2xl font-bold ${suspiciousResponses > 0 ? 'text-destructive' : 'text-green-600'}`} data-testid="text-suspicious">
+                 {suspiciousResponses}
+               </div>
+               {suspiciousResponses > 0 && totalResponses > 0 && (
+                 <p className="text-xs text-muted-foreground">
+                   {Math.round((suspiciousResponses / totalResponses) * 100)}% do total
+                 </p>
+               )}
+             </CardContent>
            </Card>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
            <Card>
              <CardHeader>
-               <CardTitle>Distribuição de Resultados</CardTitle>
+               <CardTitle>Status das Entrevistas</CardTitle>
              </CardHeader>
              <CardContent className="h-[400px]">
-               <ResponsiveContainer width="100%" height="100%">
-                 <BarChart data={chartData}>
-                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                   <XAxis dataKey="name" />
-                   <YAxis />
-                   <Tooltip />
-                   <Bar dataKey="votos" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                 </BarChart>
-               </ResponsiveContainer>
+               {statusChartData.length > 0 ? (
+                 <ResponsiveContainer width="100%" height="100%">
+                   <BarChart data={statusChartData}>
+                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                     <XAxis dataKey="name" />
+                     <YAxis />
+                     <Tooltip 
+                       formatter={(value: number) => [`${value} entrevistas`, 'Quantidade']}
+                       labelFormatter={(label) => `Status: ${label}`}
+                     />
+                     <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                   </BarChart>
+                 </ResponsiveContainer>
+               ) : (
+                 <div className="flex items-center justify-center h-full text-muted-foreground">
+                   <p>Nenhuma entrevista realizada ainda</p>
+                 </div>
+               )}
              </CardContent>
            </Card>
 

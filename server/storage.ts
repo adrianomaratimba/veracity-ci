@@ -14,9 +14,11 @@ import { eq, and, desc, sql, ilike } from "drizzle-orm";
 export interface IStorage {
   // Organizations
   getOrganizations(): Promise<Organization[]>;
+  getOrganizationsByUserId(userId: string): Promise<Organization[]>;
   getOrganization(id: number): Promise<Organization | undefined>;
   createOrganization(org: InsertOrganization): Promise<Organization>;
   updateOrganization(id: number, data: Partial<InsertOrganization>): Promise<Organization>;
+  isUserMemberOfOrg(userId: string, orgId: number): Promise<boolean>;
   
   // Users
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -50,7 +52,7 @@ export interface IStorage {
   deleteQuestion(id: number): Promise<void>;
 
   // Responses
-  createResponse(response: InsertResponse, answers: InsertAnswer[]): Promise<Response>;
+  createResponse(response: InsertResponse, answers: Omit<InsertAnswer, 'responseId'>[]): Promise<Response>;
   getResponses(surveyId: number): Promise<Response[]>;
   getResponse(id: number): Promise<(Response & { answers: Answer[] }) | undefined>;
   
@@ -68,6 +70,23 @@ export class DatabaseStorage implements IStorage {
   // --- ORGANIZATIONS ---
   async getOrganizations(): Promise<Organization[]> {
     return await db.select().from(organizations);
+  }
+
+  async getOrganizationsByUserId(userId: string): Promise<Organization[]> {
+    // Get organizations where the user is a member
+    const memberOrgs = await db.select({
+      organization: organizations
+    })
+      .from(organizationMembers)
+      .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
+      .where(eq(organizationMembers.userId, userId));
+    
+    return memberOrgs.map(m => m.organization);
+  }
+
+  async isUserMemberOfOrg(userId: string, orgId: number): Promise<boolean> {
+    const member = await this.getMemberByUserId(userId, orgId);
+    return !!member;
   }
 
   async getOrganization(id: number): Promise<Organization | undefined> {
@@ -247,7 +266,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- RESPONSES ---
-  async createResponse(responseData: InsertResponse & { status?: string; flagReason?: string | null }, answersData: InsertAnswer[]): Promise<Response> {
+  async createResponse(responseData: InsertResponse & { status?: string; flagReason?: string | null }, answersData: Omit<InsertAnswer, 'responseId'>[]): Promise<Response> {
     return await db.transaction(async (tx) => {
       // 1. Create Response Header
       const [response] = await tx.insert(responses).values(responseData).returning();
