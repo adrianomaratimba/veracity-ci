@@ -121,6 +121,31 @@ export async function deletePendingInterview(id: string): Promise<void> {
   });
 }
 
+export async function resetInterviewRetries(id: string): Promise<void> {
+  const interview = await getPendingInterviewById(id);
+  if (!interview) return;
+
+  interview.status = 'pending';
+  interview.retryCount = 0;
+  interview.lastRetryAt = undefined;
+  interview.errorMessage = undefined;
+
+  await savePendingInterview(interview);
+}
+
+export async function resetAllRetries(): Promise<void> {
+  const interviews = await getPendingInterviews();
+  for (const interview of interviews) {
+    if (interview.status === 'failed') {
+      interview.status = 'pending';
+      interview.retryCount = 0;
+      interview.lastRetryAt = undefined;
+      interview.errorMessage = undefined;
+      await savePendingInterview(interview);
+    }
+  }
+}
+
 export async function getPendingCount(): Promise<number> {
   const interviews = await getPendingInterviews();
   return interviews.filter(i => i.status === 'pending' || i.status === 'failed').length;

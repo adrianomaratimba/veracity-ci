@@ -43,24 +43,43 @@ async function uploadAudioBlob(
     const blob = new Blob([audioBuffer], { type: mimeType });
     const file = new File([blob], fileName, { type: mimeType });
     
-    const response = await apiRequest('POST', '/api/upload/presign', {
-      fileName: file.name,
-      contentType: file.type,
-      directory: '.private/audio'
+    console.log('[SyncQueue] Solicitando URL de upload para:', fileName);
+    
+    const response = await fetch('/api/uploads/request-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        name: file.name,
+        size: file.size,
+        contentType: file.type || 'audio/webm'
+      })
     });
-    const presignRes = await response.json() as { signedUrl: string; objectPath: string };
     
-    const { signedUrl, objectPath } = presignRes;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[SyncQueue] Erro ao obter URL:', response.status, errorData);
+      throw new Error(`Falha ao obter URL de upload: ${response.status}`);
+    }
     
-    await fetch(signedUrl, {
+    const { uploadURL, objectPath } = await response.json();
+    console.log('[SyncQueue] URL obtida, fazendo upload para:', objectPath);
+    
+    const uploadResponse = await fetch(uploadURL, {
       method: 'PUT',
       body: file,
-      headers: { 'Content-Type': file.type }
+      headers: { 'Content-Type': file.type || 'audio/webm' }
     });
     
+    if (!uploadResponse.ok) {
+      console.error('[SyncQueue] Erro no upload para storage:', uploadResponse.status);
+      throw new Error(`Falha no upload para storage: ${uploadResponse.status}`);
+    }
+    
+    console.log('[SyncQueue] Upload concluído com sucesso');
     return { objectPath };
   } catch (error) {
-    console.error('Failed to upload audio:', error);
+    console.error('[SyncQueue] Erro no upload de áudio:', error);
     return null;
   }
 }

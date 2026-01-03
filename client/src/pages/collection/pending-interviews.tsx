@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   getPendingInterviews, 
   deletePendingInterview,
+  resetAllRetries,
   type PendingInterview 
 } from "@/lib/offlineStorage";
 import { syncAllPending } from "@/lib/syncQueue";
@@ -75,6 +76,9 @@ export default function PendingInterviews() {
 
     setIsSyncing(true);
     try {
+      await resetAllRetries();
+      await loadInterviews();
+      
       const result = await syncAllPending();
       await loadInterviews();
       
