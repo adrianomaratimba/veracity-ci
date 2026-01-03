@@ -1,0 +1,160 @@
+Você é um arquiteto de software sênior especialista em RBAC (Role-Based Access Control) aplicado a SaaS multi-tenant.
+
+Implemente um SISTEMA DE FUNÇÕES (ROLES) com tarefas e permissões bem definidas para uma plataforma de pesquisas eleitorais, garantindo segurança, isolamento por organização e clareza operacional.
+
+================================================================
+1. CONCEITO GERAL
+================================================================
+
+- Cada usuário pertence a UMA organização (organization_id).
+- Cada usuário possui UMA função (role).
+- As permissões são aplicadas NO BACKEND.
+- O frontend apenas reflete as permissões recebidas da API.
+- Nenhuma ação sensível pode ser executada sem validação da função.
+
+================================================================
+2. FUNÇÕES DISPONÍVEIS NA ORGANIZAÇÃO
+================================================================
+
+Implemente exatamente estas funções:
+
+1. ADMINISTRADOR
+2. COORDENADOR
+3. ENTREVISTADOR
+4. VISUALIZADOR
+
+================================================================
+3. TAREFAS E PERMISSÕES POR FUNÇÃO
+================================================================
+
+------------------------------------------------
+ADMINISTRADOR (Admin da Organização)
+------------------------------------------------
+
+Permissões:
+- Criar, editar e excluir pesquisas
+- Criar e editar questionários
+- Cadastrar, editar e remover usuários
+- Alterar função de usuários (exceto Super Admin)
+- Definir entrevistadores por pesquisa
+- Visualizar TODAS as entrevistas
+- Acessar GPS e áudio das entrevistas
+- Validar ou invalidar entrevistas
+- Visualizar dashboards completos
+- Acessar relatórios PDF, Excel e CSV
+- Configurar white label (se plano permitir)
+- Configurar política de retenção de áudio
+- Visualizar logs de auditoria
+
+Restrições:
+- Não pode acessar dados de outras organizações
+
+------------------------------------------------
+COORDENADOR
+------------------------------------------------
+
+Permissões:
+- Visualizar pesquisas da organização
+- Acompanhar status das pesquisas (em campo/finalizadas)
+- Visualizar entrevistas realizadas
+- Visualizar mapa com localização das entrevistas
+- Reproduzir áudios das entrevistas
+- Identificar entrevistas suspeitas
+- Visualizar produtividade dos entrevistadores
+- Acessar dashboards analíticos (sem configurações)
+
+Restrições:
+- NÃO pode criar ou excluir pesquisas
+- NÃO pode alterar funções de usuários
+- NÃO pode excluir entrevistas
+- NÃO pode alterar configurações da organização
+
+------------------------------------------------
+ENTREVISTADOR
+------------------------------------------------
+
+Permissões:
+- Acessar apenas pesquisas atribuídas a ele
+- Iniciar entrevistas
+- Coletar respostas
+- Capturar GPS OBRIGATÓRIO
+- Gravar áudio OBRIGATÓRIO no início da entrevista
+- Trabalhar offline (PWA)
+- Sincronizar entrevistas
+
+Restrições:
+- NÃO pode visualizar resultados
+- NÃO pode visualizar dashboards
+- NÃO pode acessar entrevistas de outros entrevistadores
+- NÃO pode editar entrevistas após envio
+- NÃO pode acessar relatórios
+- NÃO pode ver GPS ou áudio de outras entrevistas
+
+------------------------------------------------
+VISUALIZADOR (Cliente / Contratante)
+------------------------------------------------
+
+Permissões:
+- Visualizar dashboards agregados
+- Visualizar gráficos e análises
+- Acessar relatórios PDF/Excel (se plano permitir)
+
+Restrições:
+- NÃO pode visualizar entrevistas individuais
+- NÃO pode acessar GPS bruto
+- NÃO pode acessar áudios
+- NÃO pode cadastrar usuários
+- NÃO pode editar pesquisas
+- NÃO pode ver dados pessoais ou logs
+
+================================================================
+4. CONTROLE DE PERMISSÕES NO BACKEND
+================================================================
+
+Implemente middleware de autorização que:
+
+- Valide o JWT
+- Identifique organization_id
+- Identifique role
+- Bloqueie automaticamente ações não permitidas
+
+Exemplo de regras:
+- Apenas ADMIN pode alterar funções
+- Apenas ADMIN e COORDENADOR podem acessar entrevistas
+- Apenas ADMIN pode invalidar entrevistas
+- Apenas ENTREVISTADOR pode criar entrevistas
+
+================================================================
+5. REFLEXO NO FRONTEND
+================================================================
+
+O frontend deve:
+- Mostrar ou esconder botões conforme permissões
+- Bloquear rotas não autorizadas
+- Exibir mensagens claras de acesso negado
+
+Exemplo:
+- Entrevistador NÃO vê menu de dashboards
+- Visualizador NÃO vê menu de usuários
+- Coordenador NÃO vê botão de exclusão
+
+================================================================
+6. AUDITORIA DE AÇÕES
+================================================================
+
+Registrar em log:
+- Quem alterou função de quem
+- Quem acessou entrevistas
+- Quem ouviu áudios
+- Data, hora, IP e user-agent
+
+================================================================
+7. PADRÃO DE QUALIDADE
+================================================================
+
+- Código modular
+- Permissões centralizadas
+- Funções claramente documentadas
+- Estrutura pronta para expansão futura
+
+Implemente esse controle de funções de forma profissional, segura e compatível com um SaaS multi-tenant de pesquisas eleitorais.
