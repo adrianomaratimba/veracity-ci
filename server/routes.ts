@@ -58,32 +58,82 @@ export async function registerRoutes(
   app.post(api.organizations.members.invite.path, isAuthenticated, async (req, res) => {
     try {
       const orgId = Number(req.params.id);
+      const inviterId = (req.user as any).claims.sub;
       const input = api.organizations.members.invite.input.parse(req.body);
       
       if (input.role === 'owner') {
         return res.status(403).json({ message: "Não é possível convidar como proprietário" });
       }
 
+      const existingInvitation = await storage.getPendingInvitationByEmail(orgId, input.email);
+      if (existingInvitation) {
+        return res.status(400).json({ message: "Já existe um convite pendente para este email" });
+      }
+
       const user = await storage.getUserByEmail(input.email);
-      if (!user) {
-        return res.status(404).json({ message: "Usuário não encontrado. O usuário precisa fazer login no sistema primeiro." });
+      
+      if (user) {
+        const existingMember = await storage.getMemberByUserId(user.id, orgId);
+        if (existingMember) {
+          return res.status(400).json({ message: "Este usuário já é membro da organização" });
+        }
+
+        const member = await storage.addMember({
+          organizationId: orgId,
+          userId: user.id,
+          role: input.role
+        });
+
+        return res.status(201).json(member);
       }
 
-      const existingMember = await storage.getMemberByUserId(user.id, orgId);
-      if (existingMember) {
-        return res.status(400).json({ message: "Este usuário já é membro da organização" });
-      }
-
-      const member = await storage.addMember({
+      const invitation = await storage.createPendingInvitation({
         organizationId: orgId,
-        userId: user.id,
-        role: input.role
+        email: input.email.toLowerCase(),
+        role: input.role,
+        invitedBy: inviterId
       });
 
-      res.status(201).json(member);
+      res.status(201).json({ ...invitation, pending: true });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json(err.errors);
       res.status(500).json({ message: "Erro ao convidar membro" });
+    }
+  });
+
+  app.get(api.organizations.invitations.list.path, isAuthenticated, async (req, res) => {
+    try {
+      const orgId = Number(req.params.id);
+      const invitations = await storage.getPendingInvitationsByOrg(orgId);
+      const formatted = invitations.map(inv => ({
+        id: inv.id,
+        organizationId: inv.organizationId,
+        email: inv.email,
+        role: inv.role,
+        status: inv.status,
+        invitedAt: inv.invitedAt?.toISOString() || null,
+        inviter: inv.inviter ? {
+          firstName: inv.inviter.firstName,
+          lastName: inv.inviter.lastName,
+        } : undefined
+      }));
+      res.json(formatted);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao listar convites" });
+    }
+  });
+
+  app.delete(api.organizations.invitations.cancel.path, isAuthenticated, async (req, res) => {
+    try {
+      const inviteId = Number(req.params.inviteId);
+      const invitation = await storage.getPendingInvitationById(inviteId);
+      if (!invitation) {
+        return res.status(404).json({ message: "Convite não encontrado" });
+      }
+      await storage.cancelPendingInvitation(inviteId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao cancelar convite" });
     }
   });
 
