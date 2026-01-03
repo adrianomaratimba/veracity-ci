@@ -18,7 +18,7 @@ import {
   userRoleEnum,
   invitationStatusEnum
 } from './schema';
-import { users } from './models/auth';
+import { users, registerUserSchema, loginUserSchema } from './models/auth';
 
 // === ERROR SCHEMAS ===
 export const errorSchemas = {
@@ -39,6 +39,74 @@ export const errorSchemas = {
 
 // === API CONTRACT ===
 export const api = {
+  // --- AUTHENTICATION (Native) ---
+  auth: {
+    register: {
+      method: 'POST' as const,
+      path: '/api/auth/register',
+      input: registerUserSchema,
+      responses: {
+        201: z.object({
+          message: z.string(),
+          user: z.object({
+            id: z.string(),
+            email: z.string(),
+            firstName: z.string().nullable(),
+            lastName: z.string().nullable(),
+          }),
+        }),
+        400: errorSchemas.validation,
+      },
+    },
+    login: {
+      method: 'POST' as const,
+      path: '/api/auth/login',
+      input: loginUserSchema,
+      responses: {
+        200: z.object({
+          user: z.custom<typeof users.$inferSelect>(),
+        }),
+        401: errorSchemas.validation,
+      },
+    },
+    logout: {
+      method: 'POST' as const,
+      path: '/api/auth/logout',
+      responses: {
+        200: z.object({ message: z.string() }),
+      },
+    },
+    verifyEmail: {
+      method: 'POST' as const,
+      path: '/api/auth/verify-email',
+      input: z.object({ token: z.string() }),
+      responses: {
+        200: z.object({ message: z.string() }),
+        400: errorSchemas.validation,
+      },
+    },
+    requestPasswordReset: {
+      method: 'POST' as const,
+      path: '/api/auth/request-password-reset',
+      input: z.object({ email: z.string().email() }),
+      responses: {
+        200: z.object({ message: z.string() }),
+      },
+    },
+    resetPassword: {
+      method: 'POST' as const,
+      path: '/api/auth/reset-password',
+      input: z.object({ 
+        token: z.string(),
+        password: z.string().min(8),
+      }),
+      responses: {
+        200: z.object({ message: z.string() }),
+        400: errorSchemas.validation,
+      },
+    },
+  },
+
   // --- ORGANIZATIONS ---
   organizations: {
     list: {
