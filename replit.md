@@ -53,10 +53,21 @@ Preferred communication style: Simple, everyday language.
 - **Key Tables**: organizations, organization_members, surveys, questions, responses, answers, users, sessions
 
 ### Authentication & Authorization
-- **Auth Provider**: Replit Auth (OIDC-based)
+- **Auth Providers**: Hybrid system supporting both:
+  - Replit Auth (OIDC-based) for existing users
+  - Native email/password authentication for public registration
+- **Native Auth Features**:
+  - Password hashing with bcrypt (12 salt rounds)
+  - Email verification tokens
+  - Password reset functionality
+  - Auto-acceptance of pending invitations on registration/login
 - **Session Storage**: PostgreSQL with 7-day TTL
 - **RBAC Roles**: owner, admin, coordinator, interviewer, viewer (stored in English)
 - **Tenant Isolation**: All data queries filtered by organization_id
+- **Key Auth Files**:
+  - `server/auth-service.ts`: Native authentication service
+  - `server/replit_integrations/auth/routes.ts`: Auth endpoints
+  - `client/src/pages/auth.tsx`: Login/register UI
 
 ### Project Structure
 ```
