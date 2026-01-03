@@ -84,6 +84,10 @@ export function useInviteMember() {
         body: JSON.stringify({ email, role }),
         credentials: "include",
       });
+      if (res.status === 401) {
+        window.location.href = "/api/login";
+        throw new Error("Sessão expirada. Redirecionando para login...");
+      }
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.message || "Failed to invite member");
