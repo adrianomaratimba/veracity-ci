@@ -47,6 +47,9 @@ function AuthenticatedRoutes() {
       <Route path="/">{() => <LoadingScreen />}</Route>
       <Route path="/dashboard">{() => <LoadingScreen />}</Route>
       
+      {/* Auth page accessible even when logged in (for switching accounts) */}
+      <Route path="/auth" component={AuthPage} />
+      
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/org/:orgId/dashboard" component={DashboardOverview} />
       <Route path="/org/:orgId/surveys" component={SurveysPage} />
