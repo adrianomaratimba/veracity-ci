@@ -84,8 +84,28 @@ async function uploadAudioBlob(
   }
 }
 
+function isNetworkError(error: unknown): boolean {
+  if (error instanceof TypeError && error.message.includes('fetch')) return true;
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return msg.includes('network') || 
+           msg.includes('failed to fetch') || 
+           msg.includes('timeout') ||
+           msg.includes('aborted') ||
+           msg.includes('connection');
+  }
+  return false;
+}
+
 async function syncInterview(interview: PendingInterview): Promise<boolean> {
   console.log('[SyncQueue] Sincronizando entrevista:', interview.id);
+  
+  if (!navigator.onLine) {
+    console.log('[SyncQueue] Sem conexão, mantendo offline:', interview.id);
+    await updateInterviewStatus(interview.id, 'pending');
+    return false;
+  }
+  
   try {
     await updateInterviewStatus(interview.id, 'syncing');
     
@@ -101,8 +121,8 @@ async function syncInterview(interview: PendingInterview): Promise<boolean> {
     }
     console.log('[SyncQueue] Áudio enviado:', uploadRes.objectPath);
     
-    console.log('[SyncQueue] Enviando dados da entrevista...');
-    await apiRequest('POST', `/api/surveys/${interview.surveyId}/responses`, {
+    console.log('[SyncQueue] Enviando dados da entrevista ao servidor...');
+    const saveResponse = await apiRequest('POST', `/api/surveys/${interview.surveyId}/responses`, {
       response: {
         latitude: interview.data.response.latitude,
         longitude: interview.data.response.longitude,
@@ -119,13 +139,28 @@ async function syncInterview(interview: PendingInterview): Promise<boolean> {
       answers: interview.data.answers
     });
     
-    console.log('[SyncQueue] Entrevista sincronizada com sucesso:', interview.id);
+    if (!saveResponse.ok) {
+      const errorData = await saveResponse.json().catch(() => ({}));
+      console.error('[SyncQueue] Servidor rejeitou:', saveResponse.status, errorData);
+      throw new Error(`Servidor retornou erro ${saveResponse.status}`);
+    }
+    
+    const savedData = await saveResponse.json();
+    console.log('[SyncQueue] Confirmação do servidor recebida:', savedData.id || 'OK');
+    
+    console.log('[SyncQueue] Entrevista confirmada no banco, deletando local:', interview.id);
     await deletePendingInterview(interview.id);
     return true;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     console.error('[SyncQueue] Erro ao sincronizar:', interview.id, errorMessage);
-    await updateInterviewStatus(interview.id, 'failed', errorMessage);
+    
+    if (isNetworkError(error) || !navigator.onLine) {
+      console.log('[SyncQueue] Erro de rede detectado, mantendo para retry:', interview.id);
+      await updateInterviewStatus(interview.id, 'pending');
+    } else {
+      await updateInterviewStatus(interview.id, 'failed', errorMessage);
+    }
     return false;
   }
 }
@@ -187,6 +222,27 @@ export async function syncAllPending(): Promise<{ synced: number; failed: number
 }
 
 let autoSyncInitialized = false;
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+async function attemptSync() {
+  if (!navigator.onLine) return;
+  
+  try {
+    const pending = await getPendingInterviews();
+    const syncable = pending.filter(i => 
+      (i.status === 'pending' || i.status === 'failed') && 
+      i.retryCount < MAX_RETRIES
+    );
+    
+    if (syncable.length > 0) {
+      console.log('[SyncQueue] Sincronizando', syncable.length, 'entrevistas pendentes...');
+      const result = await syncAllPending();
+      console.log('[SyncQueue] Resultado:', result);
+    }
+  } catch (error) {
+    console.error('[SyncQueue] Erro na sincronização:', error);
+  }
+}
 
 export function setupAutoSync() {
   if (autoSyncInitialized) return;
@@ -197,41 +253,32 @@ export function setupAutoSync() {
   window.addEventListener('online', async () => {
     console.log('[SyncQueue] Conexão restaurada. Aguardando estabilidade...');
     await new Promise(resolve => setTimeout(resolve, 2000));
-    console.log('[SyncQueue] Iniciando sincronização automática...');
-    try {
-      const result = await syncAllPending();
-      console.log('[SyncQueue] Resultado:', result);
-    } catch (error) {
-      console.error('[SyncQueue] Erro na sincronização:', error);
+    
+    if (navigator.onLine) {
+      console.log('[SyncQueue] Iniciando sincronização automática...');
+      await attemptSync();
     }
   });
   
-  setInterval(async () => {
-    if (navigator.onLine) {
-      try {
-        const pending = await getPendingInterviews();
-        if (pending.length > 0) {
-          console.log('[SyncQueue] Polling: encontradas', pending.length, 'entrevistas pendentes');
-          await syncAllPending();
-        }
-      } catch (error) {
-        console.error('[SyncQueue] Erro no polling:', error);
-      }
+  window.addEventListener('offline', () => {
+    console.log('[SyncQueue] Conexão perdida. Entrevistas serão mantidas localmente.');
+  });
+  
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      console.log('[SyncQueue] App voltou ao foco, verificando pendentes...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await attemptSync();
     }
-  }, 30000);
+  });
+  
+  pollInterval = setInterval(async () => {
+    if (navigator.onLine) {
+      await attemptSync();
+    }
+  }, 15000);
   
   if (navigator.onLine) {
-    setTimeout(async () => {
-      console.log('[SyncQueue] Verificando pendentes ao iniciar...');
-      try {
-        const pending = await getPendingInterviews();
-        if (pending.length > 0) {
-          console.log('[SyncQueue] Sincronizando', pending.length, 'entrevistas pendentes...');
-          await syncAllPending();
-        }
-      } catch (error) {
-        console.error('[SyncQueue] Erro na sincronização inicial:', error);
-      }
-    }, 3000);
+    setTimeout(attemptSync, 3000);
   }
 }
