@@ -42,15 +42,18 @@ import {
   ExternalLink,
   Play,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  BarChart3
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 export default function SurveyAnalytics({ params }: { params: { orgId: string, id: string } }) {
   const surveyId = parseInt(params.id);
   const orgId = parseInt(params.orgId);
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   
   const { data: survey, isLoading: surveyLoading } = useSurvey(surveyId);
   const { data: responses, isLoading: responsesLoading } = useResponseList(surveyId);
@@ -269,6 +272,14 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
             <p className="text-muted-foreground">Insights em tempo real e trilha de auditoria</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <Button 
+              variant="outline" 
+              onClick={() => setLocation(`/org/${orgId}/surveys/${surveyId}/results`)}
+              data-testid="button-view-charts"
+            >
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Ver Gráficos
+            </Button>
             <Button 
               variant="outline" 
               onClick={exportToCSV}
