@@ -2,13 +2,14 @@ import {
   users, User, UpsertUser,
   organizations, Organization, InsertOrganization,
   organizationMembers, Member, InsertMember,
+  pendingInvitations, PendingInvitation, InsertPendingInvitation,
   surveys, Survey, InsertSurvey,
   questions, Question, InsertQuestion,
   responses, Response, InsertResponse,
   answers, Answer, InsertAnswer
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // Organizations
@@ -27,6 +28,15 @@ export interface IStorage {
   getMemberById(memberId: number): Promise<Member | undefined>;
   updateMemberRole(memberId: number, role: string): Promise<Member>;
   removeMember(memberId: number): Promise<void>;
+
+  // Pending Invitations
+  createPendingInvitation(invitation: InsertPendingInvitation): Promise<PendingInvitation>;
+  getPendingInvitationsByOrg(orgId: number): Promise<(PendingInvitation & { inviter: User })[]>;
+  getPendingInvitationById(id: number): Promise<PendingInvitation | undefined>;
+  getPendingInvitationByEmail(orgId: number, email: string): Promise<PendingInvitation | undefined>;
+  cancelPendingInvitation(id: number): Promise<void>;
+  getPendingInvitationsByEmail(email: string): Promise<PendingInvitation[]>;
+  acceptPendingInvitation(id: number): Promise<void>;
 
   // Surveys
   getSurveys(orgId: number): Promise<Survey[]>;
@@ -129,6 +139,63 @@ export class DatabaseStorage implements IStorage {
 
   async removeMember(memberId: number): Promise<void> {
     await db.delete(organizationMembers).where(eq(organizationMembers.id, memberId));
+  }
+
+  // --- PENDING INVITATIONS ---
+  async createPendingInvitation(invitation: InsertPendingInvitation): Promise<PendingInvitation> {
+    const [newInvitation] = await db.insert(pendingInvitations).values(invitation).returning();
+    return newInvitation;
+  }
+
+  async getPendingInvitationsByOrg(orgId: number): Promise<(PendingInvitation & { inviter: User })[]> {
+    const invitations = await db.query.pendingInvitations.findMany({
+      where: and(
+        eq(pendingInvitations.organizationId, orgId),
+        eq(pendingInvitations.status, 'pending')
+      ),
+      with: {
+        inviter: true
+      },
+      orderBy: desc(pendingInvitations.invitedAt)
+    });
+    return invitations as (PendingInvitation & { inviter: User })[];
+  }
+
+  async getPendingInvitationById(id: number): Promise<PendingInvitation | undefined> {
+    const [invitation] = await db.select().from(pendingInvitations).where(eq(pendingInvitations.id, id));
+    return invitation;
+  }
+
+  async getPendingInvitationByEmail(orgId: number, email: string): Promise<PendingInvitation | undefined> {
+    const [invitation] = await db.select()
+      .from(pendingInvitations)
+      .where(and(
+        eq(pendingInvitations.organizationId, orgId),
+        ilike(pendingInvitations.email, email),
+        eq(pendingInvitations.status, 'pending')
+      ));
+    return invitation;
+  }
+
+  async cancelPendingInvitation(id: number): Promise<void> {
+    await db.update(pendingInvitations)
+      .set({ status: 'revoked', respondedAt: new Date() })
+      .where(eq(pendingInvitations.id, id));
+  }
+
+  async getPendingInvitationsByEmail(email: string): Promise<PendingInvitation[]> {
+    return await db.select()
+      .from(pendingInvitations)
+      .where(and(
+        ilike(pendingInvitations.email, email),
+        eq(pendingInvitations.status, 'pending')
+      ));
+  }
+
+  async acceptPendingInvitation(id: number): Promise<void> {
+    await db.update(pendingInvitations)
+      .set({ status: 'accepted', respondedAt: new Date() })
+      .where(eq(pendingInvitations.id, id));
   }
 
   // --- SURVEYS ---
