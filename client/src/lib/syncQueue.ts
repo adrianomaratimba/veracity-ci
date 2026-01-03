@@ -43,11 +43,12 @@ async function uploadAudioBlob(
     const blob = new Blob([audioBuffer], { type: mimeType });
     const file = new File([blob], fileName, { type: mimeType });
     
-    const presignRes = await apiRequest('POST', '/api/upload/presign', {
+    const response = await apiRequest('POST', '/api/upload/presign', {
       fileName: file.name,
       contentType: file.type,
       directory: '.private/audio'
-    }) as { signedUrl: string; objectPath: string };
+    });
+    const presignRes = await response.json() as { signedUrl: string; objectPath: string };
     
     const { signedUrl, objectPath } = presignRes;
     

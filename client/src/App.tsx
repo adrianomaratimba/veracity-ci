@@ -59,9 +59,13 @@ import AuditPage from "@/pages/dashboard/audit";
 import ViewerPortal from "@/pages/dashboard/viewer-portal";
 import AccessControlPage from "@/pages/dashboard/access-control";
 import InterviewSession from "@/pages/collection/interview-session";
+import PendingInterviews from "@/pages/collection/pending-interviews";
 import VerifyEmailPage from "@/pages/verify-email";
 import ResetPasswordPage from "@/pages/reset-password";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
+import { setupAutoSync } from "@/lib/syncQueue";
+
+setupAutoSync();
 
 function AuthenticatedRoutes() {
   const { user, isLoading } = useAuth();
@@ -106,6 +110,7 @@ function AuthenticatedRoutes() {
       
       {/* PWA / Mobile Collection Routes */}
       <Route path="/collect/:surveyId" component={InterviewSession} />
+      <Route path="/collect/pending" component={PendingInterviews} />
       
       {/* Fallback */}
       <Route path="/:rest*" component={NotFound} />
