@@ -13,6 +13,7 @@ export const surveyTypeEnum = z.enum(["electoral", "opinion", "market", "census"
 export const surveyStatusEnum = z.enum(["draft", "active", "paused", "completed", "archived"]);
 export const questionTypeEnum = z.enum(["single_choice", "multiple_choice", "text", "number", "scale", "date", "boolean"]);
 export const responseStatusEnum = z.enum(["valid", "suspicious", "invalid"]);
+export const invitationStatusEnum = z.enum(["pending", "accepted", "revoked", "expired"]);
 
 // === TABLES ===
 
@@ -34,6 +35,17 @@ export const organizationMembers = pgTable("organization_members", {
   userId: varchar("user_id").references(() => users.id).notNull(),
   role: text("role").default("viewer").notNull(),
   joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+export const pendingInvitations = pgTable("pending_invitations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  email: text("email").notNull(),
+  role: text("role").default("viewer").notNull(),
+  invitedBy: varchar("invited_by").references(() => users.id).notNull(),
+  status: text("status").default("pending").notNull(),
+  invitedAt: timestamp("invited_at").defaultNow(),
+  respondedAt: timestamp("responded_at"),
 });
 
 export const surveys = pgTable("surveys", {
@@ -96,6 +108,7 @@ export const answers = pgTable("answers", {
 export const organizationsRelations = relations(organizations, ({ many }) => ({
   members: many(organizationMembers),
   surveys: many(surveys),
+  pendingInvitations: many(pendingInvitations),
 }));
 
 export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({
@@ -105,6 +118,17 @@ export const organizationMembersRelations = relations(organizationMembers, ({ on
   }),
   user: one(users, {
     fields: [organizationMembers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const pendingInvitationsRelations = relations(pendingInvitations, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [pendingInvitations.organizationId],
+    references: [organizations.id],
+  }),
+  inviter: one(users, {
+    fields: [pendingInvitations.invitedBy],
     references: [users.id],
   }),
 }));
@@ -156,6 +180,7 @@ export const insertQuestionSchema = createInsertSchema(questions).omit({ id: tru
 export const insertResponseSchema = createInsertSchema(responses).omit({ id: true, createdAt: true, status: true, flagReason: true });
 export const insertAnswerSchema = createInsertSchema(answers).omit({ id: true });
 export const insertMemberSchema = createInsertSchema(organizationMembers).omit({ id: true, joinedAt: true });
+export const insertPendingInvitationSchema = createInsertSchema(pendingInvitations).omit({ id: true, invitedAt: true, respondedAt: true, status: true });
 
 // === TYPES ===
 
@@ -164,6 +189,9 @@ export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 
 export type Member = typeof organizationMembers.$inferSelect;
 export type InsertMember = z.infer<typeof insertMemberSchema>;
+
+export type PendingInvitation = typeof pendingInvitations.$inferSelect;
+export type InsertPendingInvitation = z.infer<typeof insertPendingInvitationSchema>;
 
 export type Survey = typeof surveys.$inferSelect;
 export type InsertSurvey = z.infer<typeof insertSurveySchema>;

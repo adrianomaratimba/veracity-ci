@@ -11,10 +11,12 @@ import {
   responses,
   answers,
   organizationMembers,
+  pendingInvitations,
   planTypeEnum,
   surveyTypeEnum,
   surveyStatusEnum,
-  userRoleEnum
+  userRoleEnum,
+  invitationStatusEnum
 } from './schema';
 import { users } from './models/auth';
 
@@ -104,6 +106,34 @@ export const api = {
       remove: {
         method: 'DELETE' as const,
         path: '/api/members/:memberId',
+        responses: {
+          204: z.void(),
+          404: errorSchemas.notFound,
+        }
+      }
+    },
+    invitations: {
+      list: {
+        method: 'GET' as const,
+        path: '/api/organizations/:id/invitations',
+        responses: {
+          200: z.array(z.object({
+            id: z.number(),
+            organizationId: z.number(),
+            email: z.string(),
+            role: z.string(),
+            status: z.string(),
+            invitedAt: z.string().nullable(),
+            inviter: z.object({
+              firstName: z.string().nullable(),
+              lastName: z.string().nullable(),
+            }).optional(),
+          })),
+        }
+      },
+      cancel: {
+        method: 'DELETE' as const,
+        path: '/api/invitations/:inviteId',
         responses: {
           204: z.void(),
           404: errorSchemas.notFound,
