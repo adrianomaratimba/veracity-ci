@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/use-auth";
+import { useCurrentMember } from "@/hooks/use-organizations";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, 
@@ -11,7 +12,7 @@ import {
   Plus,
   ShieldAlert
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
@@ -21,6 +22,7 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { hasPermission, type UserRole, type Permission } from "@shared/rbac";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -31,16 +33,25 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { data: currentMember } = useCurrentMember(orgId ? parseInt(orgId) : 0);
+
+  const userRole = (currentMember?.role as UserRole) || 'viewer';
+
+  const navigation = useMemo(() => {
+    if (!orgId) return [];
+    
+    const allItems = [
+      { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard, permission: 'org:view' as Permission },
+      { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText, permission: 'surveys:view' as Permission },
+      { name: 'Auditoria', href: `/org/${orgId}/audit`, icon: ShieldAlert, permission: 'responses:audit' as Permission },
+      { name: 'Equipe', href: `/org/${orgId}/team`, icon: Users, permission: 'members:view' as Permission },
+      { name: 'Configurações', href: `/org/${orgId}/settings`, icon: Settings, permission: 'org:edit' as Permission },
+    ];
+
+    return allItems.filter(item => hasPermission(userRole, item.permission));
+  }, [orgId, userRole]);
 
   if (!user) return null;
-
-  const navigation = orgId ? [
-    { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
-    { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
-    { name: 'Auditoria', href: `/org/${orgId}/audit`, icon: ShieldAlert },
-    { name: 'Equipe', href: `/org/${orgId}/team`, icon: Users },
-    { name: 'Configurações', href: `/org/${orgId}/settings`, icon: Settings },
-  ] : [];
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">

@@ -1,4 +1,4 @@
-import { useOrganization, useOrganizationStats } from "@/hooks/use-organizations";
+import { useOrganization, useOrganizationStats, useCurrentMember } from "@/hooks/use-organizations";
 import { useSurveys } from "@/hooks/use-surveys";
 import { useOrgResponses } from "@/hooks/use-audit";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -9,6 +9,7 @@ import { Plus, Users, FileText, Activity, AlertTriangle, ShieldAlert, ArrowRight
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { getSurveyStatusLabel } from "@shared/i18n/labels";
 import { useMemo } from "react";
+import { hasPermission, type UserRole } from "@shared/rbac";
 
 export default function DashboardOverview({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
@@ -16,7 +17,13 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
   const { data: surveys, isLoading: surveysLoading } = useSurveys(orgId);
   const { data: stats, isLoading: statsLoading } = useOrganizationStats(orgId);
   const { data: responses, isLoading: responsesLoading } = useOrgResponses(orgId);
+  const { data: currentMember } = useCurrentMember(orgId);
   const [, setLocation] = useLocation();
+
+  const userRole = (currentMember?.role as UserRole) || 'viewer';
+  const canCreateSurvey = hasPermission(userRole, 'surveys:create');
+  const canAudit = hasPermission(userRole, 'responses:audit');
+  const canManageSurvey = hasPermission(userRole, 'surveys:edit');
 
   const suspiciousResponses = useMemo(() => {
     if (!responses) return [];
@@ -39,9 +46,11 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
             <h1 className="text-3xl font-display font-bold text-primary">{org.name}</h1>
             <p className="text-muted-foreground">Visão geral das suas atividades de pesquisa</p>
           </div>
-          <Button onClick={() => setLocation(`/org/${orgId}/surveys/new`)} className="gap-2">
-            <Plus className="w-4 h-4" /> Nova Pesquisa
-          </Button>
+          {canCreateSurvey && (
+            <Button onClick={() => setLocation(`/org/${orgId}/surveys/new`)} className="gap-2">
+              <Plus className="w-4 h-4" /> Nova Pesquisa
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -97,7 +106,7 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
           </Card>
         </div>
 
-        {!responsesLoading && suspiciousCount > 0 && (
+        {canAudit && !responsesLoading && suspiciousCount > 0 && (
           <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
@@ -164,9 +173,11 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                       <span>Criada em {new Date(survey.createdAt!).toLocaleDateString('pt-BR')}</span>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}`)}>
-                    Gerenciar
-                  </Button>
+                  {canManageSurvey && (
+                    <Button variant="outline" size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}`)}>
+                      Gerenciar
+                    </Button>
+                  )}
                 </div>
               ))
             ) : (
