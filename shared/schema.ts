@@ -229,6 +229,54 @@ export const answersRelations = relations(answers, ({ one }) => ({
   }),
 }));
 
+// === ACCESS CONTROL TABLES ===
+
+export const memberPermissionOverrides = pgTable("member_permission_overrides", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id").references(() => organizationMembers.id).notNull(),
+  permission: text("permission").notNull(),
+  allowed: boolean("allowed").notNull(),
+  grantedBy: varchar("granted_by").references(() => users.id).notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const accessAuditLog = pgTable("access_audit_log", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  action: text("action").notNull(),
+  resourceType: text("resource_type").notNull(),
+  resourceId: integer("resource_id"),
+  details: jsonb("details"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const memberPermissionOverridesRelations = relations(memberPermissionOverrides, ({ one }) => ({
+  member: one(organizationMembers, {
+    fields: [memberPermissionOverrides.memberId],
+    references: [organizationMembers.id],
+  }),
+  grantedByUser: one(users, {
+    fields: [memberPermissionOverrides.grantedBy],
+    references: [users.id],
+  }),
+}));
+
+export const accessAuditLogRelations = relations(accessAuditLog, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [accessAuditLog.organizationId],
+    references: [organizations.id],
+  }),
+  user: one(users, {
+    fields: [accessAuditLog.userId],
+    references: [users.id],
+  }),
+}));
+
 // === SCHEMAS ===
 
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({ id: true, createdAt: true, updatedAt: true });
@@ -240,6 +288,8 @@ export const insertAnswerSchema = createInsertSchema(answers).omit({ id: true })
 export const insertMemberSchema = createInsertSchema(organizationMembers).omit({ id: true, joinedAt: true });
 export const insertPendingInvitationSchema = createInsertSchema(pendingInvitations).omit({ id: true, invitedAt: true, respondedAt: true, status: true });
 export const insertSurveyAssignmentSchema = createInsertSchema(surveyAssignments).omit({ id: true, assignedAt: true });
+export const insertMemberPermissionOverrideSchema = createInsertSchema(memberPermissionOverrides).omit({ id: true, createdAt: true });
+export const insertAccessAuditLogSchema = createInsertSchema(accessAuditLog).omit({ id: true, createdAt: true });
 
 // === TYPES ===
 
@@ -269,6 +319,12 @@ export type InsertAnswer = z.infer<typeof insertAnswerSchema>;
 
 export type SurveyAssignment = typeof surveyAssignments.$inferSelect;
 export type InsertSurveyAssignment = z.infer<typeof insertSurveyAssignmentSchema>;
+
+export type MemberPermissionOverride = typeof memberPermissionOverrides.$inferSelect;
+export type InsertMemberPermissionOverride = z.infer<typeof insertMemberPermissionOverrideSchema>;
+
+export type AccessAuditLog = typeof accessAuditLog.$inferSelect;
+export type InsertAccessAuditLog = z.infer<typeof insertAccessAuditLogSchema>;
 
 export type SurveyWithQuestions = Survey & { questions: Question[] };
 export type FullResponse = Response & { answers: Answer[], interviewer: typeof users.$inferSelect };
