@@ -210,7 +210,18 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {canSeeResults && (
-                        <Button variant="outline" size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}/analytics`)} data-testid={`button-analytics-${survey.id}`}>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => {
+                            const isViewerRole = userRole.toLowerCase() === 'viewer';
+                            const resultsPath = isViewerRole 
+                              ? `/org/${orgId}/surveys/${survey.id}/results`
+                              : `/org/${orgId}/surveys/${survey.id}/analytics`;
+                            setLocation(resultsPath);
+                          }} 
+                          data-testid={`button-analytics-${survey.id}`}
+                        >
                           <BarChart3 className="w-4 h-4 mr-2" />
                           Resultados
                         </Button>

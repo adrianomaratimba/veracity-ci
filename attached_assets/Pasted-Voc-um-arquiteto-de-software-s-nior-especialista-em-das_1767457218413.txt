@@ -1,0 +1,186 @@
+Você é um arquiteto de software sênior especialista em dashboards analíticos, visualização de dados, UX/UI profissional, estatística aplicada e SaaS multi-tenant.
+
+Crie um SISTEMA DE APRESENTAÇÃO DE RESULTADOS DE PESQUISAS ELEITORAIS voltado para CONTRATANTES (Visualizadores), com visual premium, gráficos claros, filtros avançados e leitura fácil, seguindo padrões de institutos profissionais de pesquisa.
+
+================================================================
+1. OBJETIVO DO MÓDULO
+================================================================
+
+O módulo deve permitir que contratantes visualizem os RESULTADOS DAS PESQUISAS de forma:
+- Clara
+- Visualmente agradável
+- Profissional
+- Interativa
+- Segura (somente dados agregados)
+
+Este módulo NÃO deve permitir edição ou acesso a dados sensíveis.
+
+================================================================
+2. PERFIL DE ACESSO
+================================================================
+
+Usuário alvo: VISUALIZADOR (Cliente / Contratante)
+
+Permissões:
+- Acesso somente leitura
+- Visualização apenas de dados agregados
+- Nenhum acesso a entrevistas individuais, GPS ou áudios
+
+================================================================
+3. ESTRUTURA DAS TELAS
+================================================================
+
+------------------------------------------------
+TELA 1 – VISÃO GERAL DA PESQUISA
+------------------------------------------------
+
+Exibir:
+- Nome da pesquisa
+- Localidade
+- Período de coleta
+- Universo
+- Margem de erro
+- Total de entrevistas realizadas
+- Status da pesquisa
+
+Layout:
+- Cards informativos no topo
+- Tipografia limpa
+- Design institucional
+
+------------------------------------------------
+TELA 2 – INTENÇÃO DE VOTO
+------------------------------------------------
+
+Gráficos:
+- Gráfico de barras (ranking de candidatos)
+- Gráfico de pizza (distribuição percentual)
+
+Exibir:
+- Percentual por candidato
+- Votos válidos
+- Brancos, nulos, indecisos
+
+------------------------------------------------
+TELA 3 – EVOLUÇÃO TEMPORAL
+------------------------------------------------
+
+Gráficos:
+- Gráfico de linhas
+
+Permitir:
+- Comparar evolução por período
+- Ativar/desativar candidatos
+
+------------------------------------------------
+TELA 4 – CRUZAMENTOS ESTATÍSTICOS
+------------------------------------------------
+
+Permitir cruzamentos:
+- Intenção de voto x Idade
+- Intenção de voto x Sexo
+- Intenção de voto x Bairro/Zona
+- Avaliação de governo x Escolaridade
+
+Visual:
+- Barras agrupadas
+- Heatmaps (se possível)
+
+------------------------------------------------
+TELA 5 – FILTROS AVANÇADOS
+------------------------------------------------
+
+Filtros disponíveis:
+- Bairro / Zona eleitoral
+- Faixa etária
+- Sexo
+- Escolaridade
+- Renda (se existir)
+- Período da coleta
+
+Os filtros devem:
+- Atualizar os gráficos em tempo real
+- Ser combináveis
+- Manter performance
+
+------------------------------------------------
+TELA 6 – RELATÓRIO FINAL
+------------------------------------------------
+
+Permitir:
+- Visualização do relatório final
+- Download em PDF
+- Download em Excel (se plano permitir)
+
+================================================================
+4. PADRÃO VISUAL (UX/UI)
+================================================================
+
+Requisitos:
+- Layout clean e institucional
+- Uso de cores neutras
+- Destaque visual para dados principais
+- Responsivo (desktop e tablet)
+- Animações suaves e discretas
+
+Utilizar:
+- Cards
+- Grids
+- Tipografia moderna
+- Ícones sutis
+
+================================================================
+5. SEGURANÇA E DADOS
+================================================================
+
+- Apenas dados agregados
+- Nenhum dado individual exposto
+- Nenhuma informação de entrevistador
+- Validação de acesso por role e organization_id
+
+================================================================
+6. TECNOLOGIA DE VISUALIZAÇÃO
+================================================================
+
+Frontend:
+- React + Next.js
+- Biblioteca de gráficos (Recharts, Chart.js ou equivalente)
+- Estado global para filtros
+- Requisições otimizadas
+
+Backend:
+- Endpoints específicos para dados agregados
+- Cache de consultas pesadas
+- Respostas já formatadas para gráficos
+
+================================================================
+7. PERFORMANCE
+================================================================
+
+- Paginação lógica quando necessário
+- Cache por organização e pesquisa
+- Consultas SQL otimizadas
+- Índices adequados
+
+================================================================
+8. QUALIDADE PROFISSIONAL
+================================================================
+
+O resultado deve:
+- Parecer um painel de instituto nacional
+- Ser compreensível para leigos
+- Ser confiável para tomadores de decisão
+- Estar pronto para uso comercial
+
+================================================================
+9. ENTREGÁVEIS
+================================================================
+
+Gerar:
+- Estrutura das telas
+- Componentes de gráficos reutilizáveis
+- Endpoints de dados agregados
+- Código organizado e comentado
+- Visual final profissional
+
+Implemente esse módulo como parte de um SaaS multi-tenant de pesquisas eleitorais, focado em apresentação de resultados para contratantes.

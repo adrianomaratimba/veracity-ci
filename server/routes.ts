@@ -780,5 +780,70 @@ export async function registerRoutes(
     res.json(responses);
   });
 
+  // === RESULTS DASHBOARD (For Viewers/Contractors) - Aggregated Data Only ===
+  app.get("/api/surveys/:surveyId/results/aggregated", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const role = member.role as UserRole;
+      
+      // Entrevistadores não podem ver resultados
+      if (isInterviewerRole(role)) {
+        return res.status(403).json({ message: "Você não tem permissão para ver resultados" });
+      }
+      
+      // Verificar se tem permissão de analytics
+      if (!hasPermission(role, "analytics:view") && !hasPermission(role, "analytics:view_aggregate")) {
+        return res.status(403).json({ message: "Você não tem permissão para ver resultados" });
+      }
+      
+      const aggregatedResults = await storage.getSurveyAggregatedResults(surveyId);
+      res.json(aggregatedResults);
+    } catch (err) {
+      console.error("Erro ao buscar resultados agregados:", err);
+      res.status(500).json({ message: "Erro ao buscar resultados" });
+    }
+  });
+
+  // Evolução temporal das respostas
+  app.get("/api/surveys/:surveyId/results/timeline", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const role = member.role as UserRole;
+      if (isInterviewerRole(role)) {
+        return res.status(403).json({ message: "Você não tem permissão para ver resultados" });
+      }
+      
+      if (!hasPermission(role, "analytics:view") && !hasPermission(role, "analytics:view_aggregate")) {
+        return res.status(403).json({ message: "Você não tem permissão para ver resultados" });
+      }
+      
+      const timeline = await storage.getSurveyTimeline(surveyId);
+      res.json(timeline);
+    } catch (err) {
+      console.error("Erro ao buscar timeline:", err);
+      res.status(500).json({ message: "Erro ao buscar timeline" });
+    }
+  });
+
   return httpServer;
 }

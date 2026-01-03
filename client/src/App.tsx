@@ -52,6 +52,7 @@ import DashboardOverview from "@/pages/dashboard/overview";
 import SurveysPage from "@/pages/dashboard/surveys";
 import SurveyEditorPage from "@/pages/dashboard/survey-editor";
 import SurveyAnalytics from "@/pages/dashboard/survey-analytics";
+import SurveyResults from "@/pages/dashboard/survey-results";
 import TeamPage from "@/pages/dashboard/team";
 import SettingsPage from "@/pages/dashboard/settings";
 import AuditPage from "@/pages/dashboard/audit";
@@ -94,6 +95,7 @@ function AuthenticatedRoutes() {
       <Route path="/org/:orgId/surveys/new" component={SurveyEditorPage} />
       <Route path="/org/:orgId/surveys/:id" component={SurveyEditorPage} />
       <Route path="/org/:orgId/surveys/:id/analytics" component={SurveyAnalytics} />
+      <Route path="/org/:orgId/surveys/:surveyId/results" component={SurveyResults} />
       <Route path="/org/:orgId/team" component={TeamPage} />
       <Route path="/org/:orgId/audit" component={AuditPage} />
       <Route path="/org/:orgId/settings" component={SettingsPage} />

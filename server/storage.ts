@@ -66,6 +66,27 @@ export interface IStorage {
     activeSurveys: number;
     draftSurveys: number;
   }>;
+  
+  // Results Dashboard (Aggregated Data)
+  getSurveyAggregatedResults(surveyId: number): Promise<{
+    survey: Survey & { questions: Question[] };
+    totalResponses: number;
+    validResponses: number;
+    questionResults: Array<{
+      questionId: number;
+      questionText: string;
+      questionType: string;
+      results: Array<{ option: string; count: number; percentage: number }>;
+    }>;
+  }>;
+  getSurveyTimeline(surveyId: number): Promise<Array<{
+    date: string;
+    total: number;
+    questionSnapshots: Array<{
+      questionId: number;
+      results: Array<{ option: string; count: number; percentage: number }>;
+    }>;
+  }>>;
 
   // Survey Assignments
   getSurveyAssignments(surveyId: number): Promise<(SurveyAssignment & { interviewer: User })[]>;
@@ -448,6 +469,179 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return !!assignment;
+  }
+
+  // --- RESULTS DASHBOARD (Aggregated Data) ---
+  async getSurveyAggregatedResults(surveyId: number): Promise<{
+    survey: Survey & { questions: Question[] };
+    totalResponses: number;
+    validResponses: number;
+    questionResults: Array<{
+      questionId: number;
+      questionText: string;
+      questionType: string;
+      results: Array<{ option: string; count: number; percentage: number }>;
+    }>;
+  }> {
+    const survey = await this.getSurvey(surveyId);
+    if (!survey) throw new Error("Pesquisa não encontrada");
+
+    const allResponses = await db.select()
+      .from(responses)
+      .where(eq(responses.surveyId, surveyId));
+    
+    const validResponses = allResponses.filter(r => r.status === 'valid');
+    const validResponseIds = validResponses.map(r => r.id);
+
+    const questionResults: Array<{
+      questionId: number;
+      questionText: string;
+      questionType: string;
+      results: Array<{ option: string; count: number; percentage: number }>;
+    }> = [];
+
+    for (const question of survey.questions) {
+      if (question.type === 'single_choice' || question.type === 'multiple_choice') {
+        const options = (question.options as string[]) || [];
+        const optionCounts: Record<string, number> = {};
+        options.forEach(opt => { optionCounts[opt] = 0; });
+
+        if (validResponseIds.length > 0) {
+          const questionAnswers = await db.select()
+            .from(answers)
+            .where(and(
+              eq(answers.questionId, question.id),
+              sql`${answers.responseId} IN (${sql.join(validResponseIds.map(id => sql`${id}`), sql`, `)})`
+            ));
+
+          questionAnswers.forEach(ans => {
+            const value = ans.value as string | string[];
+            if (Array.isArray(value)) {
+              value.forEach(v => {
+                if (optionCounts[v] !== undefined) optionCounts[v]++;
+              });
+            } else if (typeof value === 'string' && optionCounts[value] !== undefined) {
+              optionCounts[value]++;
+            }
+          });
+        }
+
+        const total = Object.values(optionCounts).reduce((a, b) => a + b, 0);
+        const results = options.map(opt => ({
+          option: opt,
+          count: optionCounts[opt] || 0,
+          percentage: total > 0 ? Math.round((optionCounts[opt] / total) * 1000) / 10 : 0
+        }));
+
+        questionResults.push({
+          questionId: question.id,
+          questionText: question.text,
+          questionType: question.type,
+          results
+        });
+      }
+    }
+
+    return {
+      survey,
+      totalResponses: allResponses.length,
+      validResponses: validResponses.length,
+      questionResults
+    };
+  }
+
+  async getSurveyTimeline(surveyId: number): Promise<Array<{
+    date: string;
+    total: number;
+    questionSnapshots: Array<{
+      questionId: number;
+      results: Array<{ option: string; count: number; percentage: number }>;
+    }>;
+  }>> {
+    const survey = await this.getSurvey(surveyId);
+    if (!survey) throw new Error("Pesquisa não encontrada");
+
+    const allResponses = await db.select()
+      .from(responses)
+      .where(eq(responses.surveyId, surveyId))
+      .orderBy(responses.createdAt);
+    
+    const validResponses = allResponses.filter(r => r.status === 'valid');
+    
+    // Group by date
+    const dateGroups: Map<string, Response[]> = new Map();
+    validResponses.forEach(r => {
+      const date = r.createdAt ? new Date(r.createdAt).toISOString().split('T')[0] : 'unknown';
+      if (!dateGroups.has(date)) dateGroups.set(date, []);
+      dateGroups.get(date)!.push(r);
+    });
+
+    const timeline: Array<{
+      date: string;
+      total: number;
+      questionSnapshots: Array<{
+        questionId: number;
+        results: Array<{ option: string; count: number; percentage: number }>;
+      }>;
+    }> = [];
+
+    const sortedDates = Array.from(dateGroups.keys()).sort();
+    let cumulativeResponseIds: number[] = [];
+
+    for (const date of sortedDates) {
+      const dayResponses = dateGroups.get(date)!;
+      cumulativeResponseIds = [...cumulativeResponseIds, ...dayResponses.map(r => r.id)];
+
+      const questionSnapshots: Array<{
+        questionId: number;
+        results: Array<{ option: string; count: number; percentage: number }>;
+      }> = [];
+
+      for (const question of survey.questions) {
+        if (question.type === 'single_choice' || question.type === 'multiple_choice') {
+          const options = (question.options as string[]) || [];
+          const optionCounts: Record<string, number> = {};
+          options.forEach(opt => { optionCounts[opt] = 0; });
+
+          if (cumulativeResponseIds.length > 0) {
+            const questionAnswers = await db.select()
+              .from(answers)
+              .where(and(
+                eq(answers.questionId, question.id),
+                sql`${answers.responseId} IN (${sql.join(cumulativeResponseIds.map(id => sql`${id}`), sql`, `)})`
+              ));
+
+            questionAnswers.forEach(ans => {
+              const value = ans.value as string | string[];
+              if (Array.isArray(value)) {
+                value.forEach(v => {
+                  if (optionCounts[v] !== undefined) optionCounts[v]++;
+                });
+              } else if (typeof value === 'string' && optionCounts[value] !== undefined) {
+                optionCounts[value]++;
+              }
+            });
+          }
+
+          const total = Object.values(optionCounts).reduce((a, b) => a + b, 0);
+          const results = options.map(opt => ({
+            option: opt,
+            count: optionCounts[opt] || 0,
+            percentage: total > 0 ? Math.round((optionCounts[opt] / total) * 1000) / 10 : 0
+          }));
+
+          questionSnapshots.push({ questionId: question.id, results });
+        }
+      }
+
+      timeline.push({
+        date,
+        total: cumulativeResponseIds.length,
+        questionSnapshots
+      });
+    }
+
+    return timeline;
   }
 }
 
