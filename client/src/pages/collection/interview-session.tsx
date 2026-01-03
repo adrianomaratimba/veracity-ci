@@ -6,12 +6,14 @@ import { useSubmitResponse } from "@/hooks/use-responses";
 import { useSurvey } from "@/hooks/use-surveys";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle } from "lucide-react";
+import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle, WifiOff, Cloud } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { savePendingInterview, generateInterviewId, getPendingCount } from "@/lib/offlineStorage";
+import { syncAllPending } from "@/lib/syncQueue";
 
 interface InterviewSessionProps {
   params: { surveyId: string };
@@ -34,6 +36,25 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<number, any>>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isSavingOffline, setIsSavingOffline] = useState(false);
+  const [startTime] = useState(new Date());
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    getPendingCount().then(setPendingCount);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -73,14 +94,81 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
   };
 
+  const saveOffline = async () => {
+    if (!audioBlob || !gpsCoords) return;
+    
+    setIsSavingOffline(true);
+    try {
+      const audioBuffer = await audioBlob.arrayBuffer();
+      const endTime = new Date();
+      const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+      
+      const formattedAnswers = Object.entries(answers).map(([qId, val]) => ({
+        questionId: parseInt(qId),
+        value: val
+      }));
+
+      await savePendingInterview({
+        id: generateInterviewId(),
+        surveyId,
+        createdAt: new Date(),
+        status: 'pending',
+        retryCount: 0,
+        data: {
+          response: {
+            latitude: gpsCoords.latitude,
+            longitude: gpsCoords.longitude,
+            accuracy: gpsCoords.accuracy,
+            gpsTimestamp: new Date(),
+            audioBlob: audioBuffer,
+            audioMimeType: 'audio/webm',
+            audioFileName: `entrevista-${Date.now()}.webm`,
+            deviceInfo: { userAgent: navigator.userAgent },
+            startTime,
+            endTime,
+            duration
+          },
+          answers: formattedAnswers
+        }
+      });
+      
+      const newCount = await getPendingCount();
+      setPendingCount(newCount);
+      
+      toast({
+        title: "Entrevista salva localmente",
+        description: "Será enviada automaticamente quando a conexão for restaurada.",
+      });
+      
+      setStep('success');
+    } catch (error) {
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar a entrevista localmente.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingOffline(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!audioBlob || !gpsCoords) return;
+
+    if (!isOnline) {
+      await saveOffline();
+      return;
+    }
 
     const audioFile = new File([audioBlob], `entrevista-${Date.now()}.webm`, { type: "audio/webm" });
     const uploadRes = await uploadFile(audioFile);
 
     if (!uploadRes) {
-      alert("Falha ao enviar evidência de áudio.");
+      toast({
+        title: "Sem conexão",
+        description: "Salvando entrevista localmente para envio posterior...",
+      });
+      await saveOffline();
       return;
     }
 
@@ -89,7 +177,8 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       value: val
     }));
 
-    const duration = 120;
+    const endTime = new Date();
+    const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
 
     submitResponse({
       surveyId,
@@ -100,12 +189,12 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
           accuracy: gpsCoords.accuracy,
           gpsTimestamp: new Date(),
           audioUrl: uploadRes.objectPath,
-          audioHash: "mock-hash",
+          audioHash: "synced",
           audioDuration: 0,
           deviceInfo: { userAgent: navigator.userAgent },
-          startTime: new Date(),
-          endTime: new Date(),
-          duration: duration
+          startTime,
+          endTime,
+          duration
         },
         answers: formattedAnswers
       }
@@ -113,16 +202,45 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       onSuccess: () => {
         setStep('success');
       },
-      onError: (error: Error) => {
-        const message = error.message;
-        setSubmitError(message);
+      onError: async (error: Error) => {
         toast({
-          title: "Erro ao enviar entrevista",
-          description: message,
-          variant: "destructive"
+          title: "Erro de conexão",
+          description: "Salvando entrevista localmente para envio posterior...",
         });
+        await saveOffline();
       }
     });
+  };
+  
+  const handleSyncNow = async () => {
+    if (!isOnline) {
+      toast({
+        title: "Sem conexão",
+        description: "Aguarde a conexão ser restaurada.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    toast({ title: "Sincronizando...", description: "Enviando entrevistas pendentes." });
+    
+    const result = await syncAllPending();
+    const newCount = await getPendingCount();
+    setPendingCount(newCount);
+    
+    if (result.synced > 0) {
+      toast({
+        title: "Sincronização concluída",
+        description: `${result.synced} entrevista(s) enviada(s) com sucesso.`,
+      });
+    }
+    if (result.failed > 0) {
+      toast({
+        title: "Algumas falhas",
+        description: `${result.failed} entrevista(s) não puderam ser enviadas.`,
+        variant: "destructive"
+      });
+    }
   };
 
   if (surveyLoading) return <div className="p-4 flex justify-center"><Loader2 className="animate-spin" /></div>;
@@ -131,10 +249,26 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <header className="bg-primary text-primary-foreground p-4 sticky top-0 z-10 shadow-md">
-        <h1 className="font-display font-bold text-lg truncate">{survey.title}</h1>
-        <div className="flex items-center gap-2 text-xs opacity-80 mt-1">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="font-display font-bold text-lg truncate flex-1">{survey.title}</h1>
+          {pendingCount > 0 && (
+            <Button 
+              size="sm" 
+              variant="secondary"
+              onClick={handleSyncNow}
+              disabled={!isOnline}
+              className="shrink-0"
+              data-testid="button-sync-pending"
+            >
+              <Cloud className="w-4 h-4 mr-1" />
+              {pendingCount}
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-xs opacity-80 mt-1 flex-wrap">
           {isRecording && <span className="flex items-center gap-1 text-red-300 animate-pulse"><Mic className="w-3 h-3" /> GRAVANDO</span>}
           {gpsCoords && <span className="flex items-center gap-1 text-green-300"><MapPin className="w-3 h-3" /> GPS Ativo</span>}
+          {!isOnline && <span className="flex items-center gap-1 text-yellow-300"><WifiOff className="w-3 h-3" /> Modo Offline</span>}
         </div>
       </header>
 
@@ -307,8 +441,20 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             </div>
             <div>
               <h2 className="text-2xl font-bold mb-2">Entrevista Concluída</h2>
-              <p className="text-muted-foreground">Pronto para enviar os dados com segurança.</p>
+              <p className="text-muted-foreground">
+                {isOnline 
+                  ? "Pronto para enviar os dados com segurança."
+                  : "Será salva localmente e enviada quando houver conexão."
+                }
+              </p>
             </div>
+            
+            {!isOnline && (
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3 rounded-lg flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
+                <WifiOff className="w-5 h-5 shrink-0" />
+                <span className="text-sm">Modo offline ativo. A entrevista será armazenada no dispositivo.</span>
+              </div>
+            )}
             
             <div className="bg-muted p-4 rounded-lg text-sm text-left space-y-2">
               <div className="flex justify-between">
@@ -323,21 +469,29 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 <span>Precisão do GPS:</span>
                 <span className="font-bold">{gpsCoords?.accuracy.toFixed(0)}m</span>
               </div>
+              <div className="flex justify-between">
+                <span>Conexão:</span>
+                <span className={`font-bold ${isOnline ? 'text-green-600' : 'text-yellow-600'}`}>
+                  {isOnline ? 'Online' : 'Offline'}
+                </span>
+              </div>
             </div>
 
             <Button 
               className="w-full h-12 text-lg" 
               onClick={handleSubmit}
-              disabled={isUploadingAudio || isSubmitting}
+              disabled={isUploadingAudio || isSubmitting || isSavingOffline}
+              data-testid="button-submit-interview"
             >
-              {(isUploadingAudio || isSubmitting) ? (
+              {(isUploadingAudio || isSubmitting || isSavingOffline) ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  {isUploadingAudio ? "Enviando Áudio..." : "Enviando Dados..."}
+                  {isSavingOffline ? "Salvando Localmente..." : isUploadingAudio ? "Enviando Áudio..." : "Enviando Dados..."}
                 </>
               ) : (
                 <>
-                  <Save className="w-5 h-5 mr-2" /> Enviar Entrevista
+                  {isOnline ? <Save className="w-5 h-5 mr-2" /> : <WifiOff className="w-5 h-5 mr-2" />}
+                  {isOnline ? "Enviar Entrevista" : "Salvar para Depois"}
                 </>
               )}
             </Button>
