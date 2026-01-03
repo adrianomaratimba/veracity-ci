@@ -9,6 +9,10 @@ export function useOrganizations() {
     queryKey: [api.organizations.list.path],
     queryFn: async () => {
       const res = await fetch(api.organizations.list.path, { credentials: "include" });
+      if (res.status === 401) {
+        window.location.href = "/api/login";
+        return [];
+      }
       if (!res.ok) throw new Error("Failed to fetch organizations");
       return api.organizations.list.responses[200].parse(await res.json());
     },
@@ -23,6 +27,10 @@ export function useOrganization(id: number) {
       if (!id) return null;
       const url = buildUrl(api.organizations.get.path, { id });
       const res = await fetch(url, { credentials: "include" });
+      if (res.status === 401) {
+        window.location.href = "/api/login";
+        return null;
+      }
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("Failed to fetch organization");
       return api.organizations.get.responses[200].parse(await res.json());
