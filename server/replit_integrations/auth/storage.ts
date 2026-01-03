@@ -1,7 +1,7 @@
 import { users, type User, type UpsertUser } from "@shared/models/auth";
 import { pendingInvitations, organizationMembers } from "@shared/schema";
 import { db } from "../../db";
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and, ilike, or } from "drizzle-orm";
 
 // Interface for auth storage operations
 // (IMPORTANT) These user operations are mandatory for Replit Auth.
@@ -13,7 +13,10 @@ export interface IAuthStorage {
 
 class AuthStorage implements IAuthStorage {
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+    // Search by internal ID first, then by Replit user ID
+    const [user] = await db.select().from(users).where(
+      or(eq(users.id, id), eq(users.replitUserId, id))
+    );
     return user;
   }
 
@@ -26,8 +29,10 @@ class AuthStorage implements IAuthStorage {
       
       if (existingUserByEmail && existingUserByEmail.authProvider === 'pending') {
         // Update the pending user with Replit Auth data - keep original ID to preserve FK relationships
+        // Store the Replit user ID separately for future lookups
         const [updatedUser] = await db.update(users)
           .set({
+            replitUserId: userData.id, // Store Replit ID for identity mapping
             firstName: userData.firstName || existingUserByEmail.firstName,
             lastName: userData.lastName || existingUserByEmail.lastName,
             profileImageUrl: userData.profileImageUrl,
@@ -43,8 +48,14 @@ class AuthStorage implements IAuthStorage {
       
       // Check if user already exists with this email but different auth provider
       if (existingUserByEmail && existingUserByEmail.id !== userData.id) {
-        // User already exists with a different ID - return existing user
-        // This handles the case where user was created with credentials but is logging in via Replit
+        // User already exists with a different ID - store Replit ID for future lookups if not already set
+        if (!existingUserByEmail.replitUserId) {
+          const [updatedUser] = await db.update(users)
+            .set({ replitUserId: userData.id, updatedAt: new Date() })
+            .where(eq(users.id, existingUserByEmail.id))
+            .returning();
+          return updatedUser;
+        }
         return existingUserByEmail;
       }
     }
