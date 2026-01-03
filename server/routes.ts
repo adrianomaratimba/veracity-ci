@@ -4,7 +4,6 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { setupAuth, registerAuthRoutes, isAuthenticated, getUserId } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
-import { sendInvitationEmail, sendWelcomeEmail } from "./email-service";
 import { z } from "zod";
 
 export async function registerRoutes(
@@ -96,15 +95,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Já existe um convite pendente para este email" });
       }
 
-      const org = await storage.getOrganization(orgId);
-      const inviter = await storage.getUserById(inviterId);
-      const inviterName = inviter ? `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim() : 'Alguém';
-      const orgName = org?.name || 'uma organização';
-      
-      const appUrl = process.env.REPLIT_DOMAINS 
-        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
-        : 'https://votoaudit.app';
-
       const user = await storage.getUserByEmail(input.email);
       
       if (user) {
@@ -119,13 +109,6 @@ export async function registerRoutes(
           role: input.role
         });
 
-        sendWelcomeEmail({
-          to: input.email,
-          userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Usuário',
-          organizationName: orgName,
-          appUrl
-        }).catch(err => console.error('[email] Failed to send welcome email:', err));
-
         return res.status(201).json(member);
       }
 
@@ -135,14 +118,6 @@ export async function registerRoutes(
         role: input.role,
         invitedBy: inviterId
       });
-
-      sendInvitationEmail({
-        to: input.email,
-        inviterName,
-        organizationName: orgName,
-        role: input.role,
-        appUrl
-      }).catch(err => console.error('[email] Failed to send invitation email:', err));
 
       res.status(201).json({ ...invitation, pending: true });
     } catch (err) {
@@ -206,13 +181,8 @@ export async function registerRoutes(
   app.patch(api.organizations.members.updateRole.path, isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
+      const orgId = Number(req.params.id);
       const memberId = Number(req.params.memberId);
-      
-      // Get member first to find the organization
-      const member = await storage.getMemberById(memberId);
-      if (!member) return res.status(404).json({ message: "Membro não encontrado" });
-      
-      const orgId = member.organizationId;
       
       // Authorization check - must be member of org
       const isMember = await storage.isUserMemberOfOrg(userId, orgId);
@@ -220,6 +190,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Acesso negado" });
       }
       
+      const member = await storage.getMemberById(memberId);
+      if (!member || member.organizationId !== orgId) return res.status(404).json({ message: "Membro não encontrado" });
       if (member.role === 'owner') return res.status(403).json({ message: "Não é possível alterar a função do proprietário" });
       
       const input = api.organizations.members.updateRole.input.parse(req.body);
@@ -236,13 +208,8 @@ export async function registerRoutes(
   app.delete(api.organizations.members.remove.path, isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
+      const orgId = Number(req.params.id);
       const memberId = Number(req.params.memberId);
-      
-      // Get member first to find the organization
-      const member = await storage.getMemberById(memberId);
-      if (!member) return res.status(404).json({ message: "Membro não encontrado" });
-      
-      const orgId = member.organizationId;
       
       // Authorization check - must be member of org
       const isMember = await storage.isUserMemberOfOrg(userId, orgId);
@@ -250,6 +217,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Acesso negado" });
       }
       
+      const member = await storage.getMemberById(memberId);
+      if (!member || member.organizationId !== orgId) return res.status(404).json({ message: "Membro não encontrado" });
       if (member.role === 'owner') return res.status(403).json({ message: "Não é possível remover o proprietário" });
       
       await storage.removeMember(memberId);
