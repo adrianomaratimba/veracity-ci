@@ -78,7 +78,6 @@ function Router() {
       <Switch>
         <Route path="/" component={Landing} />
         <Route path="/auth" component={AuthPage} />
-        <Route path="/api/login" component={() => { window.location.href = "/api/login"; return null; }} />
         <Route component={AuthPage} /> 
       </Switch>
     );
