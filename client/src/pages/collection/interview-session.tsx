@@ -255,8 +255,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             <Button 
               size="sm" 
               variant="secondary"
-              onClick={handleSyncNow}
-              disabled={!isOnline}
+              onClick={() => setLocation('/collect/pending')}
               className="shrink-0"
               data-testid="button-sync-pending"
             >

@@ -123,6 +123,29 @@ export default function PendingInterviews() {
     }
   };
 
+  const handleClearAll = async () => {
+    if (!confirm("Tem certeza que deseja excluir TODAS as entrevistas pendentes? Esta ação não pode ser desfeita e os dados serão perdidos.")) {
+      return;
+    }
+    
+    try {
+      for (const interview of interviews) {
+        await deletePendingInterview(interview.id);
+      }
+      await loadInterviews();
+      toast({
+        title: "Entrevistas removidas",
+        description: "Todas as entrevistas pendentes foram excluídas.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir as entrevistas.",
+        variant: "destructive"
+      });
+    }
+  };
+
   const getStatusBadge = (interview: PendingInterview) => {
     switch (interview.status) {
       case 'pending':
@@ -186,24 +209,35 @@ export default function PendingInterviews() {
           </Card>
         ) : (
           <>
-            <Button 
-              className="w-full" 
-              onClick={handleSync}
-              disabled={isSyncing || !isOnline}
-              data-testid="button-sync-all"
-            >
-              {isSyncing ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Sincronizando...
-                </>
-              ) : (
-                <>
-                  <Cloud className="w-4 h-4 mr-2" />
-                  Sincronizar Tudo ({interviews.filter(i => i.status !== 'syncing').length})
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                className="flex-1" 
+                onClick={handleSync}
+                disabled={isSyncing || !isOnline}
+                data-testid="button-sync-all"
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sincronizando...
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-4 h-4 mr-2" />
+                    Sincronizar ({interviews.filter(i => i.status !== 'syncing').length})
+                  </>
+                )}
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={handleClearAll}
+                disabled={isSyncing}
+                data-testid="button-clear-all"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Limpar
+              </Button>
+            </div>
 
             <div className="space-y-3">
               {interviews.map((interview) => (
