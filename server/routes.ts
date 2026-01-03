@@ -141,15 +141,21 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Este usuário já é membro da organização" });
       }
 
+      // If admin provided a password, set it directly
+      if (input.password) {
+        const { authService } = await import("./auth-service");
+        await authService.setUserPasswordByAdmin(user.id, input.password);
+      }
+
       const member = await storage.addMember({
         organizationId: orgId,
         userId: user.id,
         role: input.role
       });
 
-      // Generate password setup token for pending users
+      // Generate password setup token for pending users only if no password was provided
       let setupLink = null;
-      if (user.authProvider === 'pending') {
+      if (user.authProvider === 'pending' && !input.password) {
         const { authService } = await import("./auth-service");
         const token = await authService.requestPasswordReset(input.email.toLowerCase());
         if (token) {
@@ -163,7 +169,8 @@ export async function registerRoutes(
       res.status(201).json({ 
         ...member, 
         setupLink,
-        needsSetup: user.authProvider === 'pending'
+        needsSetup: user.authProvider === 'pending' && !input.password,
+        passwordSet: !!input.password
       });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json(err.errors);
@@ -292,6 +299,43 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Erro ao remover membro" });
+    }
+  });
+
+  // Set password for a member (admin function)
+  app.post(api.organizations.members.setPassword.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const memberId = Number(req.params.memberId);
+      
+      const input = api.organizations.members.setPassword.input.parse(req.body);
+      
+      const targetMember = await storage.getMemberById(memberId);
+      if (!targetMember) return res.status(404).json({ message: "Membro não encontrado" });
+      
+      const orgId = targetMember.organizationId;
+      
+      const currentMember = await storage.getMemberByUserId(userId, orgId);
+      if (!currentMember || !hasPermission(currentMember.role as UserRole, "members:invite")) {
+        return res.status(403).json({ message: "Você não tem permissão para alterar senhas" });
+      }
+      
+      const callerRole = currentMember.role as UserRole;
+      
+      if (targetMember.role === 'owner') return res.status(403).json({ message: "Não é possível alterar a senha do proprietário" });
+      
+      // Validate caller can manage the target member's role
+      if (!canManageRole(callerRole, targetMember.role as UserRole)) {
+        return res.status(403).json({ message: "Você não tem permissão para alterar a senha deste membro" });
+      }
+      
+      const { authService } = await import("./auth-service");
+      await authService.setUserPasswordByAdmin(targetMember.userId, input.password);
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Erro ao definir senha:", err);
+      res.status(500).json({ message: "Erro ao definir senha" });
     }
   });
 

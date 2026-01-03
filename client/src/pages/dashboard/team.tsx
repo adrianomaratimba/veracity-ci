@@ -1,10 +1,10 @@
-import { useOrganization, useOrganizationMembers, useCurrentMember, useInviteMember, useUpdateMemberRole, useRemoveMember } from "@/hooks/use-organizations";
+import { useOrganization, useOrganizationMembers, useCurrentMember, useInviteMember, useUpdateMemberRole, useRemoveMember, useSetMemberPassword } from "@/hooks/use-organizations";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, Shield, MoreVertical, UserPlus, Trash2, UserCog } from "lucide-react";
+import { Users, Shield, MoreVertical, UserPlus, Trash2, UserCog, KeyRound, Eye, EyeOff } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -26,13 +26,16 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const inviteMember = useInviteMember();
   const updateMemberRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
+  const setMemberPassword = useSetMemberPassword();
   const { toast } = useToast();
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     email: "",
-    role: "interviewer" as z.infer<typeof userRoleEnum>
+    role: "interviewer" as z.infer<typeof userRoleEnum>,
+    password: ""
   });
+  const [showInvitePassword, setShowInvitePassword] = useState(false);
 
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<{ id: number; role: string; name: string } | null>(null);
@@ -41,6 +44,11 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{ id: number; name: string } | null>(null);
   const [setupLinkDialog, setSetupLinkDialog] = useState<{ open: boolean; email: string; link: string | null }>({ open: false, email: "", link: null });
+
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passwordMember, setPasswordMember] = useState<{ id: number; name: string } | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   if (orgLoading || membersLoading || currentMemberLoading) return <LoadingScreen message="Carregando equipe..." />;
   if (!org) return <div>Organização não encontrada</div>;
@@ -70,25 +78,56 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
       toast({ title: "Erro", description: "O email é obrigatório", variant: "destructive" });
       return;
     }
+    if (inviteForm.password && inviteForm.password.length < 6) {
+      toast({ title: "Erro", description: "A senha deve ter pelo menos 6 caracteres", variant: "destructive" });
+      return;
+    }
     try {
       const result = await inviteMember.mutateAsync({
         orgId,
         email: inviteForm.email,
-        role: inviteForm.role
+        role: inviteForm.role,
+        password: inviteForm.password || undefined
       });
       
       setIsInviteOpen(false);
       const email = inviteForm.email;
-      setInviteForm({ email: "", role: "interviewer" });
+      const hadPassword = !!inviteForm.password;
+      setInviteForm({ email: "", role: "interviewer", password: "" });
+      setShowInvitePassword(false);
       
-      // Show setup link dialog if user needs to set password
-      if (result.setupLink) {
+      // Show setup link dialog if user needs to set password (only if no password was provided)
+      if (result.setupLink && !hadPassword) {
         setSetupLinkDialog({ open: true, email, link: result.setupLink });
+      } else if (hadPassword) {
+        toast({ title: "Membro adicionado", description: `${email} foi adicionado com a senha definida` });
       } else {
         toast({ title: "Membro adicionado", description: `${email} foi adicionado à equipe` });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao adicionar membro";
+      toast({ title: "Erro", description: message, variant: "destructive" });
+    }
+  };
+
+  const handleSetPassword = async () => {
+    if (!passwordMember) return;
+    if (!newPassword || newPassword.length < 6) {
+      toast({ title: "Erro", description: "A senha deve ter pelo menos 6 caracteres", variant: "destructive" });
+      return;
+    }
+    try {
+      await setMemberPassword.mutateAsync({
+        memberId: passwordMember.id,
+        password: newPassword
+      });
+      toast({ title: "Senha definida", description: `A senha de ${passwordMember.name} foi atualizada` });
+      setPasswordDialogOpen(false);
+      setPasswordMember(null);
+      setNewPassword("");
+      setShowNewPassword(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao definir senha";
       toast({ title: "Erro", description: message, variant: "destructive" });
     }
   };
@@ -186,6 +225,29 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Senha (opcional)</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showInvitePassword ? "text" : "password"}
+                      placeholder="Deixe vazio para gerar link de configuração"
+                      value={inviteForm.password}
+                      onChange={(e) => setInviteForm({ ...inviteForm, password: e.target.value })}
+                      data-testid="input-invite-password"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0"
+                      onClick={() => setShowInvitePassword(!showInvitePassword)}
+                    >
+                      {showInvitePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Defina uma senha para o usuário ou deixe vazio para gerar um link de configuração.</p>
                 </div>
               </div>
               <DialogFooter>
@@ -297,6 +359,15 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
                               <UserCog className="w-4 h-4 mr-2" />
                               Alterar Função
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              const name = `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim();
+                              setPasswordMember({ id: member.id, name });
+                              setNewPassword("");
+                              setPasswordDialogOpen(true);
+                            }}>
+                              <KeyRound className="w-4 h-4 mr-2" />
+                              Definir Senha
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
                               className="text-destructive"
@@ -401,6 +472,47 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
             </Button>
             <Button onClick={copySetupLink} data-testid="button-copy-setup-link">
               Copiar Link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Definir Senha</DialogTitle>
+            <DialogDescription>
+              Defina uma nova senha para {passwordMember?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">Nova Senha</Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showNewPassword ? "text" : "password"}
+                  placeholder="Mínimo 6 caracteres"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  data-testid="input-new-member-password"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                >
+                  {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSetPassword} disabled={setMemberPassword.isPending} data-testid="button-confirm-password">
+              {setMemberPassword.isPending ? "Salvando..." : "Salvar Senha"}
             </Button>
           </DialogFooter>
         </DialogContent>

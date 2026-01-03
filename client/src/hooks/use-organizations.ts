@@ -92,12 +92,14 @@ export function useCurrentMember(orgId: number) {
 export function useInviteMember() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ orgId, email, role }: { orgId: number; email: string; role: z.infer<typeof userRoleEnum> }) => {
+    mutationFn: async ({ orgId, email, role, password }: { orgId: number; email: string; role: z.infer<typeof userRoleEnum>; password?: string }) => {
       const url = buildUrl(api.organizations.members.invite.path, { id: orgId });
+      const body: { email: string; role: z.infer<typeof userRoleEnum>; password?: string } = { email, role };
+      if (password) body.password = password;
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role }),
+        body: JSON.stringify(body),
         credentials: "include",
       });
       if (!res.ok) {
@@ -109,6 +111,26 @@ export function useInviteMember() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.organizations.members.list.path, variables.orgId] });
       queryClient.invalidateQueries({ queryKey: [api.organizations.invitations.list.path, variables.orgId] });
+    },
+  });
+}
+
+// Set Member Password (admin function)
+export function useSetMemberPassword() {
+  return useMutation({
+    mutationFn: async ({ memberId, password }: { memberId: number; password: string }) => {
+      const url = buildUrl(api.organizations.members.setPassword.path, { memberId });
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to set password");
+      }
+      return res.json();
     },
   });
 }

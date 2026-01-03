@@ -165,6 +165,7 @@ export const api = {
         input: z.object({
           email: z.string().email(),
           role: userRoleEnum,
+          password: z.string().min(6).optional(),
         }),
         responses: {
           201: z.custom<typeof organizationMembers.$inferSelect>(),
@@ -189,6 +190,19 @@ export const api = {
         path: '/api/members/:memberId',
         responses: {
           204: z.void(),
+          404: errorSchemas.notFound,
+        }
+      },
+      setPassword: {
+        method: 'POST' as const,
+        path: '/api/members/:memberId/set-password',
+        input: z.object({
+          password: z.string().min(6),
+        }),
+        responses: {
+          200: z.object({ success: z.boolean() }),
+          400: errorSchemas.validation,
+          403: errorSchemas.forbidden,
           404: errorSchemas.notFound,
         }
       }

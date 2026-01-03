@@ -186,6 +186,26 @@ export class AuthService {
 
     return user || null;
   }
+
+  async setUserPasswordByAdmin(userId: string, password: string): Promise<User> {
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+    const [user] = await db
+      .update(users)
+      .set({ 
+        passwordHash, 
+        authProvider: 'credentials',
+        updatedAt: new Date() 
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!user) {
+      throw new Error("Usuário não encontrado");
+    }
+
+    return user;
+  }
 }
 
 export const authService = new AuthService();
