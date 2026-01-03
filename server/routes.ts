@@ -413,6 +413,22 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Acesso negado" });
       }
       
+      // Check organization plan limits
+      const org = await storage.getOrganization(survey.organizationId);
+      if (org) {
+        const stats = await storage.getOrganizationStats(survey.organizationId);
+        const maxInterviews = org.maxInterviews || 100;
+        
+        if (stats.interviewsThisMonth >= maxInterviews) {
+          return res.status(403).json({ 
+            message: `Limite mensal de ${maxInterviews} entrevistas atingido. Faça upgrade do seu plano para continuar.`,
+            code: "LIMIT_EXCEEDED",
+            currentUsage: stats.interviewsThisMonth,
+            limit: maxInterviews
+          });
+        }
+      }
+      
       const { response: responseMeta, answers } = api.responses.submit.input.parse(req.body);
 
       // Backend Validation Logic for Fraud Detection

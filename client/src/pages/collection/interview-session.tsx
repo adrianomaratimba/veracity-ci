@@ -6,11 +6,12 @@ import { useSubmitResponse } from "@/hooks/use-responses";
 import { useSurvey } from "@/hooks/use-surveys";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save } from "lucide-react";
+import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface InterviewSessionProps {
   params: { surveyId: string };
@@ -25,8 +26,10 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const { uploadFile, isUploading: isUploadingAudio } = useUpload();
   const { mutate: submitResponse, isPending: isSubmitting } = useSubmitResponse();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
 
   const [step, setStep] = useState<Step>('permissions');
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [gpsCoords, setGpsCoords] = useState<GeolocationCoordinates | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<number, any>>({});
@@ -102,6 +105,15 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     }, {
       onSuccess: () => {
         setStep('success');
+      },
+      onError: (error: Error) => {
+        const message = error.message;
+        setSubmitError(message);
+        toast({
+          title: "Erro ao enviar entrevista",
+          description: message,
+          variant: "destructive"
+        });
       }
     });
   };

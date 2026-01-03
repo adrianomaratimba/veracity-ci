@@ -180,6 +180,12 @@ export default function AuthPage() {
                       </>
                     ) : "Entrar"}
                   </Button>
+
+                  <div className="text-center">
+                    <Link href="/reset-password" className="text-sm text-muted-foreground hover:text-primary transition-colors" data-testid="link-forgot-password">
+                      Esqueci minha senha
+                    </Link>
+                  </div>
                 </form>
               </Form>
             ) : (

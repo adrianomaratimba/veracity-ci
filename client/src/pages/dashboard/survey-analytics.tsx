@@ -40,13 +40,17 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  Play
+  Play,
+  Download,
+  FileSpreadsheet
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function SurveyAnalytics({ params }: { params: { orgId: string, id: string } }) {
   const surveyId = parseInt(params.id);
   const orgId = parseInt(params.orgId);
+  const { toast } = useToast();
   
   const { data: survey, isLoading: surveyLoading } = useSurvey(surveyId);
   const { data: responses, isLoading: responsesLoading } = useResponseList(surveyId);
@@ -55,6 +59,57 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  const exportToCSV = useCallback(() => {
+    if (!responses || responses.length === 0 || !survey) {
+      toast({ title: "Sem dados", description: "Não há respostas para exportar", variant: "destructive" });
+      return;
+    }
+
+    const headers = [
+      "ID",
+      "Data/Hora",
+      "Entrevistador",
+      "Status",
+      "Latitude",
+      "Longitude",
+      "Precisão GPS (m)",
+      "Duração (s)",
+      "Motivo Suspeita",
+      "URL Áudio"
+    ];
+
+    const rows = responses.map(r => [
+      r.id,
+      r.createdAt ? new Date(r.createdAt).toLocaleString('pt-BR') : '',
+      r.interviewerId || '',
+      r.status === 'valid' ? 'Válida' : r.status === 'suspicious' ? 'Suspeita' : r.status,
+      r.latitude || '',
+      r.longitude || '',
+      r.accuracy || '',
+      r.duration || '',
+      r.flagReason || '',
+      r.audioUrl || ''
+    ]);
+
+    const csvContent = [
+      headers.join(';'),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+    ].join('\n');
+
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${survey.title.replace(/[^a-zA-Z0-9]/g, '_')}_respostas_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({ title: "Exportado!", description: `${responses.length} respostas exportadas para CSV` });
+  }, [responses, survey, toast]);
 
   // Memoized calculations
   const analytics = useMemo(() => {
@@ -213,9 +268,19 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
             <h1 className="text-2xl sm:text-3xl font-display font-bold text-primary">Análise: {survey.title}</h1>
             <p className="text-muted-foreground">Insights em tempo real e trilha de auditoria</p>
           </div>
-          <Badge variant={survey.status === 'active' ? 'default' : 'secondary'} className="w-fit">
-            {survey.status === 'active' ? 'Pesquisa Ativa' : 'Pesquisa Pausada'}
-          </Badge>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button 
+              variant="outline" 
+              onClick={exportToCSV}
+              data-testid="button-export-csv"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Exportar CSV
+            </Button>
+            <Badge variant={survey.status === 'active' ? 'default' : 'secondary'} className="w-fit">
+              {survey.status === 'active' ? 'Pesquisa Ativa' : 'Pesquisa Pausada'}
+            </Badge>
+          </div>
         </div>
 
         {/* KPI Cards */}

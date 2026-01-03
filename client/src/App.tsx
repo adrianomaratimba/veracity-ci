@@ -54,6 +54,8 @@ import SurveyAnalytics from "@/pages/dashboard/survey-analytics";
 import TeamPage from "@/pages/dashboard/team";
 import SettingsPage from "@/pages/dashboard/settings";
 import InterviewSession from "@/pages/collection/interview-session";
+import VerifyEmailPage from "@/pages/verify-email";
+import ResetPasswordPage from "@/pages/reset-password";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
 
 function AuthenticatedRoutes() {
@@ -112,6 +114,8 @@ function Router() {
       <Switch>
         <Route path="/" component={Landing} />
         <Route path="/auth" component={AuthPage} />
+        <Route path="/verify-email" component={VerifyEmailPage} />
+        <Route path="/reset-password" component={ResetPasswordPage} />
         <Route component={AuthPage} /> 
       </Switch>
     );
