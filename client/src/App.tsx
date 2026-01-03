@@ -71,9 +71,8 @@ function AuthenticatedRoutes() {
 function Router() {
   const { user, isLoading } = useAuth();
 
-  if (isLoading) return <LoadingScreen />;
-
-  if (!user) {
+  // For anonymous users, show public routes without loading screen
+  if (!isLoading && !user) {
     return (
       <Switch>
         <Route path="/" component={Landing} />
@@ -82,6 +81,8 @@ function Router() {
       </Switch>
     );
   }
+
+  if (isLoading) return <LoadingScreen />;
 
   return <AuthenticatedRoutes />;
 }
