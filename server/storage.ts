@@ -476,6 +476,7 @@ export class DatabaseStorage implements IStorage {
     survey: Survey & { questions: Question[] };
     totalResponses: number;
     validResponses: number;
+    collectionPeriod?: { start: string; end: string };
     questionResults: Array<{
       questionId: number;
       questionText: string;
@@ -488,10 +489,24 @@ export class DatabaseStorage implements IStorage {
 
     const allResponses = await db.select()
       .from(responses)
-      .where(eq(responses.surveyId, surveyId));
+      .where(eq(responses.surveyId, surveyId))
+      .orderBy(responses.createdAt);
     
     const validResponses = allResponses.filter(r => r.status === 'valid');
     const validResponseIds = validResponses.map(r => r.id);
+    
+    // Calculate collection period from actual responses
+    let collectionPeriod: { start: string; end: string } | undefined;
+    if (allResponses.length > 0) {
+      const dates = allResponses.map(r => r.createdAt).filter(Boolean) as Date[];
+      if (dates.length > 0) {
+        const sorted = dates.sort((a, b) => a.getTime() - b.getTime());
+        collectionPeriod = {
+          start: sorted[0].toISOString(),
+          end: sorted[sorted.length - 1].toISOString()
+        };
+      }
+    }
 
     const questionResults: Array<{
       questionId: number;
@@ -546,6 +561,7 @@ export class DatabaseStorage implements IStorage {
       survey,
       totalResponses: allResponses.length,
       validResponses: validResponses.length,
+      collectionPeriod,
       questionResults
     };
   }
