@@ -1,0 +1,242 @@
+Um sistema de gerenciamento de pesquisas eleitorais com:
+
+Painel Administrativo (Admin)
+
+Área do Entrevistador (Campo)
+
+Dashboard de Análises (Clientes/Contratantes)
+
+Banco de dados seguro e auditável
+
+Gráficos, filtros e cruzamentos estatísticos
+
+Controle de usuários, permissões e histórico
+
+Conformidade com LGPD
+
+👉 Pense como um IBOPE/Datafolha digital, porém customizável.
+
+2️⃣ TIPOS DE USUÁRIOS (BASE DO SISTEMA)
+🔑 1. Administrador (Super Admin)
+
+Cria pesquisas
+
+Cadastra entrevistadores
+
+Define questionários
+
+Controla cotas
+
+Libera visualizações
+
+Gera relatórios
+
+Audita respostas
+
+🧑‍💼 2. Coordenador de Pesquisa (opcional)
+
+Acompanha progresso de campo
+
+Valida entrevistas
+
+Monitora entrevistadores
+
+📱 3. Entrevistador
+
+Acessa apenas suas pesquisas
+
+Coleta respostas (celular/tablet)
+
+Trabalha offline (sincroniza depois)
+
+Envia localização (opcional)
+
+Não vê resultados
+
+📊 4. Cliente / Contratante
+
+Acesso somente leitura
+
+Visualiza gráficos e análises
+
+Não vê dados sensíveis
+
+Exporta relatórios (PDF/Excel)
+
+3️⃣ MÓDULOS ESSENCIAIS DO SISTEMA
+🗂️ Módulo 1 – Gestão de Pesquisas
+
+Nome da pesquisa
+
+Tipo (eleitoral, opinião, avaliação)
+
+Localidade (cidade, estado, zona)
+
+Período de coleta
+
+Margem de erro
+
+Universo
+
+Status (rascunho, em campo, finalizada)
+
+📝 Módulo 2 – Questionários Dinâmicos
+
+Perguntas de:
+
+Múltipla escolha
+
+Única escolha
+
+Escala (1–5 / ótimo–péssimo)
+
+Texto
+
+Lógica condicional
+(Ex: “Se votar em X, mostrar pergunta Y”)
+
+👥 Módulo 3 – Entrevistadores
+
+Cadastro completo
+
+Login individual
+
+Limite de entrevistas
+
+Histórico de coletas
+
+Controle de produtividade
+
+Status (ativo, bloqueado)
+
+📍 Módulo 4 – Coleta de Dados (Campo)
+
+Interface simples (mobile first)
+
+Funciona offline
+
+Registro de:
+
+Data/hora
+
+GPS (opcional)
+
+Dispositivo
+
+Prevenção de fraude:
+
+Entrevistas muito rápidas
+
+Respostas repetidas
+
+Localização suspeita
+
+📊 Módulo 5 – Dashboard Analítico (O CORAÇÃO DO SISTEMA)
+Gráficos:
+
+Pizza
+
+Barras
+
+Linhas
+
+Evolução temporal
+
+Comparação entre candidatos
+
+Filtros:
+
+Bairro
+
+Zona eleitoral
+
+Sexo
+
+Idade
+
+Escolaridade
+
+Renda
+
+Religião (se permitido)
+
+Cruzamentos:
+
+Voto × Idade
+
+Voto × Bairro
+
+Avaliação × Escolaridade
+
+📈 Módulo 6 – Relatórios Profissionais
+
+PDF automático com:
+
+Gráficos
+
+Metodologia
+
+Margem de erro
+
+Exportação Excel / CSV
+
+Relatório público ou restrito
+
+4️⃣ ARQUITETURA TÉCNICA (ROBUSTA)
+🔧 Stack recomendada (MODERNA E ESCALÁVEL)
+Backend
+
+Node.js + NestJS ou Laravel
+
+API REST ou GraphQL
+
+Autenticação JWT
+
+Controle de permissões (RBAC)
+
+Banco de Dados
+
+PostgreSQL
+
+Tabelas normalizadas
+
+Logs e auditoria
+
+Backup automático
+
+Frontend (Dashboard)
+
+React + Next.js
+
+Gráficos com Recharts / Chart.js
+
+Interface profissional
+
+App do Entrevistador
+
+PWA (Progressive Web App)
+👉 Não precisa loja (Play Store)
+
+Funciona offline
+
+Sincronização automática
+
+Hospedagem
+
+VPS (Hostinger, DigitalOcean ou AWS)
+
+Nginx
+
+SSL obrigatório
+
+5️⃣ SEGURANÇA E LGPD (OBRIGATÓRIO)
+
+Criptografia de dados sensíveis
+
+Termo de consentimento
+
+Anonimização do entrevistado
+
+Logs de acesso
+
+Controle de exportação de dados
