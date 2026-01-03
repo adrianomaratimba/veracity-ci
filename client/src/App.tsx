@@ -54,6 +54,7 @@ import SurveyAnalytics from "@/pages/dashboard/survey-analytics";
 import TeamPage from "@/pages/dashboard/team";
 import SettingsPage from "@/pages/dashboard/settings";
 import InterviewSession from "@/pages/collection/interview-session";
+import { OfflineIndicator } from "@/components/pwa/offline-indicator";
 
 function AuthenticatedRoutes() {
   const { user, isLoading } = useAuth();
@@ -128,6 +129,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <Router />
+          <OfflineIndicator />
         </TooltipProvider>
       </QueryClientProvider>
     </ErrorBoundary>

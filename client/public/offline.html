@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VotoAudit - Offline</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      padding: 20px;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .logo {
+      width: 80px;
+      height: 80px;
+      background: #1e40af;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      font-weight: bold;
+      font-size: 28px;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+    p {
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+    .icon {
+      font-size: 64px;
+      margin-bottom: 24px;
+    }
+    .btn {
+      display: inline-block;
+      background: #1e40af;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #1d4ed8;
+    }
+    .status {
+      margin-top: 24px;
+      padding: 12px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">VA</div>
+    <div class="icon">&#128268;</div>
+    <h1>Sem Conexao</h1>
+    <p>Voce esta offline. Os dados coletados serao sincronizados automaticamente quando a conexao for restaurada.</p>
+    <button class="btn" onclick="window.location.reload()">Tentar Novamente</button>
+    <div class="status" id="status">
+      Verificando conexao...
+    </div>
+  </div>
+  <script>
+    function checkConnection() {
+      const status = document.getElementById('status');
+      if (navigator.onLine) {
+        status.textContent = 'Conexao detectada! Recarregando...';
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        status.textContent = 'Ainda offline. Dados salvos localmente.';
+      }
+    }
+    
+    window.addEventListener('online', checkConnection);
+    checkConnection();
+  </script>
+</body>
+</html>
