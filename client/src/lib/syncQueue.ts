@@ -161,17 +161,16 @@ export async function syncAllPending(): Promise<{ synced: number; failed: number
   }
 }
 
+let autoSyncInitialized = false;
+
 export function setupAutoSync() {
+  if (autoSyncInitialized) return;
+  autoSyncInitialized = true;
+  
   window.addEventListener('online', () => {
     console.log('Conexão restaurada. Iniciando sincronização...');
     syncAllPending();
   });
-  
-  if ('serviceWorker' in navigator && 'sync' in ServiceWorkerRegistration.prototype) {
-    navigator.serviceWorker.ready.then(registration => {
-      (registration as any).sync?.register('sync-interviews');
-    });
-  }
   
   setInterval(() => {
     if (navigator.onLine) {
