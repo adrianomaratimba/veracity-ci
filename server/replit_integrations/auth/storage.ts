@@ -8,6 +8,7 @@ import { eq, and, ilike } from "drizzle-orm";
 export interface IAuthStorage {
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  acceptPendingInvitations(userId: string, email: string): Promise<void>;
 }
 
 class AuthStorage implements IAuthStorage {
@@ -30,13 +31,13 @@ class AuthStorage implements IAuthStorage {
       .returning();
     
     if (user.email) {
-      await this.acceptPendingInvitationsForUser(user.id, user.email);
+      await this.acceptPendingInvitations(user.id, user.email);
     }
     
     return user;
   }
 
-  private async acceptPendingInvitationsForUser(userId: string, email: string): Promise<void> {
+  async acceptPendingInvitations(userId: string, email: string): Promise<void> {
     try {
       const invitations = await db.select()
         .from(pendingInvitations)

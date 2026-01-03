@@ -21,7 +21,7 @@ export default function Landing() {
                  <Button data-testid="button-dashboard">Ir para o Painel</Button>
                </Link>
             ) : (
-               <Link href="/api/login">
+               <Link href="/auth">
                  <Button data-testid="button-login">Entrar</Button>
                </Link>
             )}
@@ -44,7 +44,7 @@ export default function Landing() {
               Realize pesquisas eleitorais com confiança. Capture GPS, evidências de áudio e impressões digitais do dispositivo para cada entrevista.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/api/login">
+              <Link href="/auth">
                 <Button size="lg" className="w-full sm:w-auto px-8 h-12 text-lg" data-testid="button-start-trial">
                   Iniciar Teste Grátis
                 </Button>
@@ -142,7 +142,7 @@ export default function Landing() {
                 <p className="text-muted-foreground text-sm mb-4">
                   Entre com sua conta para criar sua organização e começar a coletar dados com segurança.
                 </p>
-                <Link href="/api/login">
+                <Link href="/auth">
                   <Button className="gap-2" data-testid="button-get-started">
                     Começar Agora <ArrowRight className="w-4 h-4" />
                   </Button>
@@ -163,7 +163,7 @@ export default function Landing() {
 
           <footer className="mt-20 pt-8 border-t text-center text-sm text-muted-foreground">
             <p>VotoAudit - Plataforma de Pesquisas Eleitorais com Auditoria</p>
-            <p className="mt-2">O login é realizado de forma segura através da plataforma Replit.</p>
+            <p className="mt-2">Cadastre-se gratuitamente e comece a realizar pesquisas com segurança.</p>
           </footer>
         </div>
       </main>

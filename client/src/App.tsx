@@ -10,6 +10,7 @@ import { LoadingScreen } from "@/components/ui/loading-screen";
 
 // Pages
 import Landing from "@/pages/landing";
+import AuthPage from "@/pages/auth";
 import NotFound from "@/pages/not-found";
 import Onboarding from "@/pages/onboarding";
 import DashboardOverview from "@/pages/dashboard/overview";
@@ -73,8 +74,9 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={Landing} />
+        <Route path="/auth" component={AuthPage} />
         <Route path="/api/login" component={() => { window.location.href = "/api/login"; return null; }} />
-        <Route component={() => { window.location.href = "/api/login"; return null; }} /> 
+        <Route component={AuthPage} /> 
       </Switch>
     );
   }
