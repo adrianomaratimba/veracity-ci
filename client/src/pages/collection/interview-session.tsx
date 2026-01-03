@@ -490,8 +490,8 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 </>
               ) : (
                 <>
-                  {isOnline ? <Save className="w-5 h-5 mr-2" /> : <WifiOff className="w-5 h-5 mr-2" />}
-                  {isOnline ? "Enviar Entrevista" : "Salvar para Depois"}
+                  <Save className="w-5 h-5 mr-2" />
+                  Enviar Entrevista
                 </>
               )}
             </Button>
