@@ -65,8 +65,6 @@ import ResetPasswordPage from "@/pages/reset-password";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
 import { setupAutoSync } from "@/lib/syncQueue";
 
-setupAutoSync();
-
 function AuthenticatedRoutes() {
   const { user, isLoading } = useAuth();
   const { data: orgs, isLoading: orgsLoading } = useOrganizations();
@@ -140,6 +138,10 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    setupAutoSync();
+  }, []);
+
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
