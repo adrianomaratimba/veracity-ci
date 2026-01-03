@@ -6,7 +6,8 @@ import {
   surveys, Survey, InsertSurvey,
   questions, Question, InsertQuestion,
   responses, Response, InsertResponse,
-  answers, Answer, InsertAnswer
+  answers, Answer, InsertAnswer,
+  surveyAssignments, SurveyAssignment, InsertSurveyAssignment
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -65,6 +66,13 @@ export interface IStorage {
     activeSurveys: number;
     draftSurveys: number;
   }>;
+
+  // Survey Assignments
+  getSurveyAssignments(surveyId: number): Promise<(SurveyAssignment & { interviewer: User })[]>;
+  getAssignedSurveys(interviewerId: string, orgId: number): Promise<Survey[]>;
+  assignInterviewer(data: InsertSurveyAssignment): Promise<SurveyAssignment>;
+  unassignInterviewer(surveyId: number, interviewerId: string): Promise<void>;
+  isInterviewerAssigned(surveyId: number, interviewerId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -390,6 +398,56 @@ export class DatabaseStorage implements IStorage {
       activeSurveys,
       draftSurveys,
     };
+  }
+
+  // --- SURVEY ASSIGNMENTS ---
+  async getSurveyAssignments(surveyId: number): Promise<(SurveyAssignment & { interviewer: User })[]> {
+    const result = await db.select({
+      assignment: surveyAssignments,
+      interviewer: users
+    })
+      .from(surveyAssignments)
+      .innerJoin(users, eq(surveyAssignments.interviewerId, users.id))
+      .where(eq(surveyAssignments.surveyId, surveyId));
+    
+    return result.map(r => ({ ...r.assignment, interviewer: r.interviewer }));
+  }
+
+  async getAssignedSurveys(interviewerId: string, orgId: number): Promise<Survey[]> {
+    const result = await db.select({
+      survey: surveys
+    })
+      .from(surveyAssignments)
+      .innerJoin(surveys, eq(surveyAssignments.surveyId, surveys.id))
+      .where(and(
+        eq(surveyAssignments.interviewerId, interviewerId),
+        eq(surveys.organizationId, orgId)
+      ));
+    
+    return result.map(r => r.survey);
+  }
+
+  async assignInterviewer(data: InsertSurveyAssignment): Promise<SurveyAssignment> {
+    const [assignment] = await db.insert(surveyAssignments).values(data).returning();
+    return assignment;
+  }
+
+  async unassignInterviewer(surveyId: number, interviewerId: string): Promise<void> {
+    await db.delete(surveyAssignments).where(and(
+      eq(surveyAssignments.surveyId, surveyId),
+      eq(surveyAssignments.interviewerId, interviewerId)
+    ));
+  }
+
+  async isInterviewerAssigned(surveyId: number, interviewerId: string): Promise<boolean> {
+    const [assignment] = await db.select()
+      .from(surveyAssignments)
+      .where(and(
+        eq(surveyAssignments.surveyId, surveyId),
+        eq(surveyAssignments.interviewerId, interviewerId)
+      ))
+      .limit(1);
+    return !!assignment;
   }
 }
 

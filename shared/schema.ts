@@ -128,6 +128,14 @@ export const answers = pgTable("answers", {
   value: jsonb("value").notNull(),
 });
 
+export const surveyAssignments = pgTable("survey_assignments", {
+  id: serial("id").primaryKey(),
+  surveyId: integer("survey_id").references(() => surveys.id).notNull(),
+  interviewerId: varchar("interviewer_id").references(() => users.id).notNull(),
+  assignedBy: varchar("assigned_by").references(() => users.id).notNull(),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+});
+
 // === RELATIONS ===
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -173,6 +181,22 @@ export const surveysRelations = relations(surveys, ({ one, many }) => ({
   }),
   questions: many(questions),
   responses: many(responses),
+  assignments: many(surveyAssignments),
+}));
+
+export const surveyAssignmentsRelations = relations(surveyAssignments, ({ one }) => ({
+  survey: one(surveys, {
+    fields: [surveyAssignments.surveyId],
+    references: [surveys.id],
+  }),
+  interviewer: one(users, {
+    fields: [surveyAssignments.interviewerId],
+    references: [users.id],
+  }),
+  assigner: one(users, {
+    fields: [surveyAssignments.assignedBy],
+    references: [users.id],
+  }),
 }));
 
 export const questionsRelations = relations(questions, ({ one }) => ({
@@ -215,6 +239,7 @@ export const insertResponseSchema = createInsertSchema(responses).omit({ id: tru
 export const insertAnswerSchema = createInsertSchema(answers).omit({ id: true });
 export const insertMemberSchema = createInsertSchema(organizationMembers).omit({ id: true, joinedAt: true });
 export const insertPendingInvitationSchema = createInsertSchema(pendingInvitations).omit({ id: true, invitedAt: true, respondedAt: true, status: true });
+export const insertSurveyAssignmentSchema = createInsertSchema(surveyAssignments).omit({ id: true, assignedAt: true });
 
 // === TYPES ===
 
@@ -241,6 +266,9 @@ export type InsertResponse = z.infer<typeof insertResponseSchema>;
 
 export type Answer = typeof answers.$inferSelect;
 export type InsertAnswer = z.infer<typeof insertAnswerSchema>;
+
+export type SurveyAssignment = typeof surveyAssignments.$inferSelect;
+export type InsertSurveyAssignment = z.infer<typeof insertSurveyAssignmentSchema>;
 
 export type SurveyWithQuestions = Survey & { questions: Question[] };
 export type FullResponse = Response & { answers: Answer[], interviewer: typeof users.$inferSelect };

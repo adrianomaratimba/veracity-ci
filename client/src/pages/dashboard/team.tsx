@@ -40,6 +40,7 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{ id: number; name: string } | null>(null);
+  const [setupLinkDialog, setSetupLinkDialog] = useState<{ open: boolean; email: string; link: string | null }>({ open: false, email: "", link: null });
 
   if (orgLoading || membersLoading || currentMemberLoading) return <LoadingScreen message="Carregando equipe..." />;
   if (!org) return <div>Organização não encontrada</div>;
@@ -70,17 +71,32 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
       return;
     }
     try {
-      await inviteMember.mutateAsync({
+      const result = await inviteMember.mutateAsync({
         orgId,
         email: inviteForm.email,
         role: inviteForm.role
       });
-      toast({ title: "Membro adicionado", description: `${inviteForm.email} foi adicionado à equipe` });
+      
       setIsInviteOpen(false);
+      const email = inviteForm.email;
       setInviteForm({ email: "", role: "interviewer" });
+      
+      // Show setup link dialog if user needs to set password
+      if (result.setupLink) {
+        setSetupLinkDialog({ open: true, email, link: result.setupLink });
+      } else {
+        toast({ title: "Membro adicionado", description: `${email} foi adicionado à equipe` });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao adicionar membro";
       toast({ title: "Erro", description: message, variant: "destructive" });
+    }
+  };
+
+  const copySetupLink = () => {
+    if (setupLinkDialog.link) {
+      navigator.clipboard.writeText(setupLinkDialog.link);
+      toast({ title: "Link copiado", description: "O link foi copiado para a área de transferência" });
     }
   };
 
@@ -364,6 +380,31 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={setupLinkDialog.open} onOpenChange={(open) => setSetupLinkDialog({ ...setupLinkDialog, open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Membro Adicionado</DialogTitle>
+            <DialogDescription>
+              {setupLinkDialog.email} foi adicionado à equipe. Envie o link abaixo para que ele defina sua senha e acesse o sistema.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-3 bg-muted rounded-lg">
+              <p className="text-xs text-muted-foreground mb-2">Link de configuração de senha (válido por 24 horas):</p>
+              <p className="text-sm font-mono break-all select-all">{setupLinkDialog.link}</p>
+            </div>
+          </div>
+          <DialogFooter className="flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setSetupLinkDialog({ open: false, email: "", link: null })}>
+              Fechar
+            </Button>
+            <Button onClick={copySetupLink} data-testid="button-copy-setup-link">
+              Copiar Link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </DashboardLayout>
   );

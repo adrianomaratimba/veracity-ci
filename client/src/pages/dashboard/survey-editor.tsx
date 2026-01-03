@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle } from "lucide-react";
+import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,8 +15,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { buildUrl, api } from "@shared/routes";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { apiRequest } from "@/lib/queryClient";
 
 interface QuestionForm {
   id?: number;
@@ -42,6 +44,49 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Interviewer assignments - only fetch if not new survey
+  const { data: assignments = [], isLoading: assignmentsLoading } = useQuery<any[]>({
+    queryKey: [`/api/surveys/${surveyId}/assignments`],
+    enabled: !isNewSurvey && surveyId > 0,
+  });
+
+  const { data: availableInterviewers = [], isLoading: interviewersLoading } = useQuery<any[]>({
+    queryKey: [`/api/organizations/${orgId}/interviewers`],
+    enabled: !isNewSurvey && surveyId > 0,
+  });
+
+  const assignInterviewer = useMutation({
+    mutationFn: async (interviewerId: string) => {
+      const res = await apiRequest('POST', `/api/surveys/${surveyId}/assignments`, { interviewerId });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Erro ao designar entrevistador');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/assignments`] });
+      toast({ title: "Entrevistador designado" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const unassignInterviewer = useMutation({
+    mutationFn: async (interviewerId: string) => {
+      const res = await apiRequest('DELETE', `/api/surveys/${surveyId}/assignments/${interviewerId}`);
+      if (!res.ok) throw new Error('Erro ao remover designação');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/assignments`] });
+      toast({ title: "Designação removida" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao remover designação", variant: "destructive" });
+    }
+  });
 
   const [surveyForm, setSurveyForm] = useState({
     title: "",
@@ -251,9 +296,12 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         </div>
 
         <Tabs defaultValue={isNewSurvey ? "settings" : "questions"} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsList className="grid w-full grid-cols-3 max-w-lg">
             <TabsTrigger value="questions" className="gap-2" disabled={isNewSurvey} data-testid="tab-questions">
               <FileText className="w-4 h-4" /> Perguntas
+            </TabsTrigger>
+            <TabsTrigger value="interviewers" className="gap-2" disabled={isNewSurvey} data-testid="tab-interviewers">
+              <Users className="w-4 h-4" /> Entrevistadores
             </TabsTrigger>
             <TabsTrigger value="settings" className="gap-2" data-testid="tab-settings">
               <Settings2 className="w-4 h-4" /> Configuracoes
@@ -375,6 +423,113 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                 </Button>
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="interviewers" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Entrevistadores Designados</CardTitle>
+                <CardDescription>Escolha quais entrevistadores podem coletar dados nesta pesquisa</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Assigned interviewers */}
+                <div className="space-y-3">
+                  <Label>Entrevistadores atribuídos a esta pesquisa</Label>
+                  {assignmentsLoading ? (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">Carregando...</p>
+                  ) : assignments.length > 0 ? (
+                    <div className="space-y-2">
+                      {assignments.map((a: any) => (
+                        <div key={a.interviewerId} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback>
+                                {(a.interviewer?.firstName?.[0] || a.interviewer?.email?.[0] || '?').toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium text-sm">
+                                {a.interviewer?.firstName && a.interviewer?.lastName
+                                  ? `${a.interviewer.firstName} ${a.interviewer.lastName}`
+                                  : a.interviewer?.email || 'Entrevistador'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{a.interviewer?.email}</p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => unassignInterviewer.mutate(a.interviewerId)}
+                            disabled={unassignInterviewer.isPending}
+                            data-testid={`button-unassign-${a.interviewerId}`}
+                          >
+                            <UserMinus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                      Nenhum entrevistador designado. Adicione entrevistadores abaixo.
+                    </p>
+                  )}
+                </div>
+
+                {/* Available interviewers to assign */}
+                <div className="space-y-3 pt-4 border-t">
+                  <Label>Adicionar entrevistador</Label>
+                  {interviewersLoading ? (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">Carregando entrevistadores...</p>
+                  ) : (() => {
+                    const assignedIds = assignments.map((a: any) => a.interviewerId);
+                    const unassigned = availableInterviewers.filter((i: any) => !assignedIds.includes(i.userId));
+                    
+                    if (unassigned.length === 0) {
+                      return (
+                        <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                          {availableInterviewers.length === 0
+                            ? "Não há entrevistadores cadastrados na organização. Adicione membros com a função 'Entrevistador' na página de Equipe."
+                            : "Todos os entrevistadores já estão designados para esta pesquisa."}
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        {unassigned.map((i: any) => (
+                          <div key={i.userId} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>
+                                  {(i.user?.firstName?.[0] || i.user?.email?.[0] || '?').toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium text-sm">
+                                  {i.user?.firstName && i.user?.lastName
+                                    ? `${i.user.firstName} ${i.user.lastName}`
+                                    : i.user?.email || 'Entrevistador'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{i.user?.email}</p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => assignInterviewer.mutate(i.userId)}
+                              disabled={assignInterviewer.isPending}
+                              data-testid={`button-assign-${i.userId}`}
+                            >
+                              <UserPlus className="w-4 h-4 mr-2" /> Adicionar
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="settings" className="mt-6">

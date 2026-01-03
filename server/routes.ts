@@ -129,9 +129,11 @@ export async function registerRoutes(
       }
 
       let user = await storage.getUserByEmail(input.email);
+      let isNewUser = false;
       
       if (!user) {
         user = await storage.createUserByEmail(input.email.toLowerCase());
+        isNewUser = true;
       }
 
       const existingMember = await storage.getMemberByUserId(user.id, orgId);
@@ -145,7 +147,24 @@ export async function registerRoutes(
         role: input.role
       });
 
-      res.status(201).json(member);
+      // Generate password setup token for pending users
+      let setupLink = null;
+      if (user.authProvider === 'pending') {
+        const { authService } = await import("./auth-service");
+        const token = await authService.requestPasswordReset(input.email.toLowerCase());
+        if (token) {
+          const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+            ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+            : `https://${process.env.REPLIT_DEPLOYMENT_DOMAIN || 'localhost:5000'}`;
+          setupLink = `${baseUrl}/reset-password?token=${token}`;
+        }
+      }
+
+      res.status(201).json({ 
+        ...member, 
+        setupLink,
+        needsSetup: user.authProvider === 'pending'
+      });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json(err.errors);
       console.error("Erro ao adicionar membro:", err);
@@ -412,6 +431,106 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Erro ao deletar pergunta" });
+    }
+  });
+
+  // Survey Assignments - Designar entrevistadores para pesquisas
+  app.get("/api/surveys/:surveyId/assignments", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const assignments = await storage.getSurveyAssignments(surveyId);
+      res.json(assignments);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao listar designações" });
+    }
+  });
+
+  app.post("/api/surveys/:surveyId/assignments", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para designar entrevistadores" });
+      }
+      
+      const { interviewerId } = req.body;
+      if (!interviewerId) {
+        return res.status(400).json({ message: "ID do entrevistador é obrigatório" });
+      }
+      
+      // Check if interviewer is a member of the organization
+      const interviewerMember = await storage.getMemberByUserId(interviewerId, survey.organizationId);
+      if (!interviewerMember) {
+        return res.status(400).json({ message: "O usuário não é membro desta organização" });
+      }
+      
+      // Check if already assigned
+      const isAssigned = await storage.isInterviewerAssigned(surveyId, interviewerId);
+      if (isAssigned) {
+        return res.status(400).json({ message: "Entrevistador já está designado para esta pesquisa" });
+      }
+      
+      const assignment = await storage.assignInterviewer({
+        surveyId,
+        interviewerId,
+        assignedBy: userId
+      });
+      
+      res.status(201).json(assignment);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao designar entrevistador" });
+    }
+  });
+
+  app.delete("/api/surveys/:surveyId/assignments/:interviewerId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      const interviewerId = req.params.interviewerId;
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para remover designações" });
+      }
+      
+      await storage.unassignInterviewer(surveyId, interviewerId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao remover designação" });
+    }
+  });
+
+  // Get interviewers available for assignment (members with interviewer role)
+  app.get("/api/organizations/:id/interviewers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const orgId = Number(req.params.id);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const members = await storage.getOrganizationMembers(orgId);
+      // Filter to only interviewers
+      const interviewers = members.filter(m => m.role === 'interviewer');
+      res.json(interviewers);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao listar entrevistadores" });
     }
   });
 
