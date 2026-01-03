@@ -130,8 +130,10 @@ export default function AuthPage() {
                         <FormLabel>Email</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                             <Input 
+                              type="email"
+                              autoComplete="email"
                               placeholder="seu@email.com" 
                               className="pl-10" 
                               data-testid="input-login-email"
@@ -152,9 +154,10 @@ export default function AuthPage() {
                         <FormLabel>Senha</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                             <Input 
-                              type="password" 
+                              type="password"
+                              autoComplete="current-password"
                               placeholder="Sua senha" 
                               className="pl-10" 
                               data-testid="input-login-password"
@@ -200,8 +203,9 @@ export default function AuthPage() {
                           <FormLabel>Nome</FormLabel>
                           <FormControl>
                             <div className="relative">
-                              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                               <Input 
+                                autoComplete="given-name"
                                 placeholder="Nome" 
                                 className="pl-10" 
                                 data-testid="input-register-firstname"
@@ -222,6 +226,7 @@ export default function AuthPage() {
                           <FormLabel>Sobrenome</FormLabel>
                           <FormControl>
                             <Input 
+                              autoComplete="family-name"
                               placeholder="Sobrenome" 
                               data-testid="input-register-lastname"
                               {...field} 
@@ -241,8 +246,10 @@ export default function AuthPage() {
                         <FormLabel>Email</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                             <Input 
+                              type="email"
+                              autoComplete="email"
                               placeholder="seu@email.com" 
                               className="pl-10" 
                               data-testid="input-register-email"
@@ -263,9 +270,10 @@ export default function AuthPage() {
                         <FormLabel>Senha</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                             <Input 
-                              type="password" 
+                              type="password"
+                              autoComplete="new-password"
                               placeholder="Mínimo 8 caracteres" 
                               className="pl-10" 
                               data-testid="input-register-password"
@@ -286,9 +294,10 @@ export default function AuthPage() {
                         <FormLabel>Confirmar Senha</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                             <Input 
-                              type="password" 
+                              type="password"
+                              autoComplete="new-password"
                               placeholder="Repita a senha" 
                               className="pl-10" 
                               data-testid="input-register-confirm-password"
