@@ -18,6 +18,15 @@ async function fetchUser(): Promise<User | null> {
 }
 
 async function logout(): Promise<void> {
+  // Try native logout first, then redirect to Replit logout
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (e) {
+    // Ignore errors
+  }
   window.location.href = "/api/logout";
 }
 
