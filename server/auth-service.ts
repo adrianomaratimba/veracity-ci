@@ -54,8 +54,8 @@ export class AuthService {
       throw new Error("Esta conta usa login via Replit. Por favor, use o botão 'Entrar com Replit'.");
     }
 
-    if (!user.passwordHash) {
-      throw new Error("Conta não possui senha configurada");
+    if (!user.passwordHash || user.authProvider === "pending") {
+      throw new Error("Sua conta ainda não tem senha configurada. Clique em 'Esqueci minha senha' para criar uma.");
     }
 
     const isValid = await bcrypt.compare(data.password, user.passwordHash);
@@ -125,6 +125,7 @@ export class AuthService {
       .where(eq(users.email, email.toLowerCase()))
       .limit(1);
 
+    // Allow password reset for 'credentials' and 'pending' users, but not 'replit' users
     if (!user || user.authProvider === "replit") {
       return null;
     }
@@ -165,7 +166,11 @@ export class AuthService {
 
     const [user] = await db
       .update(users)
-      .set({ passwordHash, updatedAt: new Date() })
+      .set({ 
+        passwordHash, 
+        authProvider: 'credentials', // Ensure auth provider is set to credentials
+        updatedAt: new Date() 
+      })
       .where(eq(users.id, tokenRecord.userId))
       .returning();
 

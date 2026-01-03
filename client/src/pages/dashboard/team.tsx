@@ -59,11 +59,11 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
         email: inviteForm.email,
         role: inviteForm.role
       });
-      toast({ title: "Convite enviado", description: `Convite enviado para ${inviteForm.email}` });
+      toast({ title: "Membro adicionado", description: `${inviteForm.email} foi adicionado à equipe` });
       setIsInviteOpen(false);
       setInviteForm({ email: "", role: "interviewer" });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao enviar convite";
+      const message = error instanceof Error ? error.message : "Falha ao adicionar membro";
       toast({ title: "Erro", description: message, variant: "destructive" });
     }
   };
@@ -134,13 +134,13 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
           <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2" data-testid="button-invite-member">
-                <UserPlus className="w-4 h-4" /> Convidar Membro
+                <UserPlus className="w-4 h-4" /> Adicionar Membro
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Convidar Novo Membro</DialogTitle>
-                <DialogDescription>Envie um convite para adicionar um novo membro à equipe</DialogDescription>
+                <DialogTitle>Adicionar Novo Membro</DialogTitle>
+                <DialogDescription>Adicione um novo membro diretamente à equipe. Se o email não estiver cadastrado, uma conta será criada automaticamente.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
@@ -173,7 +173,7 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsInviteOpen(false)}>Cancelar</Button>
                 <Button onClick={handleInvite} disabled={inviteMember.isPending} data-testid="button-send-invite">
-                  {inviteMember.isPending ? "Enviando..." : "Enviar Convite"}
+                  {inviteMember.isPending ? "Adicionando..." : "Adicionar"}
                 </Button>
               </DialogFooter>
             </DialogContent>

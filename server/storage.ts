@@ -22,6 +22,7 @@ export interface IStorage {
   
   // Users
   getUserByEmail(email: string): Promise<User | undefined>;
+  createUserByEmail(email: string, firstName?: string, lastName?: string): Promise<User>;
 
   // Members
   getOrganizationMembers(orgId: number): Promise<(Member & { user: User })[]>;
@@ -109,7 +110,19 @@ export class DatabaseStorage implements IStorage {
 
   // --- USERS ---
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+    const [user] = await db.select().from(users).where(ilike(users.email, email));
+    return user;
+  }
+
+  async createUserByEmail(email: string, firstName?: string, lastName?: string): Promise<User> {
+    // Create user with pending status - they can login via password reset or Replit Auth
+    const [user] = await db.insert(users).values({
+      email: email.toLowerCase(),
+      firstName: firstName || null,
+      lastName: lastName || null,
+      authProvider: 'pending', // User needs to complete setup via password reset or Replit Auth
+      emailVerified: false,
+    }).returning();
     return user;
   }
 

@@ -18,6 +18,38 @@ class AuthStorage implements IAuthStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    // Check if there's a pending user with the same email (created by admin)
+    if (userData.email) {
+      const [existingUserByEmail] = await db.select()
+        .from(users)
+        .where(ilike(users.email, userData.email));
+      
+      if (existingUserByEmail && existingUserByEmail.authProvider === 'pending') {
+        // Update the pending user with Replit Auth data - keep original ID to preserve FK relationships
+        const [updatedUser] = await db.update(users)
+          .set({
+            firstName: userData.firstName || existingUserByEmail.firstName,
+            lastName: userData.lastName || existingUserByEmail.lastName,
+            profileImageUrl: userData.profileImageUrl,
+            authProvider: 'replit',
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, existingUserByEmail.id))
+          .returning();
+        
+        await this.acceptPendingInvitations(updatedUser.id, updatedUser.email!);
+        return updatedUser;
+      }
+      
+      // Check if user already exists with this email but different auth provider
+      if (existingUserByEmail && existingUserByEmail.id !== userData.id) {
+        // User already exists with a different ID - return existing user
+        // This handles the case where user was created with credentials but is logging in via Replit
+        return existingUserByEmail;
+      }
+    }
+    
+    // Standard upsert for existing Replit users or new users
     const [user] = await db
       .insert(users)
       .values(userData)
