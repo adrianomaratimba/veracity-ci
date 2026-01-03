@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -238,29 +239,22 @@ export default function AuthPage() {
                     />
                   </div>
 
-                  <FormField
-                    control={registerForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="email"
-                            autoComplete="email"
-                            placeholder="seu@email.com"
-                            data-testid="input-register-email"
-                            value={field.value}
-                            onChange={field.onChange}
-                            onBlur={field.onBlur}
-                            name={field.name}
-                            ref={field.ref}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+                  <div className="space-y-2">
+                    <Label htmlFor="register-email">Email</Label>
+                    <Input 
+                      id="register-email"
+                      type="email"
+                      autoComplete="email"
+                      placeholder="seu@email.com"
+                      data-testid="input-register-email"
+                      {...registerForm.register("email")}
+                    />
+                    {registerForm.formState.errors.email && (
+                      <p className="text-sm font-medium text-destructive">
+                        {registerForm.formState.errors.email.message}
+                      </p>
                     )}
-                  />
+                  </div>
 
                   <FormField
                     control={registerForm.control}
