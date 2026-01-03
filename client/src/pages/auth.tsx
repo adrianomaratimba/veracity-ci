@@ -321,11 +321,14 @@ export default function AuthPage() {
               </div>
             </div>
 
-            <Link href="/api/login">
-              <Button variant="outline" className="w-full" data-testid="button-replit-login">
-                Entrar com Replit
-              </Button>
-            </Link>
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              onClick={() => window.location.href = "/api/login"}
+              data-testid="button-replit-login"
+            >
+              Entrar com Replit
+            </Button>
           </CardContent>
 
           <CardFooter className="flex justify-center">
