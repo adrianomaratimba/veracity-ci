@@ -120,7 +120,18 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
   });
 
   const handleSaveBranding = () => {
-    updateBranding.mutate(brandingForm);
+    const changedFields: Partial<typeof brandingForm> = {};
+    if (brandingForm.brandingName !== (org.brandingName || "")) changedFields.brandingName = brandingForm.brandingName;
+    if (brandingForm.primaryColor !== (org.primaryColor || "#1e3a5f")) changedFields.primaryColor = brandingForm.primaryColor;
+    if (brandingForm.secondaryColor !== (org.secondaryColor || "#2563eb")) changedFields.secondaryColor = brandingForm.secondaryColor;
+    if (brandingForm.hideVotoAuditBrand !== (org.hideVotoAuditBrand || false)) changedFields.hideVotoAuditBrand = brandingForm.hideVotoAuditBrand;
+    if (brandingForm.logoUrl !== (org.logoUrl || "")) changedFields.logoUrl = brandingForm.logoUrl;
+    
+    if (Object.keys(changedFields).length === 0) {
+      toast({ title: "Sem alteracoes", description: "Nenhuma alteracao detectada" });
+      return;
+    }
+    updateBranding.mutate(changedFields as typeof brandingForm);
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -409,10 +420,12 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                           <Input
                             id="customDomain"
                             placeholder="pesquisas.suaempresa.com.br"
+                            disabled
                             data-testid="input-custom-domain"
                           />
-                          <Button data-testid="button-add-domain">Adicionar</Button>
+                          <Button disabled data-testid="button-add-domain">Em breve</Button>
                         </div>
+                        <p className="text-xs text-muted-foreground">Funcionalidade em desenvolvimento</p>
                       </div>
 
                       <div className="text-sm text-muted-foreground">
