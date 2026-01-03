@@ -76,3 +76,18 @@ export function canManageMembers(role: UserRole): boolean {
 export function canViewAnalytics(role: UserRole): boolean {
   return hasPermission(role, "analytics:view");
 }
+
+export function getManageableRoles(role: UserRole): UserRole[] {
+  switch (role) {
+    case 'owner':
+      return ['admin', 'coordinator', 'interviewer', 'viewer'];
+    case 'admin':
+      return ['coordinator', 'interviewer', 'viewer'];
+    default:
+      return [];
+  }
+}
+
+export function canManageRole(callerRole: UserRole, targetRole: UserRole): boolean {
+  return getManageableRoles(callerRole).includes(targetRole);
+}

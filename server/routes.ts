@@ -5,7 +5,7 @@ import { api } from "@shared/routes";
 import { setupAuth, registerAuthRoutes, isAuthenticated, getUserId } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { requireOrgAccess, requireHasOrganization } from "./middleware/org-access";
-import { hasPermission, UserRole } from "@shared/rbac";
+import { hasPermission, UserRole, canManageRole, getManageableRoles } from "@shared/rbac";
 import { z } from "zod";
 
 export async function registerRoutes(
@@ -80,10 +80,12 @@ export async function registerRoutes(
       res.json(allMembers);
     } else if (currentMember.role === 'admin') {
       // Admin sees: themselves, owner (read-only), and roles they can manage
+      // Admin does NOT see other admins
+      const manageableRoles = getManageableRoles(currentMember.role as UserRole);
       const visibleMembers = allMembers.filter(m => 
         m.userId === userId || // themselves
-        m.role === 'owner' || // owner (read-only)
-        ['coordinator', 'interviewer', 'viewer'].includes(m.role)
+        m.role === 'owner' || // owner (read-only, but visible)
+        manageableRoles.includes(m.role as UserRole)
       );
       res.json(visibleMembers);
     } else {
@@ -113,11 +115,17 @@ export async function registerRoutes(
   app.post(api.organizations.members.invite.path, isAuthenticated, requireOrgAccess("id", "members:invite"), async (req, res) => {
     try {
       const orgId = req.orgMember!.organizationId;
+      const callerRole = req.orgMember!.role as UserRole;
       
       const input = api.organizations.members.invite.input.parse(req.body);
       
       if (input.role === 'owner') {
         return res.status(403).json({ message: "Não é possível convidar como proprietário" });
+      }
+      
+      // Validate that caller can manage the requested role
+      if (!canManageRole(callerRole, input.role as UserRole)) {
+        return res.status(403).json({ message: "Você não tem permissão para adicionar membros com essa função" });
       }
 
       let user = await storage.getUserByEmail(input.email);
@@ -212,10 +220,22 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Você não tem permissão para alterar funções" });
       }
       
+      const callerRole = currentMember.role as UserRole;
+      
       if (targetMember.role === 'owner') return res.status(403).json({ message: "Não é possível alterar a função do proprietário" });
+      
+      // Validate caller can manage the target member's current role
+      if (!canManageRole(callerRole, targetMember.role as UserRole)) {
+        return res.status(403).json({ message: "Você não tem permissão para alterar a função deste membro" });
+      }
       
       const input = api.organizations.members.updateRole.input.parse(req.body);
       if (input.role === 'owner') return res.status(403).json({ message: "Não é possível promover para proprietário" });
+      
+      // Validate caller can assign the new role
+      if (!canManageRole(callerRole, input.role as UserRole)) {
+        return res.status(403).json({ message: "Você não tem permissão para atribuir essa função" });
+      }
       
       const updated = await storage.updateMemberRole(memberId, input.role);
       res.json(updated);
@@ -240,7 +260,14 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Você não tem permissão para remover membros" });
       }
       
+      const callerRole = currentMember.role as UserRole;
+      
       if (targetMember.role === 'owner') return res.status(403).json({ message: "Não é possível remover o proprietário" });
+      
+      // Validate caller can manage the target member's role
+      if (!canManageRole(callerRole, targetMember.role as UserRole)) {
+        return res.status(403).json({ message: "Você não tem permissão para remover este membro" });
+      }
       
       await storage.removeMember(memberId);
       res.status(204).send();
