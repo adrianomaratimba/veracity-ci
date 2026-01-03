@@ -159,8 +159,12 @@ export const isAuthenticated: RequestHandler = async (req: any, res, next) => {
     return next();
   }
 
+  // Token expired - try to refresh
+  console.log("[auth] Token expired, attempting refresh. now:", now, "expires_at:", user.expires_at);
+  
   const refreshToken = user.refresh_token;
   if (!refreshToken) {
+    console.log("[auth] No refresh token available");
     res.status(401).json({ message: "Unauthorized" });
     return;
   }
@@ -169,8 +173,10 @@ export const isAuthenticated: RequestHandler = async (req: any, res, next) => {
     const config = await getOidcConfig();
     const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
     updateUserSession(user, tokenResponse);
+    console.log("[auth] Token refreshed successfully, new expires_at:", user.expires_at);
     return next();
   } catch (error) {
+    console.log("[auth] Token refresh failed:", error);
     res.status(401).json({ message: "Unauthorized" });
     return;
   }
