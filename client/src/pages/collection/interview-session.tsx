@@ -52,6 +52,13 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     setStep('questions');
   };
 
+  const handleNewInterview = () => {
+    setStep('permissions');
+    setAnswers({});
+    setCurrentQuestionIndex(0);
+    setSubmitError(null);
+  };
+
   const handleNextQuestion = () => {
     if (!survey) return;
     if (currentQuestionIndex < survey.questions.length - 1) {
@@ -364,7 +371,8 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
             <Button 
               className="w-full h-12 text-lg" 
-              onClick={() => setLocation(`/collect/${surveyId}`)}
+              onClick={handleNewInterview}
+              data-testid="button-new-interview"
             >
               Nova Entrevista
             </Button>
