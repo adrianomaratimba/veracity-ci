@@ -133,10 +133,22 @@ export async function setupAuth(app: Express) {
 export const isAuthenticated: RequestHandler = async (req: any, res, next) => {
   // Check native session first
   if (req.session?.userId) {
+    console.log("[auth] Native session authenticated:", req.session.userId);
     return next();
   }
 
   const user = req.user as any;
+  
+  // Debug logging
+  console.log("[auth] isAuthenticated check:", {
+    hasSession: !!req.session,
+    sessionUserId: req.session?.userId,
+    isAuth: req.isAuthenticated?.(),
+    hasUser: !!user,
+    hasExpiresAt: !!user?.expires_at,
+    expiresAt: user?.expires_at,
+    now: Math.floor(Date.now() / 1000)
+  });
 
   if (!req.isAuthenticated() || !user?.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
