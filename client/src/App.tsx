@@ -107,8 +107,8 @@ function AuthenticatedRoutes() {
       <Route path="/org/:orgId/access" component={AccessControlPage} />
       
       {/* PWA / Mobile Collection Routes */}
-      <Route path="/collect/:surveyId" component={InterviewSession} />
       <Route path="/collect/pending" component={PendingInterviews} />
+      <Route path="/collect/:surveyId" component={InterviewSession} />
       
       {/* Fallback */}
       <Route path="/:rest*" component={NotFound} />
