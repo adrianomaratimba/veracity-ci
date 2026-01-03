@@ -23,10 +23,32 @@ export const organizations = pgTable("organizations", {
   slug: text("slug").unique().notNull(),
   plan: text("plan").default("basic").notNull(),
   maxInterviews: integer("max_interviews").default(100),
+  maxSurveys: integer("max_surveys").default(1),
   maxUsers: integer("max_users").default(5),
   settings: jsonb("settings").default({}),
+  logoUrl: text("logo_url"),
+  primaryColor: text("primary_color").default("#1e3a5f"),
+  secondaryColor: text("secondary_color").default("#2563eb"),
+  brandingName: text("branding_name"),
+  hideVotoAuditBrand: boolean("hide_votoaudit_brand").default(false),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  billingStatus: text("billing_status").default("active"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const organizationDomains = pgTable("organization_domains", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  domain: text("domain").unique().notNull(),
+  isSubdomain: boolean("is_subdomain").default(false),
+  dnsStatus: text("dns_status").default("pending"),
+  sslStatus: text("ssl_status").default("pending"),
+  verificationToken: text("verification_token"),
+  isPrimary: boolean("is_primary").default(false),
+  verifiedAt: timestamp("verified_at"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const organizationMembers = pgTable("organization_members", {
@@ -112,6 +134,14 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   members: many(organizationMembers),
   surveys: many(surveys),
   pendingInvitations: many(pendingInvitations),
+  domains: many(organizationDomains),
+}));
+
+export const organizationDomainsRelations = relations(organizationDomains, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationDomains.organizationId],
+    references: [organizations.id],
+  }),
 }));
 
 export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({
@@ -178,6 +208,7 @@ export const answersRelations = relations(answers, ({ one }) => ({
 // === SCHEMAS ===
 
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertOrganizationDomainSchema = createInsertSchema(organizationDomains).omit({ id: true, createdAt: true, verifiedAt: true });
 export const insertSurveySchema = createInsertSchema(surveys).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertQuestionSchema = createInsertSchema(questions).omit({ id: true, createdAt: true });
 export const insertResponseSchema = createInsertSchema(responses).omit({ id: true, createdAt: true, status: true, flagReason: true });
@@ -189,6 +220,9 @@ export const insertPendingInvitationSchema = createInsertSchema(pendingInvitatio
 
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+
+export type OrganizationDomain = typeof organizationDomains.$inferSelect;
+export type InsertOrganizationDomain = z.infer<typeof insertOrganizationDomainSchema>;
 
 export type Member = typeof organizationMembers.$inferSelect;
 export type InsertMember = z.infer<typeof insertMemberSchema>;
