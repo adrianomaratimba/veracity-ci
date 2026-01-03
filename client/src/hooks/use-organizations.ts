@@ -80,10 +80,47 @@ export function useInviteMember() {
         const errorData = await res.json();
         throw new Error(errorData.message || "Failed to invite member");
       }
-      return api.organizations.members.invite.responses[201].parse(await res.json());
+      return res.json();
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.organizations.members.list.path, variables.orgId] });
+      queryClient.invalidateQueries({ queryKey: [api.organizations.invitations.list.path, variables.orgId] });
+    },
+  });
+}
+
+// List Pending Invitations
+export function usePendingInvitations(orgId: number) {
+  return useQuery({
+    queryKey: [api.organizations.invitations.list.path, orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const url = buildUrl(api.organizations.invitations.list.path, { id: orgId });
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch invitations");
+      return api.organizations.invitations.list.responses[200].parse(await res.json());
+    },
+    enabled: !!orgId,
+  });
+}
+
+// Cancel Pending Invitation
+export function useCancelInvitation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ inviteId, orgId }: { inviteId: number; orgId: number }) => {
+      const url = buildUrl(api.organizations.invitations.cancel.path, { inviteId });
+      const res = await fetch(url, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to cancel invitation");
+      }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.organizations.invitations.list.path, variables.orgId] });
     },
   });
 }
