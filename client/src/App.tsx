@@ -47,6 +47,7 @@ import Landing from "@/pages/landing";
 import AuthPage from "@/pages/auth";
 import NotFound from "@/pages/not-found";
 import Onboarding from "@/pages/onboarding";
+import NoOrganizationPage from "@/pages/no-organization";
 import DashboardOverview from "@/pages/dashboard/overview";
 import SurveysPage from "@/pages/dashboard/surveys";
 import SurveyEditorPage from "@/pages/dashboard/survey-editor";
@@ -65,19 +66,18 @@ function AuthenticatedRoutes() {
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
-    // If user loaded but not auth, handled by landing.
-    // If auth but no orgs, go to onboarding.
-    // If auth and orgs and at / or /dashboard, go to first org dashboard.
     if (!isLoading && user && !orgsLoading) {
-      if (orgs && orgs.length === 0 && location !== "/onboarding") {
-        setLocation("/onboarding");
-      } else if (orgs && orgs.length > 0 && (location === "/" || location === "/dashboard")) {
+      if (orgs && orgs.length > 0 && (location === "/" || location === "/dashboard" || location === "/no-organization")) {
         setLocation(`/org/${orgs[0].id}/dashboard`);
       }
     }
   }, [user, isLoading, orgs, orgsLoading, location, setLocation]);
 
   if (isLoading || (user && orgsLoading)) return <LoadingScreen />;
+
+  if (orgs && orgs.length === 0) {
+    return <NoOrganizationPage />;
+  }
 
   return (
     <Switch>
@@ -88,7 +88,7 @@ function AuthenticatedRoutes() {
       {/* Auth page accessible even when logged in (for switching accounts) */}
       <Route path="/auth" component={AuthPage} />
       
-      <Route path="/onboarding" component={Onboarding} />
+      <Route path="/no-organization" component={NoOrganizationPage} />
       <Route path="/org/:orgId/dashboard" component={DashboardOverview} />
       <Route path="/org/:orgId/surveys" component={SurveysPage} />
       <Route path="/org/:orgId/surveys/new" component={SurveyEditorPage} />

@@ -4,6 +4,8 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { setupAuth, registerAuthRoutes, isAuthenticated, getUserId } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { requireOrgAccess, requireHasOrganization } from "./middleware/org-access";
+import { hasPermission, UserRole } from "@shared/rbac";
 import { z } from "zod";
 
 export async function registerRoutes(
@@ -73,16 +75,9 @@ export async function registerRoutes(
     res.json(members);
   });
 
-  app.post(api.organizations.members.invite.path, isAuthenticated, async (req, res) => {
+  app.post(api.organizations.members.invite.path, isAuthenticated, requireOrgAccess("id", "members:invite"), async (req, res) => {
     try {
-      const orgId = Number(req.params.id);
-      const inviterId = getUserId(req);
-      
-      // Authorization check - must be member of org to invite
-      const isMember = await storage.isUserMemberOfOrg(inviterId, orgId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Acesso negado" });
-      }
+      const orgId = req.orgMember!.organizationId;
       
       const input = api.organizations.members.invite.input.parse(req.body);
       
@@ -90,21 +85,17 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Não é possível convidar como proprietário" });
       }
 
-      // Check if user already exists
       let user = await storage.getUserByEmail(input.email);
       
-      // If user doesn't exist, create them directly (no email invite needed)
       if (!user) {
         user = await storage.createUserByEmail(input.email.toLowerCase());
       }
 
-      // Check if already a member
       const existingMember = await storage.getMemberByUserId(user.id, orgId);
       if (existingMember) {
         return res.status(400).json({ message: "Este usuário já é membro da organização" });
       }
 
-      // Add as member directly
       const member = await storage.addMember({
         organizationId: orgId,
         userId: user.id,
@@ -176,19 +167,17 @@ export async function registerRoutes(
       const userId = getUserId(req);
       const memberId = Number(req.params.memberId);
       
-      // Get member first to find the organization
-      const member = await storage.getMemberById(memberId);
-      if (!member) return res.status(404).json({ message: "Membro não encontrado" });
+      const targetMember = await storage.getMemberById(memberId);
+      if (!targetMember) return res.status(404).json({ message: "Membro não encontrado" });
       
-      const orgId = member.organizationId;
+      const orgId = targetMember.organizationId;
       
-      // Authorization check - must be member of org
-      const isMember = await storage.isUserMemberOfOrg(userId, orgId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Acesso negado" });
+      const currentMember = await storage.getMemberByUserId(userId, orgId);
+      if (!currentMember || !hasPermission(currentMember.role as UserRole, "members:edit_role")) {
+        return res.status(403).json({ message: "Você não tem permissão para alterar funções" });
       }
       
-      if (member.role === 'owner') return res.status(403).json({ message: "Não é possível alterar a função do proprietário" });
+      if (targetMember.role === 'owner') return res.status(403).json({ message: "Não é possível alterar a função do proprietário" });
       
       const input = api.organizations.members.updateRole.input.parse(req.body);
       if (input.role === 'owner') return res.status(403).json({ message: "Não é possível promover para proprietário" });
@@ -206,19 +195,17 @@ export async function registerRoutes(
       const userId = getUserId(req);
       const memberId = Number(req.params.memberId);
       
-      // Get member first to find the organization
-      const member = await storage.getMemberById(memberId);
-      if (!member) return res.status(404).json({ message: "Membro não encontrado" });
+      const targetMember = await storage.getMemberById(memberId);
+      if (!targetMember) return res.status(404).json({ message: "Membro não encontrado" });
       
-      const orgId = member.organizationId;
+      const orgId = targetMember.organizationId;
       
-      // Authorization check - must be member of org
-      const isMember = await storage.isUserMemberOfOrg(userId, orgId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Acesso negado" });
+      const currentMember = await storage.getMemberByUserId(userId, orgId);
+      if (!currentMember || !hasPermission(currentMember.role as UserRole, "members:remove")) {
+        return res.status(403).json({ message: "Você não tem permissão para remover membros" });
       }
       
-      if (member.role === 'owner') return res.status(403).json({ message: "Não é possível remover o proprietário" });
+      if (targetMember.role === 'owner') return res.status(403).json({ message: "Não é possível remover o proprietário" });
       
       await storage.removeMember(memberId);
       res.status(204).send();
@@ -227,23 +214,14 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/organizations/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/organizations/:id", isAuthenticated, requireOrgAccess("id", "org:edit"), async (req, res) => {
     try {
-      const userId = getUserId(req);
-      const orgId = Number(req.params.id);
-      
-      // Authorization check - must be member of org
-      const isMember = await storage.isUserMemberOfOrg(userId, orgId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Acesso negado" });
-      }
-      
-      const org = await storage.getOrganization(orgId);
+      const org = await storage.getOrganization(req.orgMember!.organizationId);
       if (!org) return res.status(404).json({ message: "Organizacao nao encontrada" });
       
       const partialSchema = api.organizations.create.input.partial();
       const input = partialSchema.parse(req.body);
-      const updated = await storage.updateOrganization(orgId, input);
+      const updated = await storage.updateOrganization(req.orgMember!.organizationId, input);
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json(err.errors);
@@ -251,17 +229,9 @@ export async function registerRoutes(
     }
   });
 
-  // 3. Surveys - SECURED
-  app.get(api.surveys.list.path, isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
-    const orgId = Number(req.params.orgId);
-    
-    const isMember = await storage.isUserMemberOfOrg(userId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ message: "Acesso negado" });
-    }
-    
-    const surveys = await storage.getSurveys(orgId);
+  // 3. Surveys - SECURED with RBAC
+  app.get(api.surveys.list.path, isAuthenticated, requireOrgAccess("orgId", "surveys:view"), async (req, res) => {
+    const surveys = await storage.getSurveys(req.orgMember!.organizationId);
     res.json(surveys);
   });
 
@@ -270,30 +240,20 @@ export async function registerRoutes(
     const survey = await storage.getSurvey(Number(req.params.id));
     if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
     
-    // Authorization check - must be member of org that owns survey
-    const isMember = await storage.isUserMemberOfOrg(userId, survey.organizationId);
-    if (!isMember) {
+    const member = await storage.getMemberByUserId(userId, survey.organizationId);
+    if (!member || !hasPermission(member.role as UserRole, "surveys:view")) {
       return res.status(403).json({ message: "Acesso negado" });
     }
     
     res.json(survey);
   });
 
-  app.post(api.surveys.create.path, isAuthenticated, async (req, res) => {
+  app.post(api.surveys.create.path, isAuthenticated, requireOrgAccess("orgId", "surveys:create"), async (req, res) => {
     try {
-      const userId = getUserId(req);
-      const orgId = Number(req.params.orgId);
-      
-      // Authorization check - must be member of org
-      const isMember = await storage.isUserMemberOfOrg(userId, orgId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Acesso negado" });
-      }
-      
       const input = api.surveys.create.input.parse(req.body);
       const survey = await storage.createSurvey({ 
         ...input, 
-        organizationId: orgId 
+        organizationId: req.orgMember!.organizationId 
       });
       res.status(201).json(survey);
     } catch (err) {
@@ -309,10 +269,9 @@ export async function registerRoutes(
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa nao encontrada" });
       
-      // Authorization check - must be member of org that owns survey
-      const isMember = await storage.isUserMemberOfOrg(userId, survey.organizationId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Acesso negado" });
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para editar pesquisas" });
       }
       
       const input = api.surveys.update.input.parse(req.body);
@@ -324,19 +283,18 @@ export async function registerRoutes(
     }
   });
 
-  // 4. Questions - SECURED
+  // 4. Questions - SECURED with RBAC
   app.post(api.questions.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
       const surveyId = Number(req.params.surveyId);
       
-      // Get survey to check org membership
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
       
-      const isMember = await storage.isUserMemberOfOrg(userId, survey.organizationId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Acesso negado" });
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para editar pesquisas" });
       }
       
       const input = api.questions.create.input.parse(req.body);
@@ -357,13 +315,12 @@ export async function registerRoutes(
       const surveyId = Number(req.params.surveyId);
       const questionId = Number(req.params.id);
       
-      // Get survey to check org membership
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
       
-      const isMember = await storage.isUserMemberOfOrg(userId, survey.organizationId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Acesso negado" });
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para editar pesquisas" });
       }
       
       const input = api.questions.update.input.parse(req.body);
@@ -381,13 +338,12 @@ export async function registerRoutes(
       const surveyId = Number(req.params.surveyId);
       const questionId = Number(req.params.id);
       
-      // Get survey to check org membership
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
       
-      const isMember = await storage.isUserMemberOfOrg(userId, survey.organizationId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Acesso negado" });
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:delete")) {
+        return res.status(403).json({ message: "Você não tem permissão para deletar perguntas" });
       }
       
       await storage.deleteQuestion(questionId);
