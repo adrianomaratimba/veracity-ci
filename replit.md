@@ -69,7 +69,15 @@ Preferred communication style: Simple, everyday language.
     2. Replit Auth login (links to their Replit account)
   - `replit_user_id` column maps Replit external IDs to internal UUIDs
 - **Session Storage**: PostgreSQL with 7-day TTL
-- **RBAC Roles**: owner, admin, coordinator, interviewer, viewer (stored in English)
+- **RBAC System** (`shared/rbac.ts`):
+  - Roles: owner, admin, coordinator, interviewer, viewer (stored in English)
+  - Permission matrix:
+    - Owner/Admin: Full access (org:*, surveys:*, members:*, analytics:*)
+    - Coordinator: Manage surveys and see analytics (surveys:*, analytics:view)
+    - Interviewer: Submit responses only (responses:submit, surveys:view)
+    - Viewer: Read-only access (surveys:view, analytics:view)
+  - Middleware: `server/middleware/org-access.ts` enforces permissions
+  - Users without organization see "Aguardando Acesso" page
 - **Tenant Isolation**: All data queries filtered by organization_id
 - **Key Auth Files**:
   - `server/auth-service.ts`: Native authentication service
