@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { hasPermission, type UserRole, type Permission } from "@shared/rbac";
+import { hasPermission, isInterviewerRole, type UserRole, type Permission } from "@shared/rbac";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -40,8 +40,15 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
   const navigation = useMemo(() => {
     if (!orgId) return [];
     
+    // Entrevistadores só veem a página de pesquisas
+    if (isInterviewerRole(userRole)) {
+      return [
+        { name: 'Minhas Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText, permission: 'surveys:view_assigned' as Permission },
+      ];
+    }
+    
     const allItems = [
-      { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard, permission: 'org:view' as Permission },
+      { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard, permission: 'analytics:view' as Permission },
       { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText, permission: 'surveys:view' as Permission },
       { name: 'Auditoria', href: `/org/${orgId}/audit`, icon: ShieldAlert, permission: 'responses:audit' as Permission },
       { name: 'Equipe', href: `/org/${orgId}/team`, icon: Users, permission: 'members:view' as Permission },

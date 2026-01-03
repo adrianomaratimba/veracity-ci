@@ -1,4 +1,4 @@
-import { useOrganization } from "@/hooks/use-organizations";
+import { useOrganization, useCurrentMember } from "@/hooks/use-organizations";
 import { useSurveys, useCreateSurvey } from "@/hooks/use-surveys";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -15,16 +15,24 @@ import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { hasPermission, canManageSurveys, canViewAnalytics, isInterviewerRole, type UserRole } from "@shared/rbac";
 
 export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
   const { data: org, isLoading: orgLoading } = useOrganization(orgId);
   const { data: surveys, isLoading: surveysLoading } = useSurveys(orgId);
+  const { data: currentMember, isLoading: memberLoading } = useCurrentMember(orgId);
   const createSurvey = useCreateSurvey();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  
+  const userRole = (currentMember?.role || 'viewer') as UserRole;
+  const canCreate = canManageSurveys(userRole);
+  const canEdit = canManageSurveys(userRole);
+  const canSeeResults = canViewAnalytics(userRole);
+  const isInterviewer = isInterviewerRole(userRole);
   const [newSurvey, setNewSurvey] = useState({
     title: "",
     description: "",
@@ -33,7 +41,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
     targetSample: 400
   });
 
-  if (orgLoading || surveysLoading) return <LoadingScreen message="Carregando pesquisas..." />;
+  if (orgLoading || surveysLoading || memberLoading) return <LoadingScreen message="Carregando pesquisas..." />;
   if (!org) return <div>Organizacao nao encontrada</div>;
 
   const handleCreateSurvey = async () => {
@@ -89,8 +97,11 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold">Pesquisas</h1>
-            <p className="text-muted-foreground">Gerencie suas pesquisas e questionarios</p>
+            <p className="text-muted-foreground">
+              {isInterviewer ? "Suas pesquisas designadas" : "Gerencie suas pesquisas e questionarios"}
+            </p>
           </div>
+          {canCreate && (
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2" data-testid="button-new-survey">
@@ -168,6 +179,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          )}
         </div>
 
         {surveys && surveys.length > 0 ? (
@@ -197,31 +209,42 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <Button variant="outline" size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}/analytics`)} data-testid={`button-analytics-${survey.id}`}>
-                        <BarChart3 className="w-4 h-4 mr-2" />
-                        Resultados
-                      </Button>
-                      <Button size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}`)} data-testid={`button-edit-${survey.id}`}>
-                        <Edit className="w-4 h-4 mr-2" />
-                        Editar
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" data-testid={`button-more-${survey.id}`}>
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/collect/${survey.id}`)}>
-                            <Copy className="w-4 h-4 mr-2" />
-                            Copiar Link de Coleta
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => window.open(`/collect/${survey.id}`, '_blank')}>
-                            <ExternalLink className="w-4 h-4 mr-2" />
-                            Abrir Coleta
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {canSeeResults && (
+                        <Button variant="outline" size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}/analytics`)} data-testid={`button-analytics-${survey.id}`}>
+                          <BarChart3 className="w-4 h-4 mr-2" />
+                          Resultados
+                        </Button>
+                      )}
+                      {canEdit && (
+                        <Button size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}`)} data-testid={`button-edit-${survey.id}`}>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Editar
+                        </Button>
+                      )}
+                      {isInterviewer ? (
+                        <Button size="sm" onClick={() => window.open(`/collect/${survey.id}`, '_blank')} data-testid={`button-collect-${survey.id}`}>
+                          <Play className="w-4 h-4 mr-2" />
+                          Iniciar Coleta
+                        </Button>
+                      ) : (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" data-testid={`button-more-${survey.id}`}>
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/collect/${survey.id}`)}>
+                              <Copy className="w-4 h-4 mr-2" />
+                              Copiar Link de Coleta
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => window.open(`/collect/${survey.id}`, '_blank')}>
+                              <ExternalLink className="w-4 h-4 mr-2" />
+                              Abrir Coleta
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -234,13 +257,20 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
                 <FileText className="w-8 h-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">Nenhuma pesquisa ainda</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                {isInterviewer ? "Nenhuma pesquisa designada" : "Nenhuma pesquisa ainda"}
+              </h3>
               <p className="text-muted-foreground mb-6 max-w-sm">
-                Crie sua primeira pesquisa para comecar a coletar dados com seguranca e auditoria.
+                {isInterviewer 
+                  ? "Voce ainda nao foi designado para nenhuma pesquisa. Aguarde ser adicionado a uma pesquisa pelo coordenador."
+                  : "Crie sua primeira pesquisa para comecar a coletar dados com seguranca e auditoria."
+                }
               </p>
-              <Button onClick={() => setIsCreateOpen(true)} className="gap-2" data-testid="button-create-first-survey">
-                <Plus className="w-4 h-4" /> Criar Primeira Pesquisa
-              </Button>
+              {canCreate && (
+                <Button onClick={() => setIsCreateOpen(true)} className="gap-2" data-testid="button-create-first-survey">
+                  <Plus className="w-4 h-4" /> Criar Primeira Pesquisa
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}

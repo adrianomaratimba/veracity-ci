@@ -5,7 +5,7 @@ import { api } from "@shared/routes";
 import { setupAuth, registerAuthRoutes, isAuthenticated, getUserId } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { requireOrgAccess, requireHasOrganization } from "./middleware/org-access";
-import { hasPermission, UserRole, canManageRole, getManageableRoles } from "@shared/rbac";
+import { hasPermission, UserRole, canManageRole, getManageableRoles, isInterviewerRole, canManageSurveys, canViewResponses, canViewAnalytics, canAuditResponses } from "@shared/rbac";
 import { z } from "zod";
 
 export async function registerRoutes(
@@ -355,18 +355,58 @@ export async function registerRoutes(
   });
 
   // 3. Surveys - SECURED with RBAC
-  app.get(api.surveys.list.path, isAuthenticated, requireOrgAccess("orgId", "surveys:view"), async (req, res) => {
-    const surveys = await storage.getSurveys(req.orgMember!.organizationId);
-    res.json(surveys);
+  // Entrevistadores só veem pesquisas designadas a eles
+  app.get(api.surveys.list.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const orgId = Number(req.params.orgId);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const role = member.role as UserRole;
+      
+      // Entrevistadores só veem pesquisas designadas
+      if (isInterviewerRole(role)) {
+        const assignedSurveys = await storage.getAssignedSurveys(userId, orgId);
+        return res.json(assignedSurveys);
+      }
+      
+      // Outros usuários com permissão surveys:view veem todas
+      if (!hasPermission(role, "surveys:view")) {
+        return res.status(403).json({ message: "Você não tem permissão para visualizar pesquisas" });
+      }
+      
+      const surveys = await storage.getSurveys(orgId);
+      res.json(surveys);
+    } catch (err) {
+      console.error("Erro ao listar pesquisas:", err);
+      res.status(500).json({ message: "Erro ao listar pesquisas" });
+    }
   });
 
   app.get(api.surveys.get.path, isAuthenticated, async (req, res) => {
     const userId = getUserId(req);
-    const survey = await storage.getSurvey(Number(req.params.id));
+    const surveyId = Number(req.params.id);
+    const survey = await storage.getSurvey(surveyId);
     if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
     
     const member = await storage.getMemberByUserId(userId, survey.organizationId);
-    if (!member || !hasPermission(member.role as UserRole, "surveys:view")) {
+    if (!member) {
+      return res.status(403).json({ message: "Acesso negado" });
+    }
+    
+    const role = member.role as UserRole;
+    
+    // Entrevistadores só podem ver pesquisas designadas
+    if (isInterviewerRole(role)) {
+      const isAssigned = await storage.isInterviewerAssigned(surveyId, userId);
+      if (!isAssigned) {
+        return res.status(403).json({ message: "Você não está designado para esta pesquisa" });
+      }
+    } else if (!hasPermission(role, "surveys:view")) {
       return res.status(403).json({ message: "Acesso negado" });
     }
     
