@@ -53,6 +53,7 @@ import SurveyEditorPage from "@/pages/dashboard/survey-editor";
 import SurveyAnalytics from "@/pages/dashboard/survey-analytics";
 import TeamPage from "@/pages/dashboard/team";
 import SettingsPage from "@/pages/dashboard/settings";
+import AuditPage from "@/pages/dashboard/audit";
 import InterviewSession from "@/pages/collection/interview-session";
 import VerifyEmailPage from "@/pages/verify-email";
 import ResetPasswordPage from "@/pages/reset-password";
@@ -94,6 +95,7 @@ function AuthenticatedRoutes() {
       <Route path="/org/:orgId/surveys/:id" component={SurveyEditorPage} />
       <Route path="/org/:orgId/surveys/:id/analytics" component={SurveyAnalytics} />
       <Route path="/org/:orgId/team" component={TeamPage} />
+      <Route path="/org/:orgId/audit" component={AuditPage} />
       <Route path="/org/:orgId/settings" component={SettingsPage} />
       
       {/* PWA / Mobile Collection Routes */}

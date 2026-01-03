@@ -318,6 +318,25 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateStatus: {
+      method: 'PATCH' as const,
+      path: '/api/responses/:id/status',
+      input: z.object({
+        status: z.enum(['valid', 'invalid']),
+        reviewNote: z.string().optional(),
+      }),
+      responses: {
+        200: z.custom<typeof responses.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    listByOrg: {
+      method: 'GET' as const,
+      path: '/api/organizations/:orgId/responses',
+      responses: {
+        200: z.array(z.custom<typeof responses.$inferSelect & { survey: { id: number; title: string } }>()),
+      },
+    },
   },
 
   // --- DASHBOARD / ANALYTICS ---

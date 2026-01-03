@@ -1,19 +1,32 @@
 import { useOrganization, useOrganizationStats } from "@/hooks/use-organizations";
 import { useSurveys } from "@/hooks/use-surveys";
+import { useOrgResponses } from "@/hooks/use-audit";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { Plus, Users, FileText, Activity } from "lucide-react";
+import { Plus, Users, FileText, Activity, AlertTriangle, ShieldAlert, ArrowRight } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { getSurveyStatusLabel } from "@shared/i18n/labels";
+import { useMemo } from "react";
 
 export default function DashboardOverview({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
   const { data: org, isLoading: orgLoading } = useOrganization(orgId);
   const { data: surveys, isLoading: surveysLoading } = useSurveys(orgId);
   const { data: stats, isLoading: statsLoading } = useOrganizationStats(orgId);
+  const { data: responses, isLoading: responsesLoading } = useOrgResponses(orgId);
   const [, setLocation] = useLocation();
+
+  const suspiciousResponses = useMemo(() => {
+    if (!responses) return [];
+    return responses.filter(r => r.status === 'suspicious').slice(0, 5);
+  }, [responses]);
+
+  const suspiciousCount = useMemo(() => {
+    if (!responses) return 0;
+    return responses.filter(r => r.status === 'suspicious').length;
+  }, [responses]);
 
   if (orgLoading || surveysLoading || statsLoading) return <LoadingScreen message="Carregando Painel..." />; 
   if (!org) return <div>Organização não encontrada</div>;
@@ -83,6 +96,55 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
             </CardContent>
           </Card>
         </div>
+
+        {!responsesLoading && suspiciousCount > 0 && (
+          <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                <ShieldAlert className="w-5 h-5" />
+                Atenção: Entrevistas Suspeitas
+              </CardTitle>
+              <CardDescription>
+                {suspiciousCount} entrevista{suspiciousCount > 1 ? 's' : ''} requer{suspiciousCount > 1 ? 'em' : ''} revisão
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {suspiciousResponses.map((resp) => (
+                  <div 
+                    key={resp.id} 
+                    className="flex items-center justify-between p-3 bg-white dark:bg-background rounded-lg border"
+                  >
+                    <div className="flex items-center gap-3">
+                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      <div>
+                        <p className="font-medium text-sm">{resp.survey.title}</p>
+                        <p className="text-xs text-muted-foreground">{resp.flagReason || 'Entrevista suspeita'}</p>
+                      </div>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setLocation(`/org/${orgId}/audit`)}
+                      data-testid={`button-review-${resp.id}`}
+                    >
+                      Revisar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              {suspiciousCount > 5 && (
+                <Button 
+                  variant="ghost" 
+                  className="mt-4 gap-1"
+                  onClick={() => setLocation(`/org/${orgId}/audit`)}
+                >
+                  Ver todas as {suspiciousCount} entrevistas <ArrowRight className="w-4 h-4" />
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <div>
           <h2 className="text-xl font-display font-bold mb-4">Pesquisas Recentes</h2>

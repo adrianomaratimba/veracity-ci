@@ -8,7 +8,8 @@ import {
   LogOut, 
   Menu, 
   X,
-  Plus
+  Plus,
+  ShieldAlert
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
   const navigation = orgId ? [
     { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
     { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
+    { name: 'Auditoria', href: `/org/${orgId}/audit`, icon: ShieldAlert },
     { name: 'Equipe', href: `/org/${orgId}/team`, icon: Users },
     { name: 'Configurações', href: `/org/${orgId}/settings`, icon: Settings },
   ] : [];

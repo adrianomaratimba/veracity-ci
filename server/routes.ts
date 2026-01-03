@@ -517,5 +517,48 @@ export async function registerRoutes(
     res.json(stats);
   });
 
+  // === AUDIT / RESPONSE STATUS ===
+  app.patch(api.responses.updateStatus.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const responseId = Number(req.params.id);
+      
+      const response = await storage.getResponse(responseId);
+      if (!response) {
+        return res.status(404).json({ message: "Resposta não encontrada" });
+      }
+      
+      const survey = await storage.getSurvey(response.surveyId);
+      if (!survey) {
+        return res.status(404).json({ message: "Pesquisa não encontrada" });
+      }
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !['owner', 'admin', 'coordinator'].includes(member.role)) {
+        return res.status(403).json({ message: "Apenas coordenadores ou administradores podem auditar respostas" });
+      }
+      
+      const { status, reviewNote } = api.responses.updateStatus.input.parse(req.body);
+      const updated = await storage.updateResponseStatus(responseId, status, reviewNote);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      throw err;
+    }
+  });
+
+  app.get(api.responses.listByOrg.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const orgId = Number(req.params.orgId);
+    
+    const isMember = await storage.isUserMemberOfOrg(userId, orgId);
+    if (!isMember) {
+      return res.status(403).json({ message: "Acesso negado" });
+    }
+    
+    const responses = await storage.getResponsesByOrg(orgId);
+    res.json(responses);
+  });
+
   return httpServer;
 }

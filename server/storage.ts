@@ -297,6 +297,32 @@ export class DatabaseStorage implements IStorage {
     return response;
   }
 
+  async updateResponseStatus(id: number, status: string, reviewNote?: string): Promise<Response | undefined> {
+    const [updated] = await db.update(responses)
+      .set({ status, reviewNote, reviewedAt: new Date() })
+      .where(eq(responses.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getResponsesByOrg(orgId: number): Promise<(Response & { survey: { id: number; title: string } })[]> {
+    const orgSurveys = await db.select().from(surveys).where(eq(surveys.organizationId, orgId));
+    const surveyIds = orgSurveys.map(s => s.id);
+    
+    if (surveyIds.length === 0) return [];
+    
+    const allResponses = await db.select().from(responses).where(
+      sql`${responses.surveyId} IN (${sql.join(surveyIds.map(id => sql`${id}`), sql`, `)})`
+    ).orderBy(desc(responses.createdAt));
+    
+    const surveyMap = new Map(orgSurveys.map(s => [s.id, { id: s.id, title: s.title }]));
+    
+    return allResponses.map(r => ({
+      ...r,
+      survey: surveyMap.get(r.surveyId) || { id: r.surveyId, title: 'Desconhecida' }
+    }));
+  }
+
   // --- ANALYTICS ---
   async getSurveyAnalytics(surveyId: number): Promise<any> {
     const allResponses = await db.select().from(responses).where(eq(responses.surveyId, surveyId));
