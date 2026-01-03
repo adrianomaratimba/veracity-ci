@@ -305,7 +305,7 @@ export default function AuditPage({ params }: AuditPageProps) {
                   <div className="mt-2 p-3 bg-muted rounded-lg flex items-center gap-3">
                     <FileAudio className="w-5 h-5 text-muted-foreground" />
                     <audio controls className="flex-1" data-testid="audio-player">
-                      <source src={`/api/uploads/serve/${encodeURIComponent(selectedResponse.audioUrl)}`} type="audio/webm" />
+                      <source src={selectedResponse.audioUrl} type="audio/webm" />
                       Seu navegador não suporta o elemento de áudio.
                     </audio>
                   </div>
