@@ -86,9 +86,9 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
       <div className="md:hidden flex items-center justify-between p-4 border-b bg-card">
         <div className="flex items-center gap-2">
            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display">
-             VA
+             V
            </div>
-           <span className="font-display font-bold text-lg">VotoAudit</span>
+           <span className="font-display font-bold text-lg">Veracity</span>
         </div>
         <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
           {isMobileMenuOpen ? <X /> : <Menu />}
@@ -102,9 +102,9 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
         <div className="h-full flex flex-col p-4">
           <div className="hidden md:flex items-center gap-2 px-2 mb-4 mt-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display shadow-md shadow-primary/20">
-              VA
+              V
             </div>
-            <span className="font-display font-bold text-xl tracking-tight">VotoAudit</span>
+            <span className="font-display font-bold text-xl tracking-tight">Veracity</span>
           </div>
 
           {organizations && organizations.length > 0 && (

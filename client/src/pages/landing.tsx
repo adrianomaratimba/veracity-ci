@@ -85,7 +85,7 @@ export default function Landing() {
 
   const testimonials = [
     {
-      quote: "O VotoAudit revolucionou nossa operação de campo. A detecção de fraudes em tempo real nos dá confiança total nos dados coletados.",
+      quote: "O Veracity revolucionou nossa operação de campo. A detecção de fraudes em tempo real nos dá confiança total nos dados coletados.",
       author: "Maria Silva",
       role: "Diretora de Pesquisa",
       company: "Instituto DataBrasil"
@@ -144,8 +144,8 @@ export default function Landing() {
       <header className="border-b bg-card/80 backdrop-blur-md fixed w-full z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display text-lg">VA</div>
-            <span className="font-display font-bold text-xl tracking-tight">VotoAudit</span>
+            <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display text-lg">V</div>
+            <span className="font-display font-bold text-xl tracking-tight">Veracity</span>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm">
             <a href="#recursos" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-recursos">Recursos</a>
@@ -287,7 +287,7 @@ export default function Landing() {
                 Utilizado pelos Melhores Institutos
               </h2>
               <p className="text-lg text-muted-foreground">
-                Veja o que nossos clientes dizem sobre o VotoAudit
+                Veja o que nossos clientes dizem sobre o Veracity
               </p>
             </div>
 
@@ -380,7 +380,7 @@ export default function Landing() {
             <div className="grid md:grid-cols-2 gap-12 items-center">
               <div>
                 <h2 className="text-3xl md:text-4xl font-display font-bold mb-6">
-                  Por que Institutos Escolhem o VotoAudit?
+                  Por que Institutos Escolhem o Veracity?
                 </h2>
                 <div className="space-y-6">
                   {[
@@ -451,7 +451,7 @@ export default function Landing() {
               Pronto para Revolucionar suas Pesquisas?
             </h2>
             <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto">
-              Junte-se a centenas de institutos que já confiam no VotoAudit para entregar resultados precisos e auditáveis.
+              Junte-se a centenas de institutos que já confiam no Veracity para entregar resultados precisos e auditáveis.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/auth">
@@ -472,8 +472,8 @@ export default function Landing() {
             <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-8 mb-8">
               <div>
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold">VA</div>
-                  <span className="font-display font-bold text-lg">VotoAudit</span>
+                  <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold">V</div>
+                  <span className="font-display font-bold text-lg">Veracity</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Plataforma líder em pesquisas eleitorais com auditoria em tempo real.
@@ -505,7 +505,7 @@ export default function Landing() {
               </div>
             </div>
             <div className="pt-8 border-t text-center text-sm text-muted-foreground">
-              <p>© 2025 VotoAudit. Todos os direitos reservados.</p>
+              <p>© 2025 Veracity. Todos os direitos reservados.</p>
             </div>
           </div>
         </footer>

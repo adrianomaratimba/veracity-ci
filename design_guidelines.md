@@ -1,4 +1,4 @@
-# VotoAudit Design Guidelines
+# Veracity Design Guidelines
 
 ## Design Approach
 **Material Design System** - Selected for data-rich applications requiring clear hierarchy, excellent form patterns, and robust component library. Material's elevation system and structured layouts excel in professional survey/analytics contexts.

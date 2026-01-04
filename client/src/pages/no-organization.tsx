@@ -26,7 +26,7 @@ export default function NoOrganizationPage() {
               <div>
                 <p className="font-medium text-sm">Precisa de uma organização</p>
                 <p className="text-sm text-muted-foreground">
-                  Para acessar o VotoAudit, você precisa ser adicionado a uma organização por um administrador.
+                  Para acessar o Veracity, você precisa ser adicionado a uma organização por um administrador.
                 </p>
               </div>
             </div>
