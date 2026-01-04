@@ -1,5 +1,5 @@
 import { useAuth } from "@/hooks/use-auth";
-import { useCurrentMember } from "@/hooks/use-organizations";
+import { useCurrentMember, useOrganizations } from "@/hooks/use-organizations";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, 
@@ -12,7 +12,10 @@ import {
   Plus,
   ShieldAlert,
   Shield,
-  Eye
+  Eye,
+  ChevronsUpDown,
+  Building2,
+  Check
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -33,9 +36,16 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { data: currentMember } = useCurrentMember(orgId ? parseInt(orgId) : 0);
+  const { data: organizations } = useOrganizations();
+  
+  const currentOrg = organizations?.find(org => org.id === parseInt(orgId || '0'));
+  
+  const handleOrgChange = (newOrgId: number) => {
+    setLocation(`/org/${newOrgId}/dashboard`);
+  };
 
   const userRole = (currentMember?.role as UserRole) || 'viewer';
 
@@ -90,12 +100,52 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
         isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="h-full flex flex-col p-4">
-          <div className="hidden md:flex items-center gap-2 px-2 mb-8 mt-2">
+          <div className="hidden md:flex items-center gap-2 px-2 mb-4 mt-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display shadow-md shadow-primary/20">
               VA
             </div>
             <span className="font-display font-bold text-xl tracking-tight">VotoAudit</span>
           </div>
+
+          {organizations && organizations.length > 0 && (
+            <div className="mb-6 px-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-between gap-2 h-auto py-2"
+                    data-testid="button-org-selector"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Building2 className="w-4 h-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate text-sm font-medium">
+                        {currentOrg?.name || 'Selecionar organização'}
+                      </span>
+                    </div>
+                    <ChevronsUpDown className="w-4 h-4 shrink-0 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {organizations.map((org) => (
+                    <DropdownMenuItem 
+                      key={org.id}
+                      className="cursor-pointer"
+                      onClick={() => handleOrgChange(org.id)}
+                      data-testid={`menu-item-org-${org.id}`}
+                    >
+                      <div className="flex items-center gap-2 w-full">
+                        <Building2 className="w-4 h-4 text-muted-foreground" />
+                        <span className="truncate flex-1">{org.name}</span>
+                        {org.id === parseInt(orgId || '0') && (
+                          <Check className="w-4 h-4 text-primary" />
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
 
           <div className="space-y-1 flex-1">
             {navigation.map((item) => {
