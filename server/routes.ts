@@ -780,6 +780,42 @@ export async function registerRoutes(
     res.json(responses);
   });
 
+  // === INTERVIEWER COMPARISON (Audit) ===
+  app.get("/api/organizations/:orgId/audit/interviewers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const orgId = Number(req.params.orgId);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member || !['owner', 'admin', 'coordinator'].includes(member.role)) {
+        return res.status(403).json({ message: "Apenas coordenadores ou administradores podem acessar auditoria" });
+      }
+      
+      const filters: {
+        surveyId?: number;
+        questionId?: number;
+        interviewerIds?: string[];
+        startDate?: Date;
+        endDate?: Date;
+      } = {};
+      
+      if (req.query.surveyId) filters.surveyId = Number(req.query.surveyId);
+      if (req.query.questionId) filters.questionId = Number(req.query.questionId);
+      if (req.query.interviewerIds) {
+        const ids = req.query.interviewerIds;
+        filters.interviewerIds = Array.isArray(ids) ? ids as string[] : [ids as string];
+      }
+      if (req.query.startDate) filters.startDate = new Date(req.query.startDate as string);
+      if (req.query.endDate) filters.endDate = new Date(req.query.endDate as string);
+      
+      const comparison = await storage.getInterviewerComparison(orgId, filters);
+      res.json(comparison);
+    } catch (err) {
+      console.error("Erro ao buscar comparacao de entrevistadores:", err);
+      res.status(500).json({ message: "Erro ao buscar dados de comparacao" });
+    }
+  });
+
   // === RESULTS DASHBOARD (For Viewers/Contractors) - Aggregated Data Only ===
   app.get("/api/surveys/:surveyId/results/aggregated", isAuthenticated, async (req, res) => {
     try {

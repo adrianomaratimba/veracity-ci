@@ -91,6 +91,38 @@ export interface IStorage {
     }>;
   }>>;
 
+  // Interviewer Comparison (Audit)
+  getInterviewerComparison(orgId: number, filters: {
+    surveyId?: number;
+    questionId?: number;
+    interviewerIds?: string[];
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    interviewers: Array<{
+      id: string;
+      name: string;
+      totalResponses: number;
+    }>;
+    questions: Array<{
+      id: number;
+      text: string;
+      options: string[];
+    }>;
+    comparison: Array<{
+      questionId: number;
+      questionText: string;
+      byInterviewer: Array<{
+        interviewerId: string;
+        interviewerName: string;
+        totalForQuestion: number;
+        distribution: Array<{ option: string; count: number; percentage: number }>;
+      }>;
+      groupAverage: Array<{ option: string; avgPercentage: number }>;
+      discrepancies: Array<{ interviewerId: string; interviewerName: string; option: string; deviation: number }>;
+    }>;
+  }>;
+
   // Survey Assignments
   getSurveyAssignments(surveyId: number): Promise<(SurveyAssignment & { interviewer: User })[]>;
   getAssignedSurveys(interviewerId: string, orgId: number): Promise<Survey[]>;
@@ -490,6 +522,204 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return !!assignment;
+  }
+
+  // --- INTERVIEWER COMPARISON (Audit) ---
+  async getInterviewerComparison(orgId: number, filters: {
+    surveyId?: number;
+    questionId?: number;
+    interviewerIds?: string[];
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    interviewers: Array<{ id: string; name: string; totalResponses: number }>;
+    questions: Array<{ id: number; text: string; options: string[] }>;
+    comparison: Array<{
+      questionId: number;
+      questionText: string;
+      byInterviewer: Array<{
+        interviewerId: string;
+        interviewerName: string;
+        totalForQuestion: number;
+        distribution: Array<{ option: string; count: number; percentage: number }>;
+      }>;
+      groupAverage: Array<{ option: string; avgPercentage: number }>;
+      discrepancies: Array<{ interviewerId: string; interviewerName: string; option: string; deviation: number }>;
+    }>;
+  }> {
+    // Get surveys for org
+    const orgSurveys = await db.select().from(surveys).where(eq(surveys.organizationId, orgId));
+    const orgSurveyIds = new Set(orgSurveys.map(s => s.id));
+    
+    // Validate surveyId belongs to org if provided
+    if (filters.surveyId && !orgSurveyIds.has(filters.surveyId)) {
+      return { interviewers: [], questions: [], comparison: [] };
+    }
+    
+    const targetSurveyIds = filters.surveyId 
+      ? [filters.surveyId] 
+      : orgSurveys.map(s => s.id);
+    
+    if (targetSurveyIds.length === 0) {
+      return { interviewers: [], questions: [], comparison: [] };
+    }
+
+    // Get all responses for these surveys with date filters
+    let allResponses = await db.select().from(responses).where(
+      sql`${responses.surveyId} IN (${sql.join(targetSurveyIds.map(id => sql`${id}`), sql`, `)})`
+    );
+
+    // Apply date filters
+    if (filters.startDate) {
+      allResponses = allResponses.filter(r => r.createdAt && new Date(r.createdAt) >= filters.startDate!);
+    }
+    if (filters.endDate) {
+      allResponses = allResponses.filter(r => r.createdAt && new Date(r.createdAt) <= filters.endDate!);
+    }
+
+    // Apply interviewer filter
+    if (filters.interviewerIds && filters.interviewerIds.length > 0) {
+      allResponses = allResponses.filter(r => filters.interviewerIds!.includes(r.interviewerId));
+    }
+
+    // Get unique interviewer IDs
+    const interviewerIds = [...new Set(allResponses.map(r => r.interviewerId))];
+    if (interviewerIds.length === 0) {
+      return { interviewers: [], questions: [], comparison: [] };
+    }
+
+    // Get interviewer details
+    const interviewerUsers = await db.select().from(users).where(
+      sql`${users.id} IN (${sql.join(interviewerIds.map(id => sql`${id}`), sql`, `)})`
+    );
+    const interviewerMap = new Map(interviewerUsers.map(u => [u.id, u]));
+
+    // Get questions for these surveys
+    let surveyQuestions = await db.select().from(questions).where(
+      sql`${questions.surveyId} IN (${sql.join(targetSurveyIds.map(id => sql`${id}`), sql`, `)})`
+    );
+    
+    // Filter to specific question if provided
+    if (filters.questionId) {
+      surveyQuestions = surveyQuestions.filter(q => q.id === filters.questionId);
+    }
+
+    // Get all answers for responses
+    const responseIds = allResponses.map(r => r.id);
+    if (responseIds.length === 0) {
+      return { interviewers: [], questions: [], comparison: [] };
+    }
+
+    const allAnswers = await db.select().from(answers).where(
+      sql`${answers.responseId} IN (${sql.join(responseIds.map(id => sql`${id}`), sql`, `)})`
+    );
+
+    // Map response to interviewer
+    const responseToInterviewer = new Map(allResponses.map(r => [r.id, r.interviewerId]));
+
+    // Build comparison data
+    const comparisonData: Array<{
+      questionId: number;
+      questionText: string;
+      byInterviewer: Array<{
+        interviewerId: string;
+        interviewerName: string;
+        totalForQuestion: number;
+        distribution: Array<{ option: string; count: number; percentage: number }>;
+      }>;
+      groupAverage: Array<{ option: string; avgPercentage: number }>;
+      discrepancies: Array<{ interviewerId: string; interviewerName: string; option: string; deviation: number }>;
+    }> = [];
+
+    for (const q of surveyQuestions) {
+      const qAnswers = allAnswers.filter(a => a.questionId === q.id);
+      const options = (q.options as string[]) || [];
+      
+      const byInterviewer: Array<{
+        interviewerId: string;
+        interviewerName: string;
+        totalForQuestion: number;
+        distribution: Array<{ option: string; count: number; percentage: number }>;
+      }> = [];
+
+      for (const intId of interviewerIds) {
+        const user = interviewerMap.get(intId);
+        const name = user?.firstName && user?.lastName 
+          ? `${user.firstName} ${user.lastName}` 
+          : user?.email || intId;
+
+        const intAnswers = qAnswers.filter(a => responseToInterviewer.get(a.responseId) === intId);
+        const total = intAnswers.length;
+
+        const distribution = options.map(opt => {
+          const count = intAnswers.filter(a => {
+            const val = a.value;
+            return val === opt || (Array.isArray(val) && val.includes(opt));
+          }).length;
+          return { option: opt, count, percentage: total > 0 ? (count / total) * 100 : 0 };
+        });
+
+        byInterviewer.push({ interviewerId: intId, interviewerName: name, totalForQuestion: total, distribution });
+      }
+
+      // Calculate group average
+      const groupAverage = options.map(opt => {
+        const percentages = byInterviewer.filter(i => i.totalForQuestion > 0).map(i => 
+          i.distribution.find(d => d.option === opt)?.percentage || 0
+        );
+        const avg = percentages.length > 0 ? percentages.reduce((a, b) => a + b, 0) / percentages.length : 0;
+        return { option: opt, avgPercentage: avg };
+      });
+
+      // Find discrepancies (deviation > 15%)
+      const discrepancies: Array<{ interviewerId: string; interviewerName: string; option: string; deviation: number }> = [];
+      for (const int of byInterviewer) {
+        if (int.totalForQuestion === 0) continue;
+        for (const dist of int.distribution) {
+          const avg = groupAverage.find(g => g.option === dist.option)?.avgPercentage || 0;
+          const deviation = Math.abs(dist.percentage - avg);
+          if (deviation > 15) {
+            discrepancies.push({ 
+              interviewerId: int.interviewerId, 
+              interviewerName: int.interviewerName,
+              option: dist.option, 
+              deviation 
+            });
+          }
+        }
+      }
+
+      comparisonData.push({
+        questionId: q.id,
+        questionText: q.text,
+        byInterviewer,
+        groupAverage,
+        discrepancies
+      });
+    }
+
+    // Build interviewers summary
+    const interviewersSummary = interviewerIds.map(id => {
+      const user = interviewerMap.get(id);
+      const name = user?.firstName && user?.lastName 
+        ? `${user.firstName} ${user.lastName}` 
+        : user?.email || id;
+      const total = allResponses.filter(r => r.interviewerId === id).length;
+      return { id, name, totalResponses: total };
+    });
+
+    // Build questions summary
+    const questionsSummary = surveyQuestions.map(q => ({
+      id: q.id,
+      text: q.text,
+      options: (q.options as string[]) || []
+    }));
+
+    return {
+      interviewers: interviewersSummary,
+      questions: questionsSummary,
+      comparison: comparisonData
+    };
   }
 
   // --- RESULTS DASHBOARD (Aggregated Data) ---
