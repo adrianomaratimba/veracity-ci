@@ -56,8 +56,32 @@ export const organizationMembers = pgTable("organization_members", {
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   role: text("role").default("viewer").notNull(),
+  dashboardWidgets: jsonb("dashboard_widgets"),
   joinedAt: timestamp("joined_at").defaultNow(),
 });
+
+// Widget types for dashboard customization
+export const widgetTypeEnum = z.enum([
+  "active_surveys",
+  "draft_surveys", 
+  "total_interviews",
+  "suspicious_alerts",
+  "recent_surveys",
+  "survey_progress",
+  "interviews_chart",
+  "team_activity"
+]);
+
+export const dashboardWidgetSchema = z.object({
+  id: z.string(),
+  type: widgetTypeEnum,
+  order: z.number(),
+  visible: z.boolean().default(true),
+  size: z.enum(["small", "medium", "large"]).default("medium"),
+});
+
+export type DashboardWidget = z.infer<typeof dashboardWidgetSchema>;
+export type WidgetType = z.infer<typeof widgetTypeEnum>;
 
 export const pendingInvitations = pgTable("pending_invitations", {
   id: serial("id").primaryKey(),
