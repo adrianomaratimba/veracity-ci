@@ -205,6 +205,20 @@ export const api = {
           403: errorSchemas.forbidden,
           404: errorSchemas.notFound,
         }
+      },
+      updateName: {
+        method: 'PATCH' as const,
+        path: '/api/members/:memberId/name',
+        input: z.object({
+          firstName: z.string().min(1),
+          lastName: z.string().optional(),
+        }),
+        responses: {
+          200: z.object({ success: z.boolean() }),
+          400: errorSchemas.validation,
+          403: errorSchemas.forbidden,
+          404: errorSchemas.notFound,
+        }
       }
     },
     invitations: {

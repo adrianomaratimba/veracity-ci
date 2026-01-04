@@ -27,6 +27,7 @@ export interface IStorage {
   // Users
   getUserByEmail(email: string): Promise<User | undefined>;
   createUserByEmail(email: string, firstName?: string, lastName?: string): Promise<User>;
+  updateUserName(userId: string, firstName: string, lastName: string | null): Promise<void>;
 
   // Members
   getOrganizationMembers(orgId: number): Promise<(Member & { user: User })[]>;
@@ -206,6 +207,13 @@ export class DatabaseStorage implements IStorage {
       emailVerified: false,
     }).returning();
     return user;
+  }
+
+  async updateUserName(userId: string, firstName: string, lastName: string | null): Promise<void> {
+    await db.update(users).set({
+      firstName,
+      lastName,
+    }).where(eq(users.id, userId));
   }
 
   // --- MEMBERS ---

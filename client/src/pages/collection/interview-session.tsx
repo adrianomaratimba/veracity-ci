@@ -15,6 +15,28 @@ import { useToast } from "@/hooks/use-toast";
 import { savePendingInterview, generateInterviewId, getPendingCount } from "@/lib/offlineStorage";
 import { syncAllPending } from "@/lib/syncQueue";
 
+interface QuestionOption {
+  text: string;
+  imageUrl?: string;
+}
+
+function normalizeOption(opt: string | QuestionOption): QuestionOption {
+  if (typeof opt === 'string') {
+    return { text: opt };
+  }
+  return opt;
+}
+
+function getOptionText(opt: string | QuestionOption): string {
+  if (typeof opt === 'string') return opt;
+  return opt.text;
+}
+
+function getOptionImage(opt: string | QuestionOption): string | undefined {
+  if (typeof opt === 'string') return undefined;
+  return opt.imageUrl;
+}
+
 interface InterviewSessionProps {
   params: { surveyId: string };
 }
@@ -353,12 +375,23 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     value={answers[survey.questions[currentQuestionIndex].id]} 
                     onValueChange={(val) => handleAnswer(survey.questions[currentQuestionIndex].id, val)}
                   >
-                    {(survey.questions[currentQuestionIndex].options as string[]).map((opt, idx) => (
-                       <div key={`${opt}-${idx}`} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                         <RadioGroupItem value={opt} id={`opt-${currentQuestionIndex}-${idx}`} />
-                         <Label htmlFor={`opt-${currentQuestionIndex}-${idx}`} className="text-base cursor-pointer flex-1">{opt}</Label>
-                       </div>
-                    ))}
+                    {(survey.questions[currentQuestionIndex].options as (string | QuestionOption)[]).map((opt, idx) => {
+                       const optText = getOptionText(opt);
+                       const optImage = getOptionImage(opt);
+                       return (
+                         <div key={`${optText}-${idx}`} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                           <RadioGroupItem value={optText} id={`opt-${currentQuestionIndex}-${idx}`} />
+                           {optImage && (
+                             <img 
+                               src={optImage} 
+                               alt={optText} 
+                               className="w-12 h-12 object-cover rounded-md border shrink-0"
+                             />
+                           )}
+                           <Label htmlFor={`opt-${currentQuestionIndex}-${idx}`} className="text-base cursor-pointer flex-1">{optText}</Label>
+                         </div>
+                       );
+                    })}
                   </RadioGroup>
                 )}
                 {survey.questions[currentQuestionIndex].type === 'scale' && (
@@ -377,26 +410,35 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 )}
                 {survey.questions[currentQuestionIndex].type === 'multiple_choice' && (
                   <div className="space-y-2">
-                    {(survey.questions[currentQuestionIndex].options as string[]).map((opt, idx) => {
+                    {(survey.questions[currentQuestionIndex].options as (string | QuestionOption)[]).map((opt, idx) => {
+                      const optText = getOptionText(opt);
+                      const optImage = getOptionImage(opt);
                       const currentVal = answers[survey.questions[currentQuestionIndex].id] || [];
-                      const isSelected = Array.isArray(currentVal) && currentVal.includes(opt);
+                      const isSelected = Array.isArray(currentVal) && currentVal.includes(optText);
                       return (
                         <div 
-                          key={`${opt}-${idx}`} 
+                          key={`${optText}-${idx}`} 
                           className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'}`}
                           onClick={() => {
                             const arr = Array.isArray(currentVal) ? [...currentVal] : [];
                             if (isSelected) {
-                              handleAnswer(survey.questions[currentQuestionIndex].id, arr.filter(v => v !== opt));
+                              handleAnswer(survey.questions[currentQuestionIndex].id, arr.filter(v => v !== optText));
                             } else {
-                              handleAnswer(survey.questions[currentQuestionIndex].id, [...arr, opt]);
+                              handleAnswer(survey.questions[currentQuestionIndex].id, [...arr, optText]);
                             }
                           }}
                         >
                           <div className={`w-5 h-5 border rounded flex items-center justify-center ${isSelected ? 'bg-primary border-primary text-primary-foreground' : ''}`}>
                             {isSelected && <CheckCircle className="w-4 h-4" />}
                           </div>
-                          <span className="text-base flex-1">{opt}</span>
+                          {optImage && (
+                            <img 
+                              src={optImage} 
+                              alt={optText} 
+                              className="w-12 h-12 object-cover rounded-md border shrink-0"
+                            />
+                          )}
+                          <span className="text-base flex-1">{optText}</span>
                         </div>
                       );
                     })}

@@ -339,6 +339,44 @@ export async function registerRoutes(
     }
   });
 
+  // Update member name
+  app.patch(api.organizations.members.updateName.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const memberId = Number(req.params.memberId);
+      
+      const input = api.organizations.members.updateName.input.parse(req.body);
+      
+      const targetMember = await storage.getMemberById(memberId);
+      if (!targetMember) return res.status(404).json({ message: "Membro não encontrado" });
+      
+      const orgId = targetMember.organizationId;
+      
+      const currentMember = await storage.getMemberByUserId(userId, orgId);
+      if (!currentMember || !hasPermission(currentMember.role as UserRole, "members:invite")) {
+        return res.status(403).json({ message: "Você não tem permissão para editar nomes" });
+      }
+      
+      const callerRole = currentMember.role as UserRole;
+      
+      if (targetMember.role === 'owner' && currentMember.id !== targetMember.id) {
+        return res.status(403).json({ message: "Não é possível alterar o nome do proprietário" });
+      }
+      
+      if (!canManageRole(callerRole, targetMember.role as UserRole) && currentMember.id !== targetMember.id) {
+        return res.status(403).json({ message: "Você não tem permissão para editar o nome deste membro" });
+      }
+      
+      await storage.updateUserName(targetMember.userId, input.firstName, input.lastName || null);
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Erro ao atualizar nome:", err);
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      res.status(500).json({ message: "Erro ao atualizar nome" });
+    }
+  });
+
   app.patch("/api/organizations/:id", isAuthenticated, requireOrgAccess("id", "org:edit"), async (req, res) => {
     try {
       const org = await storage.getOrganization(req.orgMember!.organizationId);

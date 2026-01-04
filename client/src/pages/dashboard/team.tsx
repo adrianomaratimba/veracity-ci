@@ -1,10 +1,10 @@
-import { useOrganization, useOrganizationMembers, useCurrentMember, useInviteMember, useUpdateMemberRole, useRemoveMember, useSetMemberPassword } from "@/hooks/use-organizations";
+import { useOrganization, useOrganizationMembers, useCurrentMember, useInviteMember, useUpdateMemberRole, useRemoveMember, useSetMemberPassword, useUpdateMemberName } from "@/hooks/use-organizations";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, Shield, MoreVertical, UserPlus, Trash2, UserCog, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Users, Shield, MoreVertical, UserPlus, Trash2, UserCog, KeyRound, Eye, EyeOff, Pencil } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -27,6 +27,7 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const updateMemberRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
   const setMemberPassword = useSetMemberPassword();
+  const updateMemberName = useUpdateMemberName();
   const { toast } = useToast();
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -49,6 +50,11 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const [passwordMember, setPasswordMember] = useState<{ id: number; name: string } | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
+
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [nameMember, setNameMember] = useState<{ id: number; firstName: string; lastName: string } | null>(null);
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
 
   if (orgLoading || membersLoading || currentMemberLoading) return <LoadingScreen message="Carregando equipe..." />;
   if (!org) return <div>Organização não encontrada</div>;
@@ -136,6 +142,30 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
     if (setupLinkDialog.link) {
       navigator.clipboard.writeText(setupLinkDialog.link);
       toast({ title: "Link copiado", description: "O link foi copiado para a área de transferência" });
+    }
+  };
+
+  const handleUpdateName = async () => {
+    if (!nameMember) return;
+    if (!editFirstName.trim()) {
+      toast({ title: "Erro", description: "O nome é obrigatório", variant: "destructive" });
+      return;
+    }
+    try {
+      await updateMemberName.mutateAsync({
+        memberId: nameMember.id,
+        firstName: editFirstName.trim(),
+        lastName: editLastName.trim() || undefined,
+        orgId
+      });
+      toast({ title: "Nome atualizado", description: "O nome do membro foi atualizado com sucesso" });
+      setNameDialogOpen(false);
+      setNameMember(null);
+      setEditFirstName("");
+      setEditLastName("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao atualizar nome";
+      toast({ title: "Erro", description: message, variant: "destructive" });
     }
   };
 
@@ -351,6 +381,19 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => {
+                              setNameMember({ 
+                                id: member.id, 
+                                firstName: member.user?.firstName || '', 
+                                lastName: member.user?.lastName || '' 
+                              });
+                              setEditFirstName(member.user?.firstName || '');
+                              setEditLastName(member.user?.lastName || '');
+                              setNameDialogOpen(true);
+                            }}>
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Editar Nome
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
                               const name = `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim();
                               setSelectedMember({ id: member.id, role: member.role, name });
                               setNewRole(member.role as z.infer<typeof userRoleEnum>);
@@ -513,6 +556,45 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
             <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSetPassword} disabled={setMemberPassword.isPending} data-testid="button-confirm-password">
               {setMemberPassword.isPending ? "Salvando..." : "Salvar Senha"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={nameDialogOpen} onOpenChange={setNameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Nome</DialogTitle>
+            <DialogDescription>
+              Altere o nome e sobrenome do membro
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="editFirstName">Nome</Label>
+              <Input
+                id="editFirstName"
+                placeholder="Nome"
+                value={editFirstName}
+                onChange={(e) => setEditFirstName(e.target.value)}
+                data-testid="input-edit-first-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editLastName">Sobrenome</Label>
+              <Input
+                id="editLastName"
+                placeholder="Sobrenome (opcional)"
+                value={editLastName}
+                onChange={(e) => setEditLastName(e.target.value)}
+                data-testid="input-edit-last-name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNameDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleUpdateName} disabled={updateMemberName.isPending} data-testid="button-confirm-name">
+              {updateMemberName.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers } from "lucide-react";
+import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers, Image, X, Loader2 } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,14 +23,132 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { buildUrl, api } from "@shared/routes";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { apiRequest } from "@/lib/queryClient";
+import { useUpload } from "@/hooks/use-upload";
+
+interface QuestionOption {
+  text: string;
+  imageUrl?: string;
+}
 
 interface QuestionForm {
   id?: number;
   text: string;
   type: string;
-  options: string[];
+  options: QuestionOption[];
   required: boolean;
   order: number;
+}
+
+function normalizeOption(opt: string | QuestionOption): QuestionOption {
+  if (typeof opt === 'string') {
+    return { text: opt };
+  }
+  return opt;
+}
+
+function normalizeOptions(opts: any): QuestionOption[] {
+  if (!Array.isArray(opts)) return [];
+  return opts.map(normalizeOption);
+}
+
+interface OptionEditorProps {
+  option: QuestionOption;
+  optIndex: number;
+  questionIndex: number;
+  canDelete: boolean;
+  onUpdate: (opt: QuestionOption) => void;
+  onDelete: () => void;
+}
+
+function OptionEditor({ option, optIndex, questionIndex, canDelete, onUpdate, onDelete }: OptionEditorProps) {
+  const { uploadFile, isUploading } = useUpload();
+  const fileInputRef = { current: null as HTMLInputElement | null };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const result = await uploadFile(file);
+    if (result) {
+      onUpdate({ ...option, imageUrl: result.objectPath });
+    }
+  };
+
+  const handleRemoveImage = () => {
+    onUpdate({ ...option, imageUrl: undefined });
+  };
+
+  return (
+    <div className="flex flex-col gap-2 p-3 bg-muted/30 rounded-lg">
+      <div className="flex items-center gap-2">
+        <Input
+          value={option.text}
+          onChange={(e) => onUpdate({ ...option, text: e.target.value })}
+          placeholder={`Opcao ${optIndex + 1}`}
+          className="flex-1"
+          data-testid={`input-option-${questionIndex}-${optIndex}`}
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          disabled={!canDelete}
+          data-testid={`button-delete-option-${questionIndex}-${optIndex}`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+      
+      <div className="flex items-center gap-2">
+        {option.imageUrl ? (
+          <div className="relative group">
+            <img 
+              src={option.imageUrl} 
+              alt={option.text} 
+              className="w-16 h-16 object-cover rounded-md border"
+            />
+            <Button
+              variant="destructive"
+              size="icon"
+              className="absolute -top-2 -right-2 w-5 h-5"
+              onClick={handleRemoveImage}
+              data-testid={`button-remove-image-${questionIndex}-${optIndex}`}
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+        ) : (
+          <>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+              id={`image-${questionIndex}-${optIndex}`}
+              data-testid={`input-image-${questionIndex}-${optIndex}`}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isUploading}
+              onClick={() => document.getElementById(`image-${questionIndex}-${optIndex}`)?.click()}
+              data-testid={`button-add-image-${questionIndex}-${optIndex}`}
+            >
+              {isUploading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Image className="w-4 h-4 mr-2" />
+              )}
+              {isUploading ? "Enviando..." : "Foto"}
+            </Button>
+          </>
+        )}
+        {option.imageUrl && (
+          <span className="text-xs text-muted-foreground">Foto adicionada</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function SurveyEditorPage({ params }: { params: { orgId: string; id?: string } }) {
@@ -126,7 +244,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
           id: q.id,
           text: q.text,
           type: q.type,
-          options: Array.isArray(q.options) ? q.options : [],
+          options: normalizeOptions(q.options),
           required: q.required ?? true,
           order: q.order
         })));
@@ -135,7 +253,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
   }, [survey]);
 
   const createQuestion = useMutation({
-    mutationFn: async (data: { text: string; type: string; options?: string[]; required: boolean; order: number }) => {
+    mutationFn: async (data: { text: string; type: string; options?: QuestionOption[] | string[]; required: boolean; order: number }) => {
       const url = buildUrl(api.questions.create.path, { surveyId });
       const res = await fetch(url, {
         method: "POST",
@@ -224,7 +342,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     const newQuestion: QuestionForm = {
       text: "",
       type: "single_choice",
-      options: ["Opção 1", "Opção 2"],
+      options: [{ text: "Opção 1" }, { text: "Opção 2" }],
       required: true,
       order: questions.length + 1
     };
@@ -385,37 +503,29 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                           </div>
 
                           {(q.type === "single_choice" || q.type === "multiple_choice") && (
-                            <div className="space-y-2 pl-4 border-l-2 border-muted">
+                            <div className="space-y-3 pl-4 border-l-2 border-muted">
                               {q.options.map((opt, optIndex) => (
-                                <div key={optIndex} className="flex items-center gap-2">
-                                  <Input
-                                    value={opt}
-                                    onChange={(e) => {
-                                      const newOptions = [...q.options];
-                                      newOptions[optIndex] = e.target.value;
-                                      updateQuestionField(index, "options", newOptions);
-                                    }}
-                                    placeholder={`Opcao ${optIndex + 1}`}
-                                    className="flex-1"
-                                    data-testid={`input-option-${index}-${optIndex}`}
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                      const newOptions = q.options.filter((_, i) => i !== optIndex);
-                                      updateQuestionField(index, "options", newOptions);
-                                    }}
-                                    disabled={q.options.length <= 2}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </div>
+                                <OptionEditor
+                                  key={optIndex}
+                                  option={opt}
+                                  optIndex={optIndex}
+                                  questionIndex={index}
+                                  canDelete={q.options.length > 2}
+                                  onUpdate={(newOpt) => {
+                                    const newOptions = [...q.options];
+                                    newOptions[optIndex] = newOpt;
+                                    updateQuestionField(index, "options", newOptions);
+                                  }}
+                                  onDelete={() => {
+                                    const newOptions = q.options.filter((_, i) => i !== optIndex);
+                                    updateQuestionField(index, "options", newOptions);
+                                  }}
+                                />
                               ))}
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => updateQuestionField(index, "options", [...q.options, `Opcao ${q.options.length + 1}`])}
+                                onClick={() => updateQuestionField(index, "options", [...q.options, { text: `Opcao ${q.options.length + 1}` }])}
                                 className="mt-2"
                                 data-testid={`button-add-option-${index}`}
                               >
@@ -704,7 +814,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                             <p className="text-sm text-muted-foreground line-clamp-2">{mod.description}</p>
                           )}
                         </div>
-                        <Badge variant="secondary" size="sm">
+                        <Badge variant="secondary">
                           {(mod.questions as any[])?.length || 0} perguntas
                         </Badge>
                       </div>

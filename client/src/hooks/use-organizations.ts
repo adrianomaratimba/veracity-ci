@@ -224,3 +224,27 @@ export function useOrganizationStats(orgId: number) {
     enabled: !!orgId,
   });
 }
+
+// Update Member Name
+export function useUpdateMemberName() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ memberId, firstName, lastName, orgId }: { memberId: number; firstName: string; lastName?: string; orgId: number }) => {
+      const url = buildUrl(api.organizations.members.updateName.path, { memberId });
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firstName, lastName }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to update member name");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.organizations.members.list.path, variables.orgId] });
+    },
+  });
+}
