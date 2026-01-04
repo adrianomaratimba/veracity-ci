@@ -1,4 +1,4 @@
-const DB_NAME = 'votoaudit-offline';
+const DB_NAME = 'veracity-offline';
 const DB_VERSION = 1;
 
 export interface PendingInterview {

@@ -203,7 +203,7 @@ export default function Onboarding() {
             <label className="text-sm font-medium">Identificador URL</label>
             <div className="flex items-center">
               <span className="bg-muted px-3 py-2 border border-r-0 rounded-l-md text-muted-foreground text-sm">
-                votoaudit.app/
+                veracity.app/
               </span>
               <Input
                 data-testid="input-org-slug"
@@ -500,7 +500,7 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/20 p-4">
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-display font-bold text-primary">VotoAudit</h1>
+        <h1 className="text-3xl font-display font-bold text-primary">Instituto Veracity</h1>
         <p className="text-muted-foreground mt-1">Configure sua plataforma de pesquisas</p>
       </div>
 

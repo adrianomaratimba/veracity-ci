@@ -1,6 +1,6 @@
 {
-  "name": "VotoAudit - Pesquisas Eleitorais",
-  "short_name": "VotoAudit",
+  "name": "Instituto Veracity - Pesquisas Eleitorais",
+  "short_name": "Instituto Veracity",
   "description": "Plataforma de pesquisas eleitorais com detecção de fraude",
   "start_url": "/",
   "display": "standalone",

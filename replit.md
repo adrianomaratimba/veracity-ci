@@ -1,8 +1,8 @@
-# VotoAudit - Electoral Survey Platform
+# Instituto Veracity - Electoral Survey Platform
 
 ## Overview
 
-VotoAudit is a multi-tenant SaaS platform for managing electoral surveys with anti-fraud capabilities. The platform enables organizations to conduct professional electoral research with GPS tracking, audio recording verification, and comprehensive analytics dashboards. Built for LGPD compliance and designed to match the quality standards of major polling institutions like IBOPE/Datafolha.
+Instituto Veracity is a multi-tenant SaaS platform for managing electoral surveys with anti-fraud capabilities. The platform enables organizations to conduct professional electoral research with GPS tracking, audio recording verification, and comprehensive analytics dashboards. Built for LGPD compliance and designed to match the quality standards of major polling institutions like IBOPE/Datafolha.
 
 Key capabilities:
 - Multi-tenant organization management with subscription plans (Basic, Pro, Enterprise)
@@ -143,12 +143,12 @@ The `shared/routes.ts` file defines a typed API contract with:
 ### White Label (Branding)
 - Custom logo upload per organization (stored in object storage)
 - Primary and secondary color customization
-- Custom branding name to replace "VotoAudit"
-- Option to hide VotoAudit branding entirely
+- Custom branding name to replace "Instituto Veracity"
+- Option to hide Instituto Veracity branding entirely
 - Settings page: `/org/:orgId/settings` -> "Marca" tab
 
 ### Custom Domains
-- Automatic subdomain: `{org-slug}.votoaudit.app`
+- Automatic subdomain: `{org-slug}.veracity.app`
 - Custom domain support (Enterprise plan) - schema ready, UI pending full implementation
 - DNS verification and SSL provisioning (future)
 - Database table: `organization_domains`
