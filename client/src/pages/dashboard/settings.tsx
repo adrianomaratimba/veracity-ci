@@ -7,12 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, CreditCard, Bell, Shield, Save, Check, AlertTriangle, Palette, Globe, Upload, Copy, ExternalLink } from "lucide-react";
+import { Building2, CreditCard, Bell, Shield, Save, Check, AlertTriangle, Palette, Globe, Upload, Copy, ExternalLink, Layers, Plus, Pencil, Trash2, GripVertical } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useUpload } from "@/hooks/use-upload";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import type { QuestionModule } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function SettingsPage({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
@@ -41,6 +47,136 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
     dailyReports: false,
     weeklyReports: true
   });
+
+  // Question modules state
+  const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
+  const [editingModule, setEditingModule] = useState<QuestionModule | null>(null);
+  const [deleteModuleId, setDeleteModuleId] = useState<number | null>(null);
+  const [moduleForm, setModuleForm] = useState({
+    name: "",
+    description: "",
+    questions: [] as Array<{
+      text: string;
+      type: "multiple_choice" | "text" | "number" | "rating" | "date";
+      options: string[];
+      required: boolean;
+    }>
+  });
+
+  // Question modules query
+  const { data: questionModules = [], isLoading: modulesLoading } = useQuery<QuestionModule[]>({
+    queryKey: ['/api/organizations', orgId, 'question-modules'],
+  });
+
+  const createModule = useMutation({
+    mutationFn: async (data: typeof moduleForm) => {
+      return apiRequest("POST", `/api/organizations/${orgId}/question-modules`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'question-modules'] });
+      toast({ title: "Sucesso", description: "Modulo criado com sucesso!" });
+      setModuleDialogOpen(false);
+      resetModuleForm();
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao criar modulo", variant: "destructive" });
+    }
+  });
+
+  const updateModule = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: typeof moduleForm }) => {
+      return apiRequest("PATCH", `/api/organizations/${orgId}/question-modules/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'question-modules'] });
+      toast({ title: "Sucesso", description: "Modulo atualizado!" });
+      setModuleDialogOpen(false);
+      setEditingModule(null);
+      resetModuleForm();
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao atualizar modulo", variant: "destructive" });
+    }
+  });
+
+  const deleteModule = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/organizations/${orgId}/question-modules/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'question-modules'] });
+      toast({ title: "Sucesso", description: "Modulo excluido!" });
+      setDeleteModuleId(null);
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao excluir modulo", variant: "destructive" });
+    }
+  });
+
+  const seedDefaultModules = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/organizations/${orgId}/question-modules/seed-defaults`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'question-modules'] });
+      toast({ title: "Sucesso", description: "Modulos padrao criados!" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao criar modulos padrao", variant: "destructive" });
+    }
+  });
+
+  const resetModuleForm = () => {
+    setModuleForm({ name: "", description: "", questions: [] });
+    setEditingModule(null);
+  };
+
+  const handleEditModule = (module: QuestionModule) => {
+    setEditingModule(module);
+    setModuleForm({
+      name: module.name,
+      description: module.description || "",
+      questions: (module.questions as any[]) || []
+    });
+    setModuleDialogOpen(true);
+  };
+
+  const handleSaveModule = () => {
+    if (!moduleForm.name.trim()) {
+      toast({ title: "Erro", description: "Nome do modulo e obrigatorio", variant: "destructive" });
+      return;
+    }
+    if (moduleForm.questions.length === 0) {
+      toast({ title: "Erro", description: "Adicione pelo menos uma pergunta", variant: "destructive" });
+      return;
+    }
+    if (editingModule) {
+      updateModule.mutate({ id: editingModule.id, data: moduleForm });
+    } else {
+      createModule.mutate(moduleForm);
+    }
+  };
+
+  const addQuestion = () => {
+    setModuleForm({
+      ...moduleForm,
+      questions: [
+        ...moduleForm.questions,
+        { text: "", type: "multiple_choice", options: [], required: true }
+      ]
+    });
+  };
+
+  const updateQuestion = (index: number, field: string, value: any) => {
+    const newQuestions = [...moduleForm.questions];
+    (newQuestions[index] as any)[field] = value;
+    setModuleForm({ ...moduleForm, questions: newQuestions });
+  };
+
+  const removeQuestion = (index: number) => {
+    const newQuestions = moduleForm.questions.filter((_, i) => i !== index);
+    setModuleForm({ ...moduleForm, questions: newQuestions });
+  };
 
   const { uploadFile, isUploading } = useUpload({
     onSuccess: (response) => {
@@ -165,9 +301,12 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
         </div>
 
         <Tabs defaultValue="general" className="w-full">
-          <TabsList className="grid w-full grid-cols-6 max-w-4xl">
+          <TabsList className="flex flex-wrap gap-1 w-full max-w-5xl">
             <TabsTrigger value="general" className="gap-2" data-testid="tab-general">
               <Building2 className="w-4 h-4" /> Geral
+            </TabsTrigger>
+            <TabsTrigger value="modules" className="gap-2" data-testid="tab-modules">
+              <Layers className="w-4 h-4" /> Modulos
             </TabsTrigger>
             <TabsTrigger value="branding" className="gap-2" data-testid="tab-branding">
               <Palette className="w-4 h-4" /> Marca
@@ -219,6 +358,82 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                     <Save className="w-4 h-4 mr-2" /> {updateOrg.isPending ? "Salvando..." : "Salvar Alteracoes"}
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="modules" className="mt-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+                <div>
+                  <CardTitle>Modulos de Perguntas</CardTitle>
+                  <CardDescription>Crie modulos reutilizaveis de perguntas demograficas para acelerar a criacao de pesquisas</CardDescription>
+                </div>
+                <Button 
+                  onClick={() => { resetModuleForm(); setModuleDialogOpen(true); }}
+                  data-testid="button-create-module"
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Novo Modulo
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {modulesLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Carregando modulos...</div>
+                ) : questionModules.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Layers className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="font-medium">Nenhum modulo criado</p>
+                    <p className="text-sm mt-1 mb-4">Crie modulos para reutilizar perguntas comuns como idade, sexo, escolaridade, etc.</p>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => seedDefaultModules.mutate()}
+                      disabled={seedDefaultModules.isPending}
+                      data-testid="button-seed-default-modules"
+                    >
+                      {seedDefaultModules.isPending ? "Criando..." : "Criar Modulos Padrao"}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {questionModules.map((mod) => (
+                      <Card key={mod.id} className="relative" data-testid={`card-module-${mod.id}`}>
+                        <CardHeader className="pb-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <CardTitle className="text-base truncate">{mod.name}</CardTitle>
+                              {mod.description && (
+                                <CardDescription className="line-clamp-2 text-xs mt-1">{mod.description}</CardDescription>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => handleEditModule(mod)}
+                                data-testid={`button-edit-module-${mod.id}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => setDeleteModuleId(mod.id)}
+                                data-testid={`button-delete-module-${mod.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <Badge variant="secondary" size="sm">
+                            {(mod.questions as any[])?.length || 0} perguntas
+                          </Badge>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -633,6 +848,167 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Module Create/Edit Dialog */}
+      <Dialog open={moduleDialogOpen} onOpenChange={(open) => { if (!open) resetModuleForm(); setModuleDialogOpen(open); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{editingModule ? "Editar Modulo" : "Novo Modulo de Perguntas"}</DialogTitle>
+            <DialogDescription>
+              Crie um conjunto de perguntas reutilizaveis para agilizar a criacao de pesquisas
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 pr-4">
+            <div className="space-y-6 pb-4">
+              <div className="space-y-2">
+                <Label htmlFor="moduleName">Nome do Modulo</Label>
+                <Input
+                  id="moduleName"
+                  placeholder="Ex: Dados Demograficos"
+                  value={moduleForm.name}
+                  onChange={(e) => setModuleForm({ ...moduleForm, name: e.target.value })}
+                  data-testid="input-module-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="moduleDesc">Descricao (opcional)</Label>
+                <Textarea
+                  id="moduleDesc"
+                  placeholder="Descreva o proposito deste modulo"
+                  value={moduleForm.description}
+                  onChange={(e) => setModuleForm({ ...moduleForm, description: e.target.value })}
+                  data-testid="input-module-description"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Perguntas</Label>
+                  <Button variant="outline" size="sm" onClick={addQuestion} data-testid="button-add-question">
+                    <Plus className="w-4 h-4 mr-1" /> Adicionar
+                  </Button>
+                </div>
+
+                {moduleForm.questions.length === 0 ? (
+                  <div className="text-center py-8 border rounded-lg text-muted-foreground">
+                    Nenhuma pergunta adicionada. Clique em "Adicionar" para comecar.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {moduleForm.questions.map((q, idx) => (
+                      <Card key={idx} data-testid={`card-question-${idx}`}>
+                        <CardContent className="pt-4 space-y-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 space-y-4">
+                              <div className="space-y-2">
+                                <Label>Texto da Pergunta</Label>
+                                <Input
+                                  placeholder="Digite a pergunta"
+                                  value={q.text}
+                                  onChange={(e) => updateQuestion(idx, "text", e.target.value)}
+                                  data-testid={`input-question-text-${idx}`}
+                                />
+                              </div>
+                              <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                  <Label>Tipo</Label>
+                                  <Select
+                                    value={q.type}
+                                    onValueChange={(v) => updateQuestion(idx, "type", v)}
+                                  >
+                                    <SelectTrigger data-testid={`select-question-type-${idx}`}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="multiple_choice">Multipla Escolha</SelectItem>
+                                      <SelectItem value="text">Texto</SelectItem>
+                                      <SelectItem value="number">Numero</SelectItem>
+                                      <SelectItem value="rating">Avaliacao</SelectItem>
+                                      <SelectItem value="date">Data</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="flex items-end">
+                                  <div className="flex items-center gap-2">
+                                    <Switch
+                                      checked={q.required}
+                                      onCheckedChange={(v) => updateQuestion(idx, "required", v)}
+                                      data-testid={`switch-question-required-${idx}`}
+                                    />
+                                    <Label className="text-sm">Obrigatoria</Label>
+                                  </div>
+                                </div>
+                              </div>
+                              {q.type === "multiple_choice" && (
+                                <div className="space-y-2">
+                                  <Label>Opcoes (uma por linha)</Label>
+                                  <Textarea
+                                    placeholder="Masculino&#10;Feminino&#10;Outro"
+                                    value={q.options.join("\n")}
+                                    onChange={(e) => updateQuestion(idx, "options", e.target.value.split("\n").filter(Boolean))}
+                                    rows={4}
+                                    data-testid={`input-question-options-${idx}`}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeQuestion(idx)}
+                              data-testid={`button-remove-question-${idx}`}
+                            >
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </ScrollArea>
+          <DialogFooter className="pt-4 border-t">
+            <Button variant="outline" onClick={() => setModuleDialogOpen(false)} data-testid="button-cancel-module">
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSaveModule} 
+              disabled={createModule.isPending || updateModule.isPending}
+              data-testid="button-save-module"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              {createModule.isPending || updateModule.isPending ? "Salvando..." : "Salvar Modulo"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteModuleId !== null} onOpenChange={(open) => !open && setDeleteModuleId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir Modulo</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja excluir este modulo? Esta acao nao pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteModuleId(null)} data-testid="button-cancel-delete">
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => deleteModuleId && deleteModule.mutate(deleteModuleId)}
+              disabled={deleteModule.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteModule.isPending ? "Excluindo..." : "Excluir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus } from "lucide-react";
+import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import type { QuestionModule } from "@shared/schema";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -99,6 +103,13 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
+  const [modulesDialogOpen, setModulesDialogOpen] = useState(false);
+
+  // Question modules query
+  const { data: questionModules = [] } = useQuery<QuestionModule[]>({
+    queryKey: ['/api/organizations', orgId, 'question-modules'],
+    enabled: !isNewSurvey,
+  });
 
   useEffect(() => {
     if (survey) {
@@ -219,6 +230,37 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     };
     setQuestions([...questions, newQuestion]);
     setHasChanges(true);
+  };
+
+  const handleImportModule = async (module: QuestionModule) => {
+    const moduleQuestions = (module.questions as any[]) || [];
+    if (moduleQuestions.length === 0) {
+      toast({ title: "Modulo vazio", description: "Este modulo nao tem perguntas", variant: "destructive" });
+      return;
+    }
+    
+    setModulesDialogOpen(false);
+    
+    try {
+      // Create all questions directly via API
+      for (let idx = 0; idx < moduleQuestions.length; idx++) {
+        const q = moduleQuestions[idx];
+        await createQuestion.mutateAsync({
+          text: q.text,
+          type: q.type === "multiple_choice" ? "single_choice" : q.type,
+          options: q.options || [],
+          required: q.required ?? true,
+          order: questions.length + idx + 1
+        });
+      }
+      
+      toast({ 
+        title: "Modulo importado", 
+        description: `${moduleQuestions.length} perguntas criadas do modulo "${module.name}"` 
+      });
+    } catch (error) {
+      toast({ title: "Erro", description: "Falha ao importar perguntas do modulo", variant: "destructive" });
+    }
   };
 
   const handleSaveQuestion = async (index: number) => {
@@ -418,9 +460,16 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
               )}
 
               {!isNewSurvey && (
-                <Button variant="outline" className="w-full gap-2" onClick={handleAddQuestion} data-testid="button-add-question">
-                  <Plus className="w-4 h-4" /> Adicionar Pergunta
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1 gap-2" onClick={handleAddQuestion} data-testid="button-add-question">
+                    <Plus className="w-4 h-4" /> Adicionar Pergunta
+                  </Button>
+                  {questionModules.length > 0 && (
+                    <Button variant="outline" className="gap-2" onClick={() => setModulesDialogOpen(true)} data-testid="button-import-module">
+                      <Layers className="w-4 h-4" /> Importar Modulo
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           </TabsContent>
@@ -621,6 +670,57 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Import Module Dialog */}
+      <Dialog open={modulesDialogOpen} onOpenChange={setModulesDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Importar Modulo de Perguntas</DialogTitle>
+            <DialogDescription>
+              Selecione um modulo para adicionar suas perguntas a esta pesquisa
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[400px] pr-4">
+            {questionModules.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Layers className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                <p>Nenhum modulo disponivel</p>
+                <p className="text-sm">Crie modulos em Configuracoes - Modulos</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {questionModules.map((mod) => (
+                  <Card 
+                    key={mod.id} 
+                    className="cursor-pointer hover-elevate active-elevate-2"
+                    onClick={() => handleImportModule(mod)}
+                    data-testid={`card-select-module-${mod.id}`}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium">{mod.name}</p>
+                          {mod.description && (
+                            <p className="text-sm text-muted-foreground line-clamp-2">{mod.description}</p>
+                          )}
+                        </div>
+                        <Badge variant="secondary" size="sm">
+                          {(mod.questions as any[])?.length || 0} perguntas
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModulesDialogOpen(false)}>
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

@@ -974,5 +974,211 @@ export async function registerRoutes(
     }
   });
 
+  // === QUESTION MODULES CRUD ===
+
+  // List question modules for organization
+  app.get("/api/organizations/:id/question-modules", isAuthenticated, requireOrgAccess("id", "surveys:view"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      const modules = await storage.getQuestionModules(orgId);
+      res.json(modules);
+    } catch (err) {
+      console.error("Erro ao buscar módulos:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Get a single question module
+  app.get("/api/organizations/:id/question-modules/:moduleId", isAuthenticated, requireOrgAccess("id", "surveys:view"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      const moduleId = Number(req.params.moduleId);
+      const module = await storage.getQuestionModule(moduleId);
+      
+      if (!module || module.organizationId !== orgId) {
+        return res.status(404).json({ message: "Módulo não encontrado" });
+      }
+      
+      res.json(module);
+    } catch (err) {
+      console.error("Erro ao buscar módulo:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Create question module
+  app.post("/api/organizations/:id/question-modules", isAuthenticated, requireOrgAccess("id", "surveys:edit"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      const { name, description, questions } = req.body;
+      
+      if (!name || !Array.isArray(questions)) {
+        return res.status(400).json({ message: "Nome e perguntas são obrigatórios" });
+      }
+      
+      const module = await storage.createQuestionModule({
+        organizationId: orgId,
+        name,
+        description: description || null,
+        questions,
+        isDefault: false
+      });
+      
+      res.status(201).json(module);
+    } catch (err) {
+      console.error("Erro ao criar módulo:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Update question module
+  app.patch("/api/organizations/:id/question-modules/:moduleId", isAuthenticated, requireOrgAccess("id", "surveys:edit"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      const moduleId = Number(req.params.moduleId);
+      
+      const existingModule = await storage.getQuestionModule(moduleId);
+      if (!existingModule || existingModule.organizationId !== orgId) {
+        return res.status(404).json({ message: "Módulo não encontrado" });
+      }
+      
+      const { name, description, questions } = req.body;
+      const module = await storage.updateQuestionModule(moduleId, {
+        name: name ?? existingModule.name,
+        description: description ?? existingModule.description,
+        questions: questions ?? existingModule.questions
+      });
+      
+      res.json(module);
+    } catch (err) {
+      console.error("Erro ao atualizar módulo:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Delete question module
+  app.delete("/api/organizations/:id/question-modules/:moduleId", isAuthenticated, requireOrgAccess("id", "surveys:edit"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      const moduleId = Number(req.params.moduleId);
+      
+      const existingModule = await storage.getQuestionModule(moduleId);
+      if (!existingModule || existingModule.organizationId !== orgId) {
+        return res.status(404).json({ message: "Módulo não encontrado" });
+      }
+      
+      await storage.deleteQuestionModule(moduleId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Erro ao deletar módulo:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
+  // Seed default question modules for organization (idempotent - skips if modules exist)
+  app.post("/api/organizations/:id/question-modules/seed-defaults", isAuthenticated, requireOrgAccess("id", "surveys:edit"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      
+      // Check if default modules already exist for this org
+      const existingModules = await storage.getQuestionModules(orgId);
+      const hasDefaults = existingModules.some((m: any) => m.isDefault);
+      if (hasDefaults) {
+        return res.status(200).json({ message: "Modulos padrao ja existem", modules: existingModules.filter((m: any) => m.isDefault) });
+      }
+      
+      const defaultModules = [
+        {
+          name: "Dados Demograficos - Idade",
+          description: "Pergunta sobre faixa etaria do entrevistado",
+          questions: [{
+            text: "Qual a sua faixa etaria?",
+            type: "multiple_choice",
+            options: ["16 a 24 anos", "25 a 34 anos", "35 a 44 anos", "45 a 54 anos", "55 a 64 anos", "65 anos ou mais"],
+            required: true
+          }]
+        },
+        {
+          name: "Dados Demograficos - Sexo",
+          description: "Pergunta sobre genero do entrevistado",
+          questions: [{
+            text: "Qual o seu sexo?",
+            type: "multiple_choice",
+            options: ["Masculino", "Feminino", "Outro", "Prefiro nao informar"],
+            required: true
+          }]
+        },
+        {
+          name: "Dados Demograficos - Escolaridade",
+          description: "Pergunta sobre nivel de escolaridade",
+          questions: [{
+            text: "Qual o seu nivel de escolaridade?",
+            type: "multiple_choice",
+            options: ["Ensino Fundamental Incompleto", "Ensino Fundamental Completo", "Ensino Medio Incompleto", "Ensino Medio Completo", "Superior Incompleto", "Superior Completo", "Pos-graduacao"],
+            required: true
+          }]
+        },
+        {
+          name: "Dados Demograficos - Religiao",
+          description: "Pergunta sobre religiao do entrevistado",
+          questions: [{
+            text: "Qual a sua religiao?",
+            type: "multiple_choice",
+            options: ["Catolica", "Evangelica/Protestante", "Espirita", "Umbanda/Candomble", "Outra", "Sem religiao", "Prefiro nao informar"],
+            required: true
+          }]
+        },
+        {
+          name: "Dados Demograficos - Renda",
+          description: "Pergunta sobre renda familiar",
+          questions: [{
+            text: "Qual a renda mensal da sua familia?",
+            type: "multiple_choice",
+            options: ["Ate 1 salario minimo", "De 1 a 2 salarios minimos", "De 2 a 4 salarios minimos", "De 4 a 10 salarios minimos", "Mais de 10 salarios minimos", "Prefiro nao informar"],
+            required: true
+          }]
+        },
+        {
+          name: "Dados Demograficos - Profissao",
+          description: "Pergunta sobre situacao profissional",
+          questions: [{
+            text: "Qual a sua situacao profissional atual?",
+            type: "multiple_choice",
+            options: ["Empregado CLT", "Servidor Publico", "Autonomo/PJ", "Empresario", "Aposentado", "Estudante", "Desempregado", "Do lar", "Outro"],
+            required: true
+          }]
+        },
+        {
+          name: "Dados Demograficos Completo",
+          description: "Modulo completo com idade, sexo, escolaridade, renda e religiao",
+          questions: [
+            { text: "Qual a sua faixa etaria?", type: "multiple_choice", options: ["16 a 24 anos", "25 a 34 anos", "35 a 44 anos", "45 a 54 anos", "55 a 64 anos", "65 anos ou mais"], required: true },
+            { text: "Qual o seu sexo?", type: "multiple_choice", options: ["Masculino", "Feminino", "Outro"], required: true },
+            { text: "Qual o seu nivel de escolaridade?", type: "multiple_choice", options: ["Ensino Fundamental Incompleto", "Ensino Fundamental Completo", "Ensino Medio Incompleto", "Ensino Medio Completo", "Superior Incompleto", "Superior Completo", "Pos-graduacao"], required: true },
+            { text: "Qual a renda mensal da sua familia?", type: "multiple_choice", options: ["Ate 1 salario minimo", "De 1 a 2 salarios minimos", "De 2 a 4 salarios minimos", "De 4 a 10 salarios minimos", "Mais de 10 salarios minimos"], required: true },
+            { text: "Qual a sua religiao?", type: "multiple_choice", options: ["Catolica", "Evangelica/Protestante", "Espirita", "Outra", "Sem religiao"], required: true }
+          ]
+        }
+      ];
+      
+      const createdModules = [];
+      for (const mod of defaultModules) {
+        const created = await storage.createQuestionModule({
+          organizationId: orgId,
+          name: mod.name,
+          description: mod.description,
+          questions: mod.questions,
+          isDefault: true
+        });
+        createdModules.push(created);
+      }
+      
+      res.status(201).json({ message: `${createdModules.length} modulos padrao criados`, modules: createdModules });
+    } catch (err) {
+      console.error("Erro ao criar modulos padrao:", err);
+      res.status(500).json({ message: "Erro interno" });
+    }
+  });
+
   return httpServer;
 }

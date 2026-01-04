@@ -9,7 +9,8 @@ import {
   answers, Answer, InsertAnswer,
   surveyAssignments, SurveyAssignment, InsertSurveyAssignment,
   memberPermissionOverrides, MemberPermissionOverride, InsertMemberPermissionOverride,
-  accessAuditLog, AccessAuditLog, InsertAccessAuditLog
+  accessAuditLog, AccessAuditLog, InsertAccessAuditLog,
+  questionModules, QuestionModule, InsertQuestionModule
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -107,6 +108,13 @@ export interface IStorage {
   // Access Audit Log
   logAccess(data: InsertAccessAuditLog): Promise<AccessAuditLog>;
   getAccessLogs(orgId: number, limit?: number): Promise<(AccessAuditLog & { user: User })[]>;
+
+  // Question Modules
+  getQuestionModules(orgId: number): Promise<QuestionModule[]>;
+  getQuestionModule(id: number): Promise<QuestionModule | undefined>;
+  createQuestionModule(data: InsertQuestionModule): Promise<QuestionModule>;
+  updateQuestionModule(id: number, data: Partial<InsertQuestionModule>): Promise<QuestionModule>;
+  deleteQuestionModule(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -744,6 +752,41 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
 
     return results.map(r => ({ ...r.log, user: r.user }));
+  }
+
+  // --- QUESTION MODULES ---
+  async getQuestionModules(orgId: number): Promise<QuestionModule[]> {
+    return await db.select()
+      .from(questionModules)
+      .where(eq(questionModules.organizationId, orgId))
+      .orderBy(desc(questionModules.createdAt));
+  }
+
+  async getQuestionModule(id: number): Promise<QuestionModule | undefined> {
+    const [module] = await db.select()
+      .from(questionModules)
+      .where(eq(questionModules.id, id));
+    return module;
+  }
+
+  async createQuestionModule(data: InsertQuestionModule): Promise<QuestionModule> {
+    const [module] = await db.insert(questionModules)
+      .values(data)
+      .returning();
+    return module;
+  }
+
+  async updateQuestionModule(id: number, data: Partial<InsertQuestionModule>): Promise<QuestionModule> {
+    const [module] = await db.update(questionModules)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(questionModules.id, id))
+      .returning();
+    return module;
+  }
+
+  async deleteQuestionModule(id: number): Promise<void> {
+    await db.delete(questionModules)
+      .where(eq(questionModules.id, id));
   }
 }
 
