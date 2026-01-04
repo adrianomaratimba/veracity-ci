@@ -219,6 +219,15 @@ export const api = {
           403: errorSchemas.forbidden,
           404: errorSchemas.notFound,
         }
+      },
+      resetLogin: {
+        method: 'POST' as const,
+        path: '/api/members/:memberId/reset-login',
+        responses: {
+          200: z.object({ success: z.boolean(), message: z.string() }),
+          403: errorSchemas.forbidden,
+          404: errorSchemas.notFound,
+        }
       }
     },
     invitations: {

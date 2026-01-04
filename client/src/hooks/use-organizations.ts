@@ -248,3 +248,25 @@ export function useUpdateMemberName() {
     },
   });
 }
+
+// Reset Member Login (changes from replit to pending auth)
+export function useResetMemberLogin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ memberId, orgId }: { memberId: number; orgId: number }) => {
+      const url = buildUrl(api.organizations.members.resetLogin.path, { memberId });
+      const res = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to reset member login");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.organizations.members.list.path, variables.orgId] });
+    },
+  });
+}

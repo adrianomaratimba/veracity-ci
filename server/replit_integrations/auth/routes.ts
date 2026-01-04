@@ -3,6 +3,7 @@ import { authStorage } from "./storage";
 import { isAuthenticated } from "./replitAuth";
 import { authService } from "../../auth-service";
 import { registerUserSchema, loginUserSchema } from "@shared/models/auth";
+import { sendPasswordResetEmail } from "../../email-service";
 
 // Register auth-specific routes
 export function registerAuthRoutes(app: Express): void {
@@ -114,7 +115,17 @@ export function registerAuthRoutes(app: Express): void {
         return res.status(400).json({ message: "Email é obrigatório" });
       }
 
-      await authService.requestPasswordReset(email);
+      const result = await authService.requestPasswordReset(email);
+      
+      if (result) {
+        // Send password reset email
+        const userName = result.user.firstName || undefined;
+        const emailSent = await sendPasswordResetEmail(email, result.token, userName);
+        if (!emailSent) {
+          console.warn(`Failed to send password reset email to ${email}, but token was created`);
+        }
+      }
+      
       // Always return success to prevent email enumeration
       res.json({ message: "Se o email estiver cadastrado, você receberá as instruções para redefinir sua senha." });
     } catch (error: any) {

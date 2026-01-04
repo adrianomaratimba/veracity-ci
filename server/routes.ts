@@ -377,6 +377,45 @@ export async function registerRoutes(
     }
   });
 
+  // Reset member login method (changes from replit to pending, allowing password setup)
+  app.post(api.organizations.members.resetLogin.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const memberId = Number(req.params.memberId);
+      
+      const targetMember = await storage.getMemberById(memberId);
+      if (!targetMember) return res.status(404).json({ message: "Membro não encontrado" });
+      
+      const orgId = targetMember.organizationId;
+      
+      const currentMember = await storage.getMemberByUserId(userId, orgId);
+      if (!currentMember || !hasPermission(currentMember.role as UserRole, "members:invite")) {
+        return res.status(403).json({ message: "Você não tem permissão para resetar login" });
+      }
+      
+      const callerRole = currentMember.role as UserRole;
+      
+      if (targetMember.role === 'owner') {
+        return res.status(403).json({ message: "Não é possível resetar o login do proprietário" });
+      }
+      
+      if (!canManageRole(callerRole, targetMember.role as UserRole)) {
+        return res.status(403).json({ message: "Você não tem permissão para resetar o login deste membro" });
+      }
+      
+      const { authService } = await import("./auth-service");
+      await authService.resetAuthProvider(targetMember.userId);
+      
+      res.json({ 
+        success: true, 
+        message: "Login resetado. O membro pode usar 'Esqueci minha senha' para configurar uma nova senha." 
+      });
+    } catch (err) {
+      console.error("Erro ao resetar login:", err);
+      res.status(500).json({ message: "Erro ao resetar login" });
+    }
+  });
+
   app.patch("/api/organizations/:id", isAuthenticated, requireOrgAccess("id", "org:edit"), async (req, res) => {
     try {
       const org = await storage.getOrganization(req.orgMember!.organizationId);

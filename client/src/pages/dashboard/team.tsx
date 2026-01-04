@@ -1,10 +1,10 @@
-import { useOrganization, useOrganizationMembers, useCurrentMember, useInviteMember, useUpdateMemberRole, useRemoveMember, useSetMemberPassword, useUpdateMemberName } from "@/hooks/use-organizations";
+import { useOrganization, useOrganizationMembers, useCurrentMember, useInviteMember, useUpdateMemberRole, useRemoveMember, useSetMemberPassword, useUpdateMemberName, useResetMemberLogin } from "@/hooks/use-organizations";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, Shield, MoreVertical, UserPlus, Trash2, UserCog, KeyRound, Eye, EyeOff, Pencil } from "lucide-react";
+import { Users, Shield, MoreVertical, UserPlus, Trash2, UserCog, KeyRound, Eye, EyeOff, Pencil, RefreshCw } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -28,6 +28,7 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const removeMember = useRemoveMember();
   const setMemberPassword = useSetMemberPassword();
   const updateMemberName = useUpdateMemberName();
+  const resetMemberLogin = useResetMemberLogin();
   const { toast } = useToast();
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -55,6 +56,9 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const [nameMember, setNameMember] = useState<{ id: number; firstName: string; lastName: string } | null>(null);
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
+
+  const [resetLoginDialogOpen, setResetLoginDialogOpen] = useState(false);
+  const [resetLoginMember, setResetLoginMember] = useState<{ id: number; name: string } | null>(null);
 
   if (orgLoading || membersLoading || currentMemberLoading) return <LoadingScreen message="Carregando equipe..." />;
   if (!org) return <div>Organização não encontrada</div>;
@@ -197,6 +201,25 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
       setMemberToDelete(null);
     } catch (error) {
       toast({ title: "Erro", description: "Falha ao remover membro", variant: "destructive" });
+    }
+  };
+
+  const handleResetLogin = async () => {
+    if (!resetLoginMember) return;
+    try {
+      await resetMemberLogin.mutateAsync({
+        memberId: resetLoginMember.id,
+        orgId
+      });
+      toast({ 
+        title: "Login resetado", 
+        description: `O login de ${resetLoginMember.name} foi resetado. A pessoa pode agora usar "Esqueci minha senha" para configurar uma nova senha.`
+      });
+      setResetLoginDialogOpen(false);
+      setResetLoginMember(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao resetar login";
+      toast({ title: "Erro", description: message, variant: "destructive" });
     }
   };
 
@@ -411,6 +434,14 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
                               <KeyRound className="w-4 h-4 mr-2" />
                               Definir Senha
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              const name = `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim();
+                              setResetLoginMember({ id: member.id, name });
+                              setResetLoginDialogOpen(true);
+                            }}>
+                              <RefreshCw className="w-4 h-4 mr-2" />
+                              Resetar Login
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
                               className="text-destructive"
@@ -599,6 +630,26 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={resetLoginDialogOpen} onOpenChange={setResetLoginDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resetar Login</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso vai resetar o método de login de {resetLoginMember?.name}. O membro poderá então usar "Esqueci minha senha" na tela de login para configurar uma nova senha.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleResetLogin}
+              data-testid="button-confirm-reset-login"
+            >
+              {resetMemberLogin.isPending ? "Resetando..." : "Confirmar Reset"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </DashboardLayout>
   );

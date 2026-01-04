@@ -118,7 +118,7 @@ export class AuthService {
     return token;
   }
 
-  async requestPasswordReset(email: string): Promise<string | null> {
+  async requestPasswordReset(email: string): Promise<{ token: string; user: User } | null> {
     const [user] = await db
       .select()
       .from(users)
@@ -131,7 +131,26 @@ export class AuthService {
     }
 
     const token = await this.createVerificationToken(user.id, "password_reset");
-    return token;
+    return { token, user };
+  }
+
+  async resetAuthProvider(userId: string): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({ 
+        authProvider: 'pending',
+        passwordHash: null,
+        replitUserId: null,
+        updatedAt: new Date() 
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!user) {
+      throw new Error("Usuário não encontrado");
+    }
+
+    return user;
   }
 
   async resetPassword(token: string, newPassword: string): Promise<User> {
