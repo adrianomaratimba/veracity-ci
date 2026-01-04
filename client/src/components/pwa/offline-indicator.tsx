@@ -12,7 +12,7 @@ export function OfflineIndicator() {
     if (success) {
       toast({
         title: "App instalado!",
-        description: "Instituto Veracity foi adicionado à sua tela inicial."
+        description: "VotoAudit foi adicionado à sua tela inicial."
       });
     }
   };

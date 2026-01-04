@@ -240,7 +240,7 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                       onChange={(e) => setBrandingForm({ ...brandingForm, brandingName: e.target.value })}
                       data-testid="input-branding-name"
                     />
-                    <p className="text-xs text-muted-foreground">Substitui "Instituto Veracity" na interface</p>
+                    <p className="text-xs text-muted-foreground">Substitui "VotoAudit" na interface</p>
                   </div>
 
                   <div className="space-y-2">
@@ -309,8 +309,8 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
 
                   <div className="flex items-center justify-between pt-4 border-t">
                     <div>
-                      <p className="font-medium">Ocultar Marca Instituto Veracity</p>
-                      <p className="text-sm text-muted-foreground">Remove referencias ao Instituto Veracity</p>
+                      <p className="font-medium">Ocultar Marca VotoAudit</p>
+                      <p className="text-sm text-muted-foreground">Remove referencias ao VotoAudit</p>
                     </div>
                     <Switch
                       checked={brandingForm.hideVotoAuditBrand}
@@ -370,16 +370,16 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
               <Card>
                 <CardHeader>
                   <CardTitle>Subdominio Padrao</CardTitle>
-                  <CardDescription>Seu endereco padrao no Instituto Veracity</CardDescription>
+                  <CardDescription>Seu endereco padrao no VotoAudit</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2 p-4 bg-muted rounded-lg">
                     <Globe className="w-5 h-5 text-muted-foreground" />
-                    <span className="font-mono text-sm flex-1">{org.slug}.veracity.app</span>
+                    <span className="font-mono text-sm flex-1">{org.slug}.votoaudit.app</span>
                     <Button 
                       variant="ghost" 
                       size="icon"
-                      onClick={() => copyToClipboard(`${org.slug}.veracity.app`)}
+                      onClick={() => copyToClipboard(`${org.slug}.votoaudit.app`)}
                       data-testid="button-copy-subdomain"
                     >
                       <Copy className="w-4 h-4" />
@@ -387,7 +387,7 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                     <Button 
                       variant="ghost" 
                       size="icon"
-                      onClick={() => window.open(`https://${org.slug}.veracity.app`, '_blank')}
+                      onClick={() => window.open(`https://${org.slug}.votoaudit.app`, '_blank')}
                       data-testid="button-open-subdomain"
                     >
                       <ExternalLink className="w-4 h-4" />
@@ -432,7 +432,7 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                         <p className="font-medium mb-2">Instrucoes de configuracao DNS:</p>
                         <ol className="list-decimal list-inside space-y-1">
                           <li>Acesse o painel do seu provedor de dominio</li>
-                          <li>Adicione um registro CNAME apontando para: <code className="bg-muted px-1 rounded">proxy.veracity.app</code></li>
+                          <li>Adicione um registro CNAME apontando para: <code className="bg-muted px-1 rounded">proxy.votoaudit.app</code></li>
                           <li>Aguarde a propagacao DNS (pode levar ate 48h)</li>
                         </ol>
                       </div>

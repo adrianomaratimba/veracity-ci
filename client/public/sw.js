@@ -1,4 +1,4 @@
-const CACHE_NAME = 'veracity-v1';
+const CACHE_NAME = 'votoaudit-v1';
 const OFFLINE_URL = '/offline.html';
 
 const STATIC_ASSETS = [
@@ -9,7 +9,7 @@ const STATIC_ASSETS = [
   '/icon-512.svg'
 ];
 
-const API_CACHE_NAME = 'veracity-api-v1';
+const API_CACHE_NAME = 'votoaudit-api-v1';
 const PENDING_SYNC_STORE = 'pending-sync';
 
 self.addEventListener('install', (event) => {
@@ -141,7 +141,7 @@ async function saveForSync(data) {
 
 async function openDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('VeracityOffline', 1);
+    const request = indexedDB.open('VotoAuditOffline', 1);
     
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);

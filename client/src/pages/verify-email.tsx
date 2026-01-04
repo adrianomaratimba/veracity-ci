@@ -47,8 +47,8 @@ export default function VerifyEmailPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <img src="/logo-veracity.png" alt="Instituto Veracity" className="h-10 w-auto" />
-            <span className="font-display font-bold text-2xl tracking-tight">Instituto Veracity</span>
+            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display text-lg">VA</div>
+            <span className="font-display font-bold text-2xl tracking-tight">VotoAudit</span>
           </div>
         </div>
 
