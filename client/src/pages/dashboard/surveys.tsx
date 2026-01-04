@@ -1,11 +1,11 @@
 import { useOrganization, useCurrentMember } from "@/hooks/use-organizations";
-import { useSurveys, useCreateSurvey } from "@/hooks/use-surveys";
+import { useSurveys, useCreateSurvey, useUpdateSurvey } from "@/hooks/use-surveys";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { Plus, FileText, MoreVertical, Play, Pause, BarChart3, Edit, ExternalLink, Copy, Trash2 } from "lucide-react";
+import { Plus, FileText, MoreVertical, Play, Pause, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -14,8 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { hasPermission, canManageSurveys, canViewAnalytics, isInterviewerRole, type UserRole } from "@shared/rbac";
+import type { Survey } from "@shared/schema";
 
 export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
@@ -23,10 +24,14 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const { data: surveys, isLoading: surveysLoading } = useSurveys(orgId);
   const { data: currentMember, isLoading: memberLoading } = useCurrentMember(orgId);
   const createSurvey = useCreateSurvey();
+  const updateSurvey = useUpdateSurvey();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [surveyToRename, setSurveyToRename] = useState<Survey | null>(null);
+  const [newTitle, setNewTitle] = useState("");
   
   const userRole = (currentMember?.role || 'viewer') as UserRole;
   const canCreate = canManageSurveys(userRole);
@@ -40,6 +45,32 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
     location: "",
     targetSample: 400
   });
+
+  const handleOpenRename = (survey: Survey) => {
+    setSurveyToRename(survey);
+    setNewTitle(survey.title);
+    setRenameDialogOpen(true);
+  };
+
+  const handleRename = async () => {
+    if (!surveyToRename || !newTitle.trim()) {
+      toast({ title: "Erro", description: "O título é obrigatório", variant: "destructive" });
+      return;
+    }
+    try {
+      await updateSurvey.mutateAsync({
+        id: surveyToRename.id,
+        orgId,
+        data: { title: newTitle.trim() }
+      });
+      toast({ title: "Sucesso", description: "Nome da pesquisa atualizado!" });
+      setRenameDialogOpen(false);
+      setSurveyToRename(null);
+      setNewTitle("");
+    } catch (error) {
+      toast({ title: "Erro", description: "Falha ao renomear pesquisa", variant: "destructive" });
+    }
+  };
 
   if (orgLoading || surveysLoading || memberLoading) return <LoadingScreen message="Carregando pesquisas..." />;
   if (!org) return <div>Organizacao nao encontrada</div>;
@@ -245,6 +276,12 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {canEdit && (
+                              <DropdownMenuItem onClick={() => handleOpenRename(survey)} data-testid={`button-rename-${survey.id}`}>
+                                <Pencil className="w-4 h-4 mr-2" />
+                                Renomear
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/collect/${survey.id}`)}>
                               <Copy className="w-4 h-4 mr-2" />
                               Copiar Link de Coleta
@@ -286,6 +323,47 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
           </Card>
         )}
       </div>
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Renomear Pesquisa</DialogTitle>
+            <DialogDescription>
+              Digite o novo nome para a pesquisa
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="rename-title">Novo Título</Label>
+              <Input
+                id="rename-title"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="Nome da pesquisa"
+                data-testid="input-rename-title"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleRename();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleRename} 
+              disabled={updateSurvey.isPending || !newTitle.trim()}
+              data-testid="button-confirm-rename"
+            >
+              {updateSurvey.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
