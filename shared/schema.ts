@@ -136,6 +136,19 @@ export const surveyAssignments = pgTable("survey_assignments", {
   assignedAt: timestamp("assigned_at").defaultNow(),
 });
 
+// === QUESTION MODULES (Reusable question templates) ===
+
+export const questionModules = pgTable("question_modules", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  questions: jsonb("questions").notNull().default([]),
+  isDefault: boolean("is_default").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // === RELATIONS ===
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -143,6 +156,14 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   surveys: many(surveys),
   pendingInvitations: many(pendingInvitations),
   domains: many(organizationDomains),
+  questionModules: many(questionModules),
+}));
+
+export const questionModulesRelations = relations(questionModules, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [questionModules.organizationId],
+    references: [organizations.id],
+  }),
 }));
 
 export const organizationDomainsRelations = relations(organizationDomains, ({ one }) => ({
@@ -290,6 +311,7 @@ export const insertPendingInvitationSchema = createInsertSchema(pendingInvitatio
 export const insertSurveyAssignmentSchema = createInsertSchema(surveyAssignments).omit({ id: true, assignedAt: true });
 export const insertMemberPermissionOverrideSchema = createInsertSchema(memberPermissionOverrides).omit({ id: true, createdAt: true });
 export const insertAccessAuditLogSchema = createInsertSchema(accessAuditLog).omit({ id: true, createdAt: true });
+export const insertQuestionModuleSchema = createInsertSchema(questionModules).omit({ id: true, createdAt: true, updatedAt: true });
 
 // === TYPES ===
 
@@ -325,6 +347,9 @@ export type InsertMemberPermissionOverride = z.infer<typeof insertMemberPermissi
 
 export type AccessAuditLog = typeof accessAuditLog.$inferSelect;
 export type InsertAccessAuditLog = z.infer<typeof insertAccessAuditLogSchema>;
+
+export type QuestionModule = typeof questionModules.$inferSelect;
+export type InsertQuestionModule = z.infer<typeof insertQuestionModuleSchema>;
 
 export type SurveyWithQuestions = Survey & { questions: Question[] };
 export type FullResponse = Response & { answers: Answer[], interviewer: typeof users.$inferSelect };
