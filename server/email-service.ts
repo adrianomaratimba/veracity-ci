@@ -33,9 +33,12 @@ async function getCredentials() {
 
 async function getUncachableResendClient() {
   const { apiKey, fromEmail } = await getCredentials();
+  // Use Resend's test domain if no verified domain is configured
+  // onboarding@resend.dev is Resend's sandbox email for testing
+  const effectiveFromEmail = fromEmail || 'Veracity <onboarding@resend.dev>';
   return {
     client: new Resend(apiKey),
-    fromEmail: fromEmail || 'noreply@veracity.app'
+    fromEmail: effectiveFromEmail
   };
 }
 
