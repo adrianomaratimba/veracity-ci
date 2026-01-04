@@ -33,9 +33,11 @@ async function getCredentials() {
 
 async function getUncachableResendClient() {
   const { apiKey, fromEmail } = await getCredentials();
-  // Use Resend's test domain if no verified domain is configured
-  // onboarding@resend.dev is Resend's sandbox email for testing
-  const effectiveFromEmail = fromEmail || 'Veracity <onboarding@resend.dev>';
+  // Always use Resend's test domain for now since custom domains need verification
+  // onboarding@resend.dev is Resend's sandbox email that works without domain verification
+  // Once you verify a custom domain in Resend, you can update the from_email in the connector settings
+  const effectiveFromEmail = 'Veracity <onboarding@resend.dev>';
+  console.log('[Email] Using from email:', effectiveFromEmail);
   return {
     client: new Resend(apiKey),
     fromEmail: effectiveFromEmail
