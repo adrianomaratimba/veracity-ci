@@ -93,6 +93,8 @@ function AuthenticatedRoutes() {
       
       {/* Auth page accessible even when logged in (for switching accounts) */}
       <Route path="/auth" component={AuthPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
+      <Route path="/verify-email" component={VerifyEmailPage} />
       
       <Route path="/no-organization" component={NoOrganizationPage} />
       <Route path="/org/:orgId/dashboard" component={DashboardOverview} />
