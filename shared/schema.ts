@@ -51,6 +51,23 @@ export const organizationDomains = pgTable("organization_domains", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Subscription plan configurations (editable by platform admins)
+export const subscriptionPlans = pgTable("subscription_plans", {
+  id: text("id").primaryKey(), // 'basic', 'pro', 'enterprise'
+  name: text("name").notNull(),
+  description: text("description"),
+  priceMonthly: integer("price_monthly").default(0), // in cents
+  priceYearly: integer("price_yearly").default(0), // in cents
+  maxSurveys: integer("max_surveys").default(1),
+  maxInterviews: integer("max_interviews").default(100),
+  maxUsers: integer("max_users").default(5),
+  features: jsonb("features").default([]), // array of feature strings
+  isActive: boolean("is_active").default(true),
+  displayOrder: integer("display_order").default(0),
+  stripePriceId: text("stripe_price_id"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const organizationMembers = pgTable("organization_members", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
@@ -374,6 +391,9 @@ export type InsertAccessAuditLog = z.infer<typeof insertAccessAuditLogSchema>;
 
 export type QuestionModule = typeof questionModules.$inferSelect;
 export type InsertQuestionModule = z.infer<typeof insertQuestionModuleSchema>;
+
+export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
+export type InsertSubscriptionPlan = Omit<SubscriptionPlan, 'updatedAt'>;
 
 export type SurveyWithQuestions = Survey & { questions: Question[] };
 export type FullResponse = Response & { answers: Answer[], interviewer: typeof users.$inferSelect };

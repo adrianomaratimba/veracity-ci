@@ -11,7 +11,8 @@ import {
   memberPermissionOverrides, MemberPermissionOverride, InsertMemberPermissionOverride,
   accessAuditLog, AccessAuditLog, InsertAccessAuditLog,
   questionModules, QuestionModule, InsertQuestionModule,
-  organizationDomains, OrganizationDomain, InsertOrganizationDomain
+  organizationDomains, OrganizationDomain, InsertOrganizationDomain,
+  subscriptionPlans, SubscriptionPlan
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -1065,6 +1066,29 @@ export class DatabaseStorage implements IStorage {
       .where(eq(organizationDomains.id, id))
       .returning();
     return domain;
+  }
+
+  // --- SUBSCRIPTION PLANS ---
+  async getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+    return await db.select()
+      .from(subscriptionPlans)
+      .where(eq(subscriptionPlans.isActive, true))
+      .orderBy(subscriptionPlans.displayOrder);
+  }
+
+  async getSubscriptionPlan(id: string): Promise<SubscriptionPlan | undefined> {
+    const [plan] = await db.select()
+      .from(subscriptionPlans)
+      .where(eq(subscriptionPlans.id, id));
+    return plan;
+  }
+
+  async updateSubscriptionPlan(id: string, data: Partial<SubscriptionPlan>): Promise<SubscriptionPlan> {
+    const [plan] = await db.update(subscriptionPlans)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(subscriptionPlans.id, id))
+      .returning();
+    return plan;
   }
 }
 

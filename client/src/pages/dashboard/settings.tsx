@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { QuestionModule, OrganizationDomain } from "@shared/schema";
+import type { QuestionModule, OrganizationDomain, SubscriptionPlan } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 
 export default function SettingsPage({ params }: { params: { orgId: string } }) {
@@ -178,6 +178,63 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
       toast({ title: "Erro", description: "Falha ao verificar dominio. Verifique a configuracao DNS.", variant: "destructive" });
     }
   });
+
+  // Subscription plans query and editing
+  const { data: allPlans = [] } = useQuery<SubscriptionPlan[]>({
+    queryKey: ['/api/plans'],
+  });
+
+  // Check if current user is platform admin
+  const { data: adminCheck } = useQuery<{ isAdmin: boolean }>({
+    queryKey: ['/api/admin/check'],
+  });
+  const isPlatformAdmin = adminCheck?.isAdmin ?? false;
+
+  const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
+  const [planForm, setPlanForm] = useState({
+    name: "",
+    description: "",
+    priceMonthly: 0,
+    priceYearly: 0,
+    maxSurveys: 1,
+    maxInterviews: 100,
+    maxUsers: 5,
+    features: [] as string[]
+  });
+
+  const updatePlan = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: typeof planForm }) => {
+      return apiRequest("PATCH", `/api/plans/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/plans'] });
+      toast({ title: "Plano atualizado" });
+      setEditingPlan(null);
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao atualizar plano", variant: "destructive" });
+    }
+  });
+
+  const handleEditPlan = (plan: SubscriptionPlan) => {
+    setEditingPlan(plan);
+    setPlanForm({
+      name: plan.name,
+      description: plan.description || "",
+      priceMonthly: plan.priceMonthly || 0,
+      priceYearly: plan.priceYearly || 0,
+      maxSurveys: plan.maxSurveys || 1,
+      maxInterviews: plan.maxInterviews || 100,
+      maxUsers: plan.maxUsers || 5,
+      features: (plan.features as string[]) || []
+    });
+  };
+
+  const handleSavePlan = () => {
+    if (editingPlan) {
+      updatePlan.mutate({ id: editingPlan.id, data: planForm });
+    }
+  };
 
   const handleEditModule = (module: QuestionModule) => {
     setEditingModule(module);
@@ -797,7 +854,7 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                 <CardContent className="space-y-4">
                   {org.plan !== 'pro' && (
                     <div className="p-4 border rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between gap-2 mb-2">
                         <span className="font-semibold">Plano Pro</span>
                         <Badge>Popular</Badge>
                       </div>
@@ -807,7 +864,7 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                   )}
                   {org.plan !== 'enterprise' && (
                     <div className="p-4 border rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between gap-2 mb-2">
                         <span className="font-semibold">Enterprise</span>
                       </div>
                       <p className="text-sm text-muted-foreground mb-3">Ilimitado, suporte prioritario, SLA</p>
@@ -816,8 +873,130 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                   )}
                 </CardContent>
               </Card>
+
+              {isPlatformAdmin && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Gerenciar Planos</CardTitle>
+                    <CardDescription>Configure os planos disponiveis na plataforma (apenas administradores)</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {allPlans.map((plan) => (
+                      <div key={plan.id} className="p-4 border rounded-lg">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div>
+                            <span className="font-semibold">{plan.name}</span>
+                            <Badge variant="outline" className="ml-2">{plan.id}</Badge>
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => handleEditPlan(plan)}
+                            data-testid={`button-edit-plan-${plan.id}`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-2">{plan.description}</p>
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Preco mensal:</span>
+                            <span className="font-medium ml-1">
+                              {plan.priceMonthly === 0 ? 'Gratis' : `R$ ${((plan.priceMonthly || 0) / 100).toFixed(2)}`}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Pesquisas:</span>
+                            <span className="font-medium ml-1">{plan.maxSurveys === -1 ? 'Ilimitado' : plan.maxSurveys}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Usuarios:</span>
+                            <span className="font-medium ml-1">{plan.maxUsers === -1 ? 'Ilimitado' : plan.maxUsers}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
+
+          <Dialog open={!!editingPlan} onOpenChange={(open) => !open && setEditingPlan(null)}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Editar Plano: {editingPlan?.name}</DialogTitle>
+                <DialogDescription>Atualize as configuracoes deste plano</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Nome</Label>
+                    <Input
+                      value={planForm.name}
+                      onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                      data-testid="input-plan-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Preco Mensal (centavos)</Label>
+                    <Input
+                      type="number"
+                      value={planForm.priceMonthly}
+                      onChange={(e) => setPlanForm({ ...planForm, priceMonthly: Number(e.target.value) })}
+                      data-testid="input-plan-price"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Descricao</Label>
+                  <Textarea
+                    value={planForm.description}
+                    onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
+                    data-testid="input-plan-description"
+                  />
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Max Pesquisas</Label>
+                    <Input
+                      type="number"
+                      value={planForm.maxSurveys}
+                      onChange={(e) => setPlanForm({ ...planForm, maxSurveys: Number(e.target.value) })}
+                      data-testid="input-plan-surveys"
+                    />
+                    <p className="text-xs text-muted-foreground">-1 para ilimitado</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max Entrevistas</Label>
+                    <Input
+                      type="number"
+                      value={planForm.maxInterviews}
+                      onChange={(e) => setPlanForm({ ...planForm, maxInterviews: Number(e.target.value) })}
+                      data-testid="input-plan-interviews"
+                    />
+                    <p className="text-xs text-muted-foreground">-1 para ilimitado</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max Usuarios</Label>
+                    <Input
+                      type="number"
+                      value={planForm.maxUsers}
+                      onChange={(e) => setPlanForm({ ...planForm, maxUsers: Number(e.target.value) })}
+                      data-testid="input-plan-users"
+                    />
+                    <p className="text-xs text-muted-foreground">-1 para ilimitado</p>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingPlan(null)}>Cancelar</Button>
+                <Button onClick={handleSavePlan} disabled={updatePlan.isPending} data-testid="button-save-plan">
+                  {updatePlan.isPending ? "Salvando..." : "Salvar Plano"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <TabsContent value="notifications" className="mt-6">
             <Card>

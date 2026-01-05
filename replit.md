@@ -148,10 +148,21 @@ The `shared/routes.ts` file defines a typed API contract with:
 - Settings page: `/org/:orgId/settings` -> "Marca" tab
 
 ### Custom Domains
-- Automatic subdomain: `{org-slug}.veracity.app`
-- Custom domain support (Enterprise plan) - schema ready, UI pending full implementation
-- DNS verification and SSL provisioning (future)
-- Database table: `organization_domains`
+- Automatic subdomain: `{org-slug}.veracity.app` displayed in settings
+- Custom domain support (Enterprise plan only) - fully implemented
+  - Add/remove/verify custom domains via Settings > Dominios tab
+  - DNS verification via CNAME to `proxy.veracity.app`
+  - Database table: `organization_domains`
+- API endpoints: GET/POST/DELETE `/api/organizations/:id/domains`
+
+### Subscription Plan Management
+- Plans stored in `subscription_plans` database table (dynamic, not hardcoded)
+- Default plans: basic, pro, enterprise with configurable limits
+- Plan editor accessible only to platform admins
+  - Admin check via `PLATFORM_ADMIN_EMAILS` env var (comma-separated emails)
+  - Settings > Plano tab shows editor for admins only
+- API endpoints: GET `/api/plans` (public), PATCH `/api/plans/:planId` (admin only)
+- Admin verification: GET `/api/admin/check` returns `{ isAdmin: boolean }`
 
 ### Pending Implementations
 - **Stripe Integration**: Payment processing for subscriptions is NOT yet configured. User declined Replit integration setup. When ready, configure Stripe API keys as secrets and implement:
@@ -159,3 +170,4 @@ The `shared/routes.ts` file defines a typed API contract with:
   - Webhook handlers for subscription events
   - Customer portal for self-service billing
   - Use fields: `stripeCustomerId`, `stripeSubscriptionId`, `billingStatus` in organizations table
+  - Connect `stripePriceId` in subscription_plans table to Stripe prices

@@ -1350,5 +1350,66 @@ export async function registerRoutes(
     }
   });
 
+  // Subscription Plans - Public endpoint for landing page
+  app.get("/api/plans", async (_req, res) => {
+    try {
+      const plans = await storage.getSubscriptionPlans();
+      res.json(plans);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao buscar planos" });
+    }
+  });
+
+  // Check if current user is a platform admin
+  // Admin emails are stored in PLATFORM_ADMIN_EMAILS env var (comma-separated)
+  const getPlatformAdminEmails = (): string[] => {
+    const envEmails = process.env.PLATFORM_ADMIN_EMAILS || '';
+    return envEmails.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  };
+
+  app.get("/api/admin/check", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const user = await storage.getUser(userId);
+      const platformAdminEmails = getPlatformAdminEmails();
+      const isAdmin = user && user.email && platformAdminEmails.includes(user.email.toLowerCase());
+      res.json({ isAdmin });
+    } catch (err) {
+      res.json({ isAdmin: false });
+    }
+  });
+
+  // Subscription Plans - Admin endpoint to update plan
+  const platformAdminSchema = z.object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+    priceMonthly: z.number().int().min(0).optional(),
+    priceYearly: z.number().int().min(0).optional(),
+    maxSurveys: z.number().int().optional(),
+    maxInterviews: z.number().int().optional(),
+    maxUsers: z.number().int().optional(),
+    features: z.array(z.string()).optional()
+  });
+
+  app.patch("/api/plans/:planId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const user = await storage.getUser(userId);
+      
+      const platformAdminEmails = getPlatformAdminEmails();
+      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+        return res.status(403).json({ message: "Apenas administradores da plataforma podem editar planos" });
+      }
+
+      const planId = req.params.planId;
+      const validatedData = platformAdminSchema.parse(req.body);
+      const updated = await storage.updateSubscriptionPlan(planId, validatedData);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      res.status(500).json({ message: "Erro ao atualizar plano" });
+    }
+  });
+
   return httpServer;
 }
