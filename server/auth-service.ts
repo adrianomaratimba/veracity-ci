@@ -52,7 +52,8 @@ export class AuthService {
 
     // Check if user has a password configured
     if (!user.passwordHash) {
-      if (user.authProvider === "replit") {
+      // Only admin email must use Replit login
+      if (user.email === "contato@maratimba.com") {
         throw new Error("Esta conta usa login via Replit. Por favor, use o botão 'Entrar com Replit'.");
       }
       throw new Error("Sua conta ainda não tem senha configurada. Clique em 'Esqueci minha senha' para criar uma.");
