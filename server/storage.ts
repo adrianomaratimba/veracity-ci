@@ -27,6 +27,7 @@ export interface IStorage {
   isUserMemberOfOrg(userId: string, orgId: number): Promise<boolean>;
   
   // Users
+  getUserById(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUserByEmail(email: string, firstName?: string, lastName?: string): Promise<User>;
   updateUserName(userId: string, firstName: string, lastName: string | null): Promise<void>;
@@ -200,6 +201,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- USERS ---
+  async getUserById(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(ilike(users.email, email));
     return user;

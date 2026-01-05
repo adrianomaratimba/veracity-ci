@@ -1370,11 +1370,14 @@ export async function registerRoutes(
   app.get("/api/admin/check", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
-      const user = await storage.getUser(userId);
+      const user = await storage.getUserById(userId);
       const platformAdminEmails = getPlatformAdminEmails();
+      console.log('[admin/check] userId:', userId, 'email:', user?.email, 'adminEmails:', platformAdminEmails);
       const isAdmin = user && user.email && platformAdminEmails.includes(user.email.toLowerCase());
+      console.log('[admin/check] isAdmin:', isAdmin);
       res.json({ isAdmin });
     } catch (err) {
+      console.error('[admin/check] error:', err);
       res.json({ isAdmin: false });
     }
   });
@@ -1394,7 +1397,7 @@ export async function registerRoutes(
   app.patch("/api/plans/:planId", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
-      const user = await storage.getUser(userId);
+      const user = await storage.getUserById(userId);
       
       const platformAdminEmails = getPlatformAdminEmails();
       if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
