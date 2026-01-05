@@ -50,17 +50,26 @@ export class AuthService {
       throw new Error("Email ou senha incorretos");
     }
 
-    if (user.authProvider === "replit") {
-      throw new Error("Esta conta usa login via Replit. Por favor, use o botão 'Entrar com Replit'.");
-    }
-
-    if (!user.passwordHash || user.authProvider === "pending") {
+    // Check if user has a password configured
+    if (!user.passwordHash) {
+      if (user.authProvider === "replit") {
+        throw new Error("Esta conta usa login via Replit. Por favor, use o botão 'Entrar com Replit'.");
+      }
       throw new Error("Sua conta ainda não tem senha configurada. Clique em 'Esqueci minha senha' para criar uma.");
     }
 
     const isValid = await bcrypt.compare(data.password, user.passwordHash);
     if (!isValid) {
       throw new Error("Email ou senha incorretos");
+    }
+
+    // Update authProvider to credentials if user successfully logs in with password
+    if (user.authProvider !== "credentials") {
+      await db
+        .update(users)
+        .set({ authProvider: "credentials", updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+      user.authProvider = "credentials";
     }
 
     return user;
@@ -125,8 +134,8 @@ export class AuthService {
       .where(eq(users.email, email.toLowerCase()))
       .limit(1);
 
-    // Allow password reset for 'credentials' and 'pending' users, but not 'replit' users
-    if (!user || user.authProvider === "replit") {
+    // Allow password reset for ALL users - they can always choose to switch to password auth
+    if (!user) {
       return null;
     }
 
