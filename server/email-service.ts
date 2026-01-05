@@ -108,11 +108,14 @@ async function sendEmail(options: EmailOptions): Promise<boolean> {
 }
 
 function getBaseUrl(): string {
+  // In production, always use the production domain
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://dataveracity.com.br';
+  }
+  // In development, use the dev domain
   return process.env.REPLIT_DEV_DOMAIN 
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : process.env.REPLIT_DEPLOYMENT_URL 
-      ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
-      : 'https://dataveracity.com.br';
+    : 'https://dataveracity.com.br';
 }
 
 function buildEmailTemplate(content: { title: string; greeting: string; body: string; buttonText: string; buttonUrl: string; footer: string }): string {
