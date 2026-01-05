@@ -115,6 +115,11 @@ The `shared/routes.ts` file defines a typed API contract with:
 - **Replit Auth**: OpenID Connect authentication provider
 - **Google Cloud Storage**: Object storage for file uploads (audio recordings, documents)
 - **PostgreSQL**: Primary database (provisioned via Replit)
+- **SendGrid**: Email delivery service (primary provider)
+  - Used for password reset emails and welcome emails
+  - Configured via `SENDGRID_API_KEY` secret
+  - From address: `noreply@dataveracity.com.br`
+  - Falls back to Resend if SendGrid fails
 
 ### Key NPM Packages
 - **drizzle-orm** / **drizzle-kit**: Database ORM and migrations
@@ -132,6 +137,8 @@ The `shared/routes.ts` file defines a typed API contract with:
 - `ISSUER_URL`: OIDC issuer (defaults to Replit)
 - `REPL_ID`: Replit deployment identifier
 - `PUBLIC_OBJECT_SEARCH_PATHS`: Object storage paths configuration
+- `SENDGRID_API_KEY`: SendGrid API key for email delivery
+- `PLATFORM_ADMIN_EMAILS`: Comma-separated list of platform admin emails
 
 ## SaaS Features
 
@@ -163,6 +170,14 @@ The `shared/routes.ts` file defines a typed API contract with:
   - Settings > Plano tab shows editor for admins only
 - API endpoints: GET `/api/plans` (public), PATCH `/api/plans/:planId` (admin only)
 - Admin verification: GET `/api/admin/check` returns `{ isAdmin: boolean }`
+
+### Platform Admin Features
+- **User Management**: View all platform users in Settings > Plano tab
+  - API endpoint: GET `/api/admin/users` (returns list of all users)
+- **Manual Password Reset**: Reset any user's password without email
+  - API endpoint: POST `/api/admin/users/:userId/reset-password`
+  - Uses bcrypt with 12 salt rounds
+  - Useful when email service is unavailable
 
 ### Pending Implementations
 - **Stripe Integration**: Payment processing for subscriptions is NOT yet configured. User declined Replit integration setup. When ready, configure Stripe API keys as secrets and implement:
