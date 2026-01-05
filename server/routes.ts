@@ -7,6 +7,10 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { requireOrgAccess, requireHasOrganization } from "./middleware/org-access";
 import { hasPermission, UserRole, canManageRole, getManageableRoles, isInterviewerRole, canManageSurveys, canViewResponses, canViewAnalytics, canAuditResponses } from "@shared/rbac";
 import { z } from "zod";
+import { db } from "./db";
+import { users } from "@shared/models/auth";
+import { sql } from "drizzle-orm";
+import { authService } from "./auth-service";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1473,6 +1477,70 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) return res.status(400).json(err.errors);
       console.error('[admin/organizations/plan] error:', err);
       res.status(500).json({ message: "Erro ao atualizar plano da organização" });
+    }
+  });
+
+  // Platform Admin - List all users
+  app.get("/api/admin/users", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const user = await storage.getUserById(userId);
+      
+      const platformAdminEmails = getPlatformAdminEmails();
+      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+        return res.status(403).json({ message: "Apenas administradores da plataforma" });
+      }
+
+      const allUsers = await db.select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        authProvider: users.authProvider,
+        hasPassword: sql<boolean>`${users.passwordHash} IS NOT NULL`,
+        emailVerified: users.emailVerified,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt
+      }).from(users).orderBy(users.email);
+      
+      res.json(allUsers);
+    } catch (err) {
+      console.error('[admin/users] error:', err);
+      res.status(500).json({ message: "Erro ao listar usuários" });
+    }
+  });
+
+  // Platform Admin - Reset user password
+  app.post("/api/admin/users/:userId/reset-password", isAuthenticated, async (req, res) => {
+    try {
+      const adminUserId = getUserId(req);
+      const adminUser = await storage.getUserById(adminUserId);
+      
+      const platformAdminEmails = getPlatformAdminEmails();
+      if (!adminUser || !adminUser.email || !platformAdminEmails.includes(adminUser.email.toLowerCase())) {
+        return res.status(403).json({ message: "Apenas administradores da plataforma" });
+      }
+
+      const targetUserId = req.params.userId;
+      const { password } = z.object({ 
+        password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres") 
+      }).parse(req.body);
+      
+      const updatedUser = await authService.setUserPasswordByAdmin(targetUserId, password);
+      
+      res.json({ 
+        success: true, 
+        message: "Senha atualizada com sucesso",
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          authProvider: updatedUser.authProvider
+        }
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      console.error('[admin/users/reset-password] error:', err);
+      res.status(500).json({ message: err instanceof Error ? err.message : "Erro ao redefinir senha" });
     }
   });
 

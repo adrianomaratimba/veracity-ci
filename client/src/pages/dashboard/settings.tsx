@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, CreditCard, Bell, Shield, Save, Check, AlertTriangle, Palette, Globe, Upload, Copy, ExternalLink, Layers, Plus, Pencil, Trash2, GripVertical } from "lucide-react";
+import { Building2, CreditCard, Bell, Shield, Save, Check, AlertTriangle, Palette, Globe, Upload, Copy, ExternalLink, Layers, Plus, Pencil, Trash2, GripVertical, Key } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -263,6 +263,49 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
       toast({ title: "Erro", description: "Falha ao atualizar plano", variant: "destructive" });
     }
   });
+
+  // Platform Admin - All users
+  const { data: allPlatformUsers = [] } = useQuery<Array<{
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    authProvider: string | null;
+    hasPassword: boolean;
+    emailVerified: boolean | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+  }>>({
+    queryKey: ['/api/admin/users'],
+    enabled: isPlatformAdmin,
+  });
+
+  // Password reset dialog state
+  const [resetPasswordUser, setResetPasswordUser] = useState<typeof allPlatformUsers[0] | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+
+  const resetUserPassword = useMutation({
+    mutationFn: async ({ userId, password }: { userId: string; password: string }) => {
+      return apiRequest("POST", `/api/admin/users/${userId}/reset-password`, { password });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+      toast({ title: "Senha redefinida com sucesso!" });
+      setResetPasswordUser(null);
+      setNewPassword("");
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao redefinir senha", variant: "destructive" });
+    }
+  });
+
+  const handleResetPassword = () => {
+    if (!resetPasswordUser || !newPassword || newPassword.length < 6) {
+      toast({ title: "Erro", description: "Senha deve ter pelo menos 6 caracteres", variant: "destructive" });
+      return;
+    }
+    resetUserPassword.mutate({ userId: resetPasswordUser.id, password: newPassword });
+  };
 
   const handleEditModule = (module: QuestionModule) => {
     setEditingModule(module);
@@ -992,6 +1035,49 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                   </CardContent>
                 </Card>
               )}
+
+              {isPlatformAdmin && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Gerenciar Usuarios</CardTitle>
+                    <CardDescription>Redefina senhas e gerencie usuarios da plataforma (apenas administradores)</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[400px] pr-4">
+                      <div className="space-y-3">
+                        {allPlatformUsers.map((u) => (
+                          <div key={u.id} className="p-4 border rounded-lg flex items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold truncate">{u.email}</span>
+                                <Badge variant={u.authProvider === 'credentials' ? 'default' : u.authProvider === 'replit' ? 'secondary' : 'outline'} className="text-xs">
+                                  {u.authProvider === 'credentials' ? 'Senha' : u.authProvider === 'replit' ? 'Replit' : 'Pendente'}
+                                </Badge>
+                                {u.hasPassword && <Badge variant="outline" className="text-xs">Senha configurada</Badge>}
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {u.firstName} {u.lastName}
+                              </p>
+                            </div>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => setResetPasswordUser(u)}
+                              data-testid={`button-reset-password-${u.id}`}
+                            >
+                              <Key className="w-4 h-4 mr-2" />
+                              Redefinir Senha
+                            </Button>
+                          </div>
+                        ))}
+                        {allPlatformUsers.length === 0 && (
+                          <p className="text-center text-muted-foreground py-4">Nenhum usuario encontrado</p>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
 
@@ -1066,6 +1152,40 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                 <Button variant="outline" onClick={() => setEditingPlan(null)}>Cancelar</Button>
                 <Button onClick={handleSavePlan} disabled={updatePlan.isPending} data-testid="button-save-plan">
                   {updatePlan.isPending ? "Salvando..." : "Salvar Plano"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={!!resetPasswordUser} onOpenChange={(open) => { if (!open) { setResetPasswordUser(null); setNewPassword(""); } }}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Redefinir Senha</DialogTitle>
+                <DialogDescription>Defina uma nova senha para o usuario {resetPasswordUser?.email}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nova Senha</Label>
+                  <Input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Digite a nova senha (min. 6 caracteres)"
+                    data-testid="input-new-password"
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  O usuario podera usar esta senha para acessar a plataforma imediatamente.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setResetPasswordUser(null); setNewPassword(""); }}>Cancelar</Button>
+                <Button 
+                  onClick={handleResetPassword} 
+                  disabled={resetUserPassword.isPending || newPassword.length < 6}
+                  data-testid="button-confirm-reset-password"
+                >
+                  {resetUserPassword.isPending ? "Salvando..." : "Definir Senha"}
                 </Button>
               </DialogFooter>
             </DialogContent>
