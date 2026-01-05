@@ -26,6 +26,10 @@ async function sendWithSendGrid(options: EmailOptions): Promise<boolean> {
         from: { email: 'noreply@dataveracity.com.br', name: 'Veracity' },
         subject: options.subject,
         content: [{ type: 'text/html', value: options.html }],
+        tracking_settings: {
+          click_tracking: { enable: false, enable_text: false },
+          open_tracking: { enable: false },
+        },
       }),
     });
 
