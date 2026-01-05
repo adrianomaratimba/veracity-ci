@@ -1414,5 +1414,67 @@ export async function registerRoutes(
     }
   });
 
+  // Platform Admin - List all organizations with their plans
+  app.get("/api/admin/organizations", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const user = await storage.getUserById(userId);
+      
+      const platformAdminEmails = getPlatformAdminEmails();
+      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+        return res.status(403).json({ message: "Apenas administradores da plataforma" });
+      }
+
+      const orgs = await storage.getOrganizations();
+      res.json(orgs);
+    } catch (err) {
+      console.error('[admin/organizations] error:', err);
+      res.status(500).json({ message: "Erro ao listar organizações" });
+    }
+  });
+
+  // Platform Admin - Change organization plan
+  app.patch("/api/admin/organizations/:orgId/plan", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const user = await storage.getUserById(userId);
+      
+      const platformAdminEmails = getPlatformAdminEmails();
+      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+        return res.status(403).json({ message: "Apenas administradores da plataforma" });
+      }
+
+      const orgId = parseInt(req.params.orgId);
+      const { plan } = z.object({ plan: z.enum(['basic', 'pro', 'enterprise']) }).parse(req.body);
+      
+      // Get plan limits from subscription_plans table
+      const plans = await storage.getSubscriptionPlans();
+      const selectedPlan = plans.find(p => p.id === plan && p.isActive);
+      
+      if (!selectedPlan) {
+        return res.status(400).json({ message: "Plano não encontrado ou inativo" });
+      }
+      
+      // Only update limits if they are defined in the plan
+      const updateData: Record<string, any> = { plan };
+      if (selectedPlan.maxSurveys !== null && selectedPlan.maxSurveys !== undefined) {
+        updateData.maxSurveys = selectedPlan.maxSurveys;
+      }
+      if (selectedPlan.maxInterviews !== null && selectedPlan.maxInterviews !== undefined) {
+        updateData.maxInterviews = selectedPlan.maxInterviews;
+      }
+      if (selectedPlan.maxUsers !== null && selectedPlan.maxUsers !== undefined) {
+        updateData.maxUsers = selectedPlan.maxUsers;
+      }
+      
+      const updated = await storage.updateOrganization(orgId, updateData);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      console.error('[admin/organizations/plan] error:', err);
+      res.status(500).json({ message: "Erro ao atualizar plano da organização" });
+    }
+  });
+
   return httpServer;
 }

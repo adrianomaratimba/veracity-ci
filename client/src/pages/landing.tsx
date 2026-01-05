@@ -24,64 +24,116 @@ import {
   Zap
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
+import type { SubscriptionPlan } from "@shared/schema";
+
+// Fallback plans in case API fails
+const fallbackPlans = [
+  {
+    name: "Básico",
+    price: "Grátis",
+    period: "",
+    description: "Ideal para pequenas pesquisas e testes",
+    features: [
+      "Até 100 entrevistas/mês",
+      "1 pesquisa ativa",
+      "3 usuários",
+      "GPS obrigatório",
+      "Áudio obrigatório",
+      "Relatórios básicos"
+    ],
+    cta: "Começar Grátis",
+    popular: false
+  },
+  {
+    name: "Profissional",
+    price: "R$ 297",
+    period: "/mês",
+    description: "Para institutos e empresas de pesquisa",
+    features: [
+      "Até 2.000 entrevistas/mês",
+      "10 pesquisas ativas",
+      "15 usuários",
+      "GPS + Áudio obrigatórios",
+      "Detecção avançada de fraudes",
+      "Exportação CSV/Excel",
+      "Suporte prioritário",
+      "API de integração"
+    ],
+    cta: "Teste 14 dias grátis",
+    popular: true
+  },
+  {
+    name: "Enterprise",
+    price: "Sob consulta",
+    period: "",
+    description: "Soluções personalizadas para grandes operações",
+    features: [
+      "Entrevistas ilimitadas",
+      "Pesquisas ilimitadas",
+      "Usuários ilimitados",
+      "White-label disponível",
+      "SLA garantido",
+      "Gerente de conta dedicado",
+      "Treinamento presencial",
+      "Integrações customizadas"
+    ],
+    cta: "Falar com Vendas",
+    popular: false
+  }
+];
+
+// Convert database plan to UI format
+function convertPlanToUI(dbPlan: SubscriptionPlan) {
+  const priceMonthly = dbPlan.priceMonthly || 0;
+  const features = Array.isArray(dbPlan.features) ? dbPlan.features as string[] : [];
+  
+  let price: string;
+  let period: string;
+  let cta: string;
+  
+  if (dbPlan.id === 'enterprise') {
+    price = "Sob consulta";
+    period = "";
+    cta = "Falar com Vendas";
+  } else if (priceMonthly === 0) {
+    price = "Grátis";
+    period = "";
+    cta = "Começar Grátis";
+  } else {
+    // Format price properly with cents
+    const priceValue = priceMonthly / 100;
+    price = priceValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    period = "/mês";
+    cta = dbPlan.id === 'basic' ? "Começar Grátis" : "Teste 14 dias grátis";
+  }
+  
+  return {
+    name: dbPlan.name,
+    price,
+    period,
+    description: dbPlan.description || "",
+    features,
+    cta,
+    popular: dbPlan.id === 'pro'
+  };
+}
 
 export default function Landing() {
   const { user } = useAuth();
-
-  const plans = [
-    {
-      name: "Básico",
-      price: "Grátis",
-      period: "",
-      description: "Ideal para pequenas pesquisas e testes",
-      features: [
-        "Até 100 entrevistas/mês",
-        "1 pesquisa ativa",
-        "3 usuários",
-        "GPS obrigatório",
-        "Áudio obrigatório",
-        "Relatórios básicos"
-      ],
-      cta: "Começar Grátis",
-      popular: false
-    },
-    {
-      name: "Profissional",
-      price: "R$ 297",
-      period: "/mês",
-      description: "Para institutos e empresas de pesquisa",
-      features: [
-        "Até 2.000 entrevistas/mês",
-        "10 pesquisas ativas",
-        "15 usuários",
-        "GPS + Áudio obrigatórios",
-        "Detecção avançada de fraudes",
-        "Exportação CSV/Excel",
-        "Suporte prioritário",
-        "API de integração"
-      ],
-      cta: "Teste 14 dias grátis",
-      popular: true
-    },
-    {
-      name: "Enterprise",
-      price: "Sob consulta",
-      period: "",
-      description: "Soluções personalizadas para grandes operações",
-      features: [
-        "Entrevistas ilimitadas",
-        "Pesquisas ilimitadas",
-        "Usuários ilimitados",
-        "White-label disponível",
-        "SLA garantido",
-        "Gerente de conta dedicado",
-        "Treinamento presencial",
-        "Integrações customizadas"
-      ],
-      cta: "Falar com Vendas",
-      popular: false
-    }
-  ];
+  
+  // Fetch plans from database
+  const { data: dbPlans } = useQuery<SubscriptionPlan[]>({
+    queryKey: ['/api/plans'],
+  });
+  
+  // Convert database plans to UI format, or use fallback
+  const plans = dbPlans && dbPlans.length > 0 
+    ? dbPlans
+        .filter(p => p.isActive)
+        .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+        .map(convertPlanToUI)
+    : fallbackPlans;
 
   const testimonials = [
     {

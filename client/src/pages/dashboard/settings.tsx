@@ -236,6 +236,34 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
     }
   };
 
+  // Platform Admin - Organizations management
+  const { data: allOrganizations = [] } = useQuery<Array<{
+    id: number;
+    name: string;
+    slug: string;
+    plan: string;
+    maxInterviews: number | null;
+    maxSurveys: number | null;
+    maxUsers: number | null;
+    createdAt: string | null;
+  }>>({
+    queryKey: ['/api/admin/organizations'],
+    enabled: isPlatformAdmin,
+  });
+
+  const updateOrgPlan = useMutation({
+    mutationFn: async ({ orgId, plan }: { orgId: number; plan: string }) => {
+      return apiRequest("PATCH", `/api/admin/organizations/${orgId}/plan`, { plan });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/organizations'] });
+      toast({ title: "Plano da organizacao atualizado!" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao atualizar plano", variant: "destructive" });
+    }
+  });
+
   const handleEditModule = (module: QuestionModule) => {
     setEditingModule(module);
     setModuleForm({
@@ -916,6 +944,51 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                         </div>
                       </div>
                     ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {isPlatformAdmin && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Planos por Organizacao</CardTitle>
+                    <CardDescription>Altere o plano de clientes especificos (apenas administradores)</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[400px] pr-4">
+                      <div className="space-y-3">
+                        {allOrganizations.map((o) => (
+                          <div key={o.id} className="p-4 border rounded-lg flex items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold truncate">{o.name}</span>
+                                <Badge variant="outline" className="text-xs">{o.slug}</Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {o.maxSurveys === -1 ? 'Ilimitado' : o.maxSurveys} pesquisas, {o.maxInterviews === -1 ? 'Ilimitado' : o.maxInterviews} entrevistas, {o.maxUsers === -1 ? 'Ilimitado' : o.maxUsers} usuarios
+                              </p>
+                            </div>
+                            <Select
+                              value={o.plan}
+                              onValueChange={(newPlan) => updateOrgPlan.mutate({ orgId: o.id, plan: newPlan })}
+                              disabled={updateOrgPlan.isPending}
+                            >
+                              <SelectTrigger className="w-[140px]" data-testid={`select-org-plan-${o.id}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="basic">Basico</SelectItem>
+                                <SelectItem value="pro">Profissional</SelectItem>
+                                <SelectItem value="enterprise">Enterprise</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                        {allOrganizations.length === 0 && (
+                          <p className="text-center text-muted-foreground py-4">Nenhuma organizacao encontrada</p>
+                        )}
+                      </div>
+                    </ScrollArea>
                   </CardContent>
                 </Card>
               )}
