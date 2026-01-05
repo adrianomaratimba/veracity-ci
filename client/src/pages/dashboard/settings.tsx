@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { QuestionModule } from "@shared/schema";
+import type { QuestionModule, OrganizationDomain } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 
 export default function SettingsPage({ params }: { params: { orgId: string } }) {
@@ -130,6 +130,54 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
     setModuleForm({ name: "", description: "", questions: [] });
     setEditingModule(null);
   };
+
+  // Custom domains state
+  const [newDomain, setNewDomain] = useState("");
+
+  const { data: customDomains = [], isLoading: domainsLoading } = useQuery<OrganizationDomain[]>({
+    queryKey: ['/api/organizations', orgId, 'domains'],
+    enabled: org?.plan === 'enterprise',
+  });
+
+  const addDomain = useMutation({
+    mutationFn: async (domain: string) => {
+      return apiRequest("POST", `/api/organizations/${orgId}/domains`, { domain });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'domains'] });
+      toast({ title: "Dominio adicionado", description: "Configure o DNS conforme as instrucoes" });
+      setNewDomain("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro", description: err.message || "Falha ao adicionar dominio", variant: "destructive" });
+    }
+  });
+
+  const removeDomain = useMutation({
+    mutationFn: async (domainId: number) => {
+      return apiRequest("DELETE", `/api/organizations/${orgId}/domains/${domainId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'domains'] });
+      toast({ title: "Dominio removido" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao remover dominio", variant: "destructive" });
+    }
+  });
+
+  const verifyDomain = useMutation({
+    mutationFn: async (domainId: number) => {
+      return apiRequest("POST", `/api/organizations/${orgId}/domains/${domainId}/verify`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'domains'] });
+      toast({ title: "Dominio verificado!" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao verificar dominio. Verifique a configuracao DNS.", variant: "destructive" });
+    }
+  });
 
   const handleEditModule = (module: QuestionModule) => {
     setEditingModule(module);
@@ -617,37 +665,85 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                   <CardDescription>Use seu proprio dominio (ex: pesquisas.suaempresa.com.br)</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="p-4 bg-muted/50 border rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline">Em breve</Badge>
+                  {org.plan !== 'enterprise' ? (
+                    <div className="p-4 bg-muted/50 border rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline">Plano Enterprise</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Dominios personalizados estao disponiveis apenas no plano Enterprise.
+                        Fale conosco para fazer upgrade.
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Dominios personalizados estarao disponiveis em breve. Voce podera conectar 
-                      seu proprio dominio e ter certificado SSL automatico.
-                    </p>
-                  </div>
-
-                  {org.plan === 'enterprise' && (
+                  ) : (
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="customDomain">Seu Dominio</Label>
+                        <Label htmlFor="customDomain">Adicionar Dominio</Label>
                         <div className="flex gap-2">
                           <Input
                             id="customDomain"
                             placeholder="pesquisas.suaempresa.com.br"
-                            disabled
+                            value={newDomain}
+                            onChange={(e) => setNewDomain(e.target.value)}
                             data-testid="input-custom-domain"
                           />
-                          <Button disabled data-testid="button-add-domain">Em breve</Button>
+                          <Button 
+                            onClick={() => addDomain.mutate(newDomain)}
+                            disabled={!newDomain.trim() || addDomain.isPending}
+                            data-testid="button-add-domain"
+                          >
+                            {addDomain.isPending ? "Adicionando..." : "Adicionar"}
+                          </Button>
                         </div>
-                        <p className="text-xs text-muted-foreground">Funcionalidade em desenvolvimento</p>
                       </div>
 
-                      <div className="text-sm text-muted-foreground">
+                      {customDomains.length > 0 && (
+                        <div className="space-y-2">
+                          <Label>Seus Dominios</Label>
+                          <div className="space-y-2">
+                            {customDomains.map((domain) => (
+                              <div key={domain.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                                <div className="flex items-center gap-3">
+                                  <Globe className="w-4 h-4 text-muted-foreground" />
+                                  <span className="font-mono text-sm">{domain.domain}</span>
+                                  <Badge variant={domain.dnsStatus === 'verified' ? 'default' : 'outline'}>
+                                    {domain.dnsStatus === 'verified' ? 'Verificado' : 'Pendente'}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {domain.dnsStatus !== 'verified' && (
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm"
+                                      onClick={() => verifyDomain.mutate(domain.id)}
+                                      disabled={verifyDomain.isPending}
+                                      data-testid={`button-verify-domain-${domain.id}`}
+                                    >
+                                      Verificar
+                                    </Button>
+                                  )}
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    onClick={() => removeDomain.mutate(domain.id)}
+                                    disabled={removeDomain.isPending}
+                                    data-testid={`button-remove-domain-${domain.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-lg">
                         <p className="font-medium mb-2">Instrucoes de configuracao DNS:</p>
                         <ol className="list-decimal list-inside space-y-1">
                           <li>Acesse o painel do seu provedor de dominio</li>
                           <li>Adicione um registro CNAME apontando para: <code className="bg-muted px-1 rounded">proxy.veracity.app</code></li>
+                          <li>Desative o proxy do Cloudflare (use DNS Only)</li>
                           <li>Aguarde a propagacao DNS (pode levar ate 48h)</li>
                         </ol>
                       </div>

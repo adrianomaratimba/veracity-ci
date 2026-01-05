@@ -10,7 +10,8 @@ import {
   surveyAssignments, SurveyAssignment, InsertSurveyAssignment,
   memberPermissionOverrides, MemberPermissionOverride, InsertMemberPermissionOverride,
   accessAuditLog, AccessAuditLog, InsertAccessAuditLog,
-  questionModules, QuestionModule, InsertQuestionModule
+  questionModules, QuestionModule, InsertQuestionModule,
+  organizationDomains, OrganizationDomain, InsertOrganizationDomain
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -148,6 +149,12 @@ export interface IStorage {
   createQuestionModule(data: InsertQuestionModule): Promise<QuestionModule>;
   updateQuestionModule(id: number, data: Partial<InsertQuestionModule>): Promise<QuestionModule>;
   deleteQuestionModule(id: number): Promise<void>;
+
+  // Organization Domains
+  getOrganizationDomains(orgId: number): Promise<OrganizationDomain[]>;
+  addOrganizationDomain(data: InsertOrganizationDomain): Promise<OrganizationDomain>;
+  removeOrganizationDomain(id: number): Promise<void>;
+  verifyOrganizationDomain(id: number): Promise<OrganizationDomain>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1025,6 +1032,39 @@ export class DatabaseStorage implements IStorage {
   async deleteQuestionModule(id: number): Promise<void> {
     await db.delete(questionModules)
       .where(eq(questionModules.id, id));
+  }
+
+  // --- ORGANIZATION DOMAINS ---
+  async getOrganizationDomains(orgId: number): Promise<OrganizationDomain[]> {
+    return await db.select()
+      .from(organizationDomains)
+      .where(eq(organizationDomains.organizationId, orgId))
+      .orderBy(desc(organizationDomains.createdAt));
+  }
+
+  async addOrganizationDomain(data: InsertOrganizationDomain): Promise<OrganizationDomain> {
+    const verificationToken = crypto.randomUUID();
+    const [domain] = await db.insert(organizationDomains)
+      .values({ ...data, verificationToken })
+      .returning();
+    return domain;
+  }
+
+  async removeOrganizationDomain(id: number): Promise<void> {
+    await db.delete(organizationDomains)
+      .where(eq(organizationDomains.id, id));
+  }
+
+  async verifyOrganizationDomain(id: number): Promise<OrganizationDomain> {
+    const [domain] = await db.update(organizationDomains)
+      .set({ 
+        dnsStatus: 'verified',
+        sslStatus: 'active',
+        verifiedAt: new Date()
+      })
+      .where(eq(organizationDomains.id, id))
+      .returning();
+    return domain;
   }
 }
 

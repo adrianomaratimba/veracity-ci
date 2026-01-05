@@ -431,6 +431,63 @@ export async function registerRoutes(
     }
   });
 
+  // Organization Domains - Custom domain management
+  app.get("/api/organizations/:id/domains", isAuthenticated, requireOrgAccess("id", "org:edit"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      const domains = await storage.getOrganizationDomains(orgId);
+      res.json(domains);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao buscar dominios" });
+    }
+  });
+
+  app.post("/api/organizations/:id/domains", isAuthenticated, requireOrgAccess("id", "org:edit"), async (req, res) => {
+    try {
+      const orgId = req.orgMember!.organizationId;
+      const org = await storage.getOrganization(orgId);
+      
+      if (org?.plan !== 'enterprise') {
+        return res.status(403).json({ message: "Dominios personalizados so estao disponiveis no plano Enterprise" });
+      }
+      
+      const { domain } = req.body;
+      if (!domain) return res.status(400).json({ message: "Dominio e obrigatorio" });
+      
+      const newDomain = await storage.addOrganizationDomain({
+        organizationId: orgId,
+        domain,
+        isSubdomain: false
+      });
+      res.status(201).json(newDomain);
+    } catch (err: any) {
+      if (err.code === '23505') {
+        return res.status(400).json({ message: "Este dominio ja esta em uso" });
+      }
+      res.status(500).json({ message: "Erro ao adicionar dominio" });
+    }
+  });
+
+  app.delete("/api/organizations/:id/domains/:domainId", isAuthenticated, requireOrgAccess("id", "org:edit"), async (req, res) => {
+    try {
+      const domainId = Number(req.params.domainId);
+      await storage.removeOrganizationDomain(domainId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao remover dominio" });
+    }
+  });
+
+  app.post("/api/organizations/:id/domains/:domainId/verify", isAuthenticated, requireOrgAccess("id", "org:edit"), async (req, res) => {
+    try {
+      const domainId = Number(req.params.domainId);
+      const verified = await storage.verifyOrganizationDomain(domainId);
+      res.json(verified);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao verificar dominio" });
+    }
+  });
+
   // 3. Surveys - SECURED with RBAC
   // Entrevistadores só veem pesquisas designadas a eles
   app.get(api.surveys.list.path, isAuthenticated, async (req, res) => {
