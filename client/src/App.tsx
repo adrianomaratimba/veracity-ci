@@ -62,6 +62,7 @@ import InterviewSession from "@/pages/collection/interview-session";
 import PendingInterviews from "@/pages/collection/pending-interviews";
 import VerifyEmailPage from "@/pages/verify-email";
 import ResetPasswordPage from "@/pages/reset-password";
+import ContactPage from "@/pages/contact";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
 import { setupAutoSync } from "@/lib/syncQueue";
 
@@ -125,6 +126,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Landing} />
         <Route path="/auth" component={AuthPage} />
+        <Route path="/contact" component={ContactPage} />
         <Route path="/verify-email" component={VerifyEmailPage} />
         <Route path="/reset-password" component={ResetPasswordPage} />
         <Route component={AuthPage} /> 

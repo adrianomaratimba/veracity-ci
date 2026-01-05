@@ -358,7 +358,7 @@ export default function Landing() {
                         </li>
                       ))}
                     </ul>
-                    <Link href="/auth">
+                    <Link href={plan.name === "Enterprise" ? "/contact" : `/auth?plan=${plan.name.toLowerCase()}`}>
                       <Button 
                         className="w-full" 
                         variant={plan.popular ? "default" : "outline"}

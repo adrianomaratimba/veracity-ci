@@ -1,17 +1,18 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Mail, Lock, User, ArrowLeft } from "lucide-react";
+import { Loader2, Mail, Lock, User, ArrowLeft, Check } from "lucide-react";
 import { Link } from "wouter";
 
 const loginSchema = z.object({
@@ -33,10 +34,26 @@ const registerSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 type RegisterFormData = z.infer<typeof registerSchema>;
 
+const planDetails: Record<string, { name: string; price: string; features: string[] }> = {
+  "básico": { name: "Básico", price: "Grátis", features: ["100 entrevistas/mês", "1 pesquisa", "3 usuários"] },
+  "profissional": { name: "Profissional", price: "R$ 297/mês", features: ["2.000 entrevistas/mês", "10 pesquisas", "15 usuários"] },
+};
+
 export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
+  
+  const params = new URLSearchParams(searchString);
+  const selectedPlan = params.get("plan");
+  const plan = selectedPlan ? planDetails[selectedPlan] : null;
+  
+  useEffect(() => {
+    if (selectedPlan) {
+      setMode("register");
+    }
+  }, [selectedPlan]);
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -106,6 +123,32 @@ export default function AuthPage() {
           </div>
         </div>
 
+        {plan && mode === "register" && (
+          <Card className="mb-4 border-primary/50 bg-primary/5">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="default">{plan.name}</Badge>
+                  <span className="font-semibold">{plan.price}</span>
+                </div>
+                <Link href="/auth">
+                  <Button variant="ghost" size="sm" data-testid="button-change-plan">
+                    Alterar
+                  </Button>
+                </Link>
+              </div>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                {plan.features.map((feature, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <Check className="w-3 h-3 text-primary" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl text-center">
@@ -114,7 +157,9 @@ export default function AuthPage() {
             <CardDescription className="text-center">
               {mode === "login" 
                 ? "Entre com seu email e senha para acessar a plataforma"
-                : "Preencha os dados abaixo para criar sua conta"
+                : plan 
+                  ? `Crie sua conta para iniciar o plano ${plan.name}`
+                  : "Preencha os dados abaixo para criar sua conta"
               }
             </CardDescription>
           </CardHeader>
