@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { 
   BarChart, 
   Bar, 
@@ -237,17 +239,161 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   }, [timelineData, voteIntentionQuestion]);
 
   const exportToPDF = useCallback(() => {
-    toast({ 
-      title: "Gerando PDF...", 
-      description: "O relatório será baixado em instantes." 
-    });
-    setTimeout(() => {
-      toast({ 
-        title: "PDF Gerado", 
-        description: "Funcionalidade em desenvolvimento. Em breve disponível." 
+    if (!aggregatedData) {
+      toast({ title: "Sem dados", description: "Não há dados para exportar", variant: "destructive" });
+      return;
+    }
+
+    toast({ title: "Gerando PDF...", description: "O relatório será baixado em instantes." });
+
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      let yPos = 20;
+
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text("RELATORIO DE PESQUISA", pageWidth / 2, yPos, { align: "center" });
+      yPos += 10;
+
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "normal");
+      doc.text(aggregatedData.survey.title, pageWidth / 2, yPos, { align: "center" });
+      yPos += 15;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      
+      const infoLines = [
+        `Localidade: ${aggregatedData.survey.location || 'Nao especificada'}`,
+        `Total de Entrevistas: ${aggregatedData.totalResponses}`,
+        `Margem de Erro: +/- ${aggregatedData.survey.marginOfError || 2}%`,
+        `Periodo: ${aggregatedData.survey.startDate ? new Date(aggregatedData.survey.startDate).toLocaleDateString('pt-BR') : 'N/A'} a ${aggregatedData.survey.endDate ? new Date(aggregatedData.survey.endDate).toLocaleDateString('pt-BR') : 'N/A'}`,
+        `Data do Relatorio: ${new Date().toLocaleDateString('pt-BR')} as ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+      ];
+      
+      infoLines.forEach(line => {
+        doc.text(line, 14, yPos);
+        yPos += 6;
       });
-    }, 1500);
-  }, [toast]);
+      yPos += 5;
+
+      if (voteIntentionQuestion && voteIntentionQuestion.results.length > 0) {
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("INTENCAO DE VOTO", 14, yPos);
+        yPos += 8;
+
+        const tableData = voteIntentionQuestion.results.map((r, idx) => [
+          String(idx + 1),
+          r.option,
+          String(r.count),
+          `${r.percentage}%`
+        ]);
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['#', 'Candidato/Opcao', 'Votos', 'Percentual']],
+          body: tableData,
+          theme: 'striped',
+          headStyles: { 
+            fillColor: [30, 58, 95],
+            fontSize: 10,
+            fontStyle: 'bold'
+          },
+          styles: {
+            fontSize: 9,
+            cellPadding: 3
+          },
+          columnStyles: {
+            0: { cellWidth: 15, halign: 'center' },
+            1: { cellWidth: 80 },
+            2: { cellWidth: 30, halign: 'center' },
+            3: { cellWidth: 35, halign: 'center' }
+          }
+        });
+
+        yPos = (doc as any).lastAutoTable.finalY + 15;
+      }
+
+      const otherQuestions = aggregatedData.questionResults.filter(q => 
+        q.questionId !== voteIntentionQuestion?.questionId
+      );
+
+      otherQuestions.forEach(question => {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        const questionText = question.questionText.length > 80 
+          ? question.questionText.substring(0, 77) + '...' 
+          : question.questionText;
+        doc.text(questionText, 14, yPos);
+        yPos += 8;
+
+        const qTableData = question.results.slice(0, 10).map((r, idx) => [
+          String(idx + 1),
+          r.option.length > 40 ? r.option.substring(0, 37) + '...' : r.option,
+          String(r.count),
+          `${r.percentage}%`
+        ]);
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['#', 'Opcao', 'Qtd', '%']],
+          body: qTableData,
+          theme: 'grid',
+          headStyles: { 
+            fillColor: [100, 116, 139],
+            fontSize: 9,
+            fontStyle: 'bold'
+          },
+          styles: {
+            fontSize: 8,
+            cellPadding: 2
+          },
+          columnStyles: {
+            0: { cellWidth: 12, halign: 'center' },
+            1: { cellWidth: 100 },
+            2: { cellWidth: 20, halign: 'center' },
+            3: { cellWidth: 20, halign: 'center' }
+          }
+        });
+
+        yPos = (doc as any).lastAutoTable.finalY + 12;
+      });
+
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.text(
+          `Pagina ${i} de ${pageCount}`,
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 10,
+          { align: 'center' }
+        );
+        doc.text(
+          'Documento gerado automaticamente - Veracity',
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 5,
+          { align: 'center' }
+        );
+      }
+
+      const fileName = `relatorio_${aggregatedData.survey.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+
+      toast({ title: "PDF Gerado!", description: "Relatorio exportado com sucesso." });
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      toast({ title: "Erro", description: "Falha ao gerar o PDF", variant: "destructive" });
+    }
+  }, [aggregatedData, voteIntentionQuestion, toast]);
 
   const exportToExcel = useCallback(() => {
     if (!aggregatedData || !voteIntentionQuestion) {
