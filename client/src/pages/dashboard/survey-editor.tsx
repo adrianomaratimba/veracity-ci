@@ -210,6 +210,49 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     }
   });
 
+  // Coordinator assignments - only fetch if not new survey
+  const { data: coordinatorAssignments = [], isLoading: coordinatorAssignmentsLoading } = useQuery<any[]>({
+    queryKey: [`/api/surveys/${surveyId}/coordinators`],
+    enabled: !isNewSurvey && surveyId > 0,
+  });
+
+  const { data: availableCoordinators = [], isLoading: coordinatorsLoading } = useQuery<any[]>({
+    queryKey: [`/api/organizations/${orgId}/coordinators`],
+    enabled: !isNewSurvey && surveyId > 0,
+  });
+
+  const assignCoordinator = useMutation({
+    mutationFn: async (coordinatorId: string) => {
+      const res = await apiRequest('POST', `/api/surveys/${surveyId}/coordinators`, { coordinatorId });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Erro ao designar coordenador');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/coordinators`] });
+      toast({ title: "Coordenador designado" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const unassignCoordinator = useMutation({
+    mutationFn: async (coordinatorId: string) => {
+      const res = await apiRequest('DELETE', `/api/surveys/${surveyId}/coordinators/${coordinatorId}`);
+      if (!res.ok) throw new Error('Erro ao remover designação');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/coordinators`] });
+      toast({ title: "Coordenador removido" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao remover coordenador", variant: "destructive" });
+    }
+  });
+
   const [surveyForm, setSurveyForm] = useState({
     title: "",
     description: "",
@@ -456,12 +499,15 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         </div>
 
         <Tabs defaultValue={isNewSurvey ? "settings" : "questions"} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 max-w-lg">
+          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
             <TabsTrigger value="questions" className="gap-2" disabled={isNewSurvey} data-testid="tab-questions">
               <FileText className="w-4 h-4" /> Perguntas
             </TabsTrigger>
             <TabsTrigger value="interviewers" className="gap-2" disabled={isNewSurvey} data-testid="tab-interviewers">
               <Users className="w-4 h-4" /> Entrevistadores
+            </TabsTrigger>
+            <TabsTrigger value="coordinators" className="gap-2" disabled={isNewSurvey} data-testid="tab-coordinators">
+              <Users className="w-4 h-4" /> Coordenadores
             </TabsTrigger>
             <TabsTrigger value="settings" className="gap-2" data-testid="tab-settings">
               <Settings2 className="w-4 h-4" /> Configuracoes
@@ -678,6 +724,113 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                               onClick={() => assignInterviewer.mutate(i.userId)}
                               disabled={assignInterviewer.isPending}
                               data-testid={`button-assign-${i.userId}`}
+                            >
+                              <UserPlus className="w-4 h-4 mr-2" /> Adicionar
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="coordinators" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Coordenadores Designados</CardTitle>
+                <CardDescription>Escolha quais coordenadores supervisionam esta pesquisa</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Assigned coordinators */}
+                <div className="space-y-3">
+                  <Label>Coordenadores atribuidos a esta pesquisa</Label>
+                  {coordinatorAssignmentsLoading ? (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">Carregando...</p>
+                  ) : coordinatorAssignments.length > 0 ? (
+                    <div className="space-y-2">
+                      {coordinatorAssignments.map((a: any) => (
+                        <div key={a.coordinatorId} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback>
+                                {(a.coordinator?.firstName?.[0] || a.coordinator?.email?.[0] || '?').toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium text-sm">
+                                {a.coordinator?.firstName && a.coordinator?.lastName
+                                  ? `${a.coordinator.firstName} ${a.coordinator.lastName}`
+                                  : a.coordinator?.email || 'Coordenador'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{a.coordinator?.email}</p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => unassignCoordinator.mutate(a.coordinatorId)}
+                            disabled={unassignCoordinator.isPending}
+                            data-testid={`button-unassign-coordinator-${a.coordinatorId}`}
+                          >
+                            <UserMinus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                      Nenhum coordenador designado. Adicione coordenadores abaixo.
+                    </p>
+                  )}
+                </div>
+
+                {/* Available coordinators to assign */}
+                <div className="space-y-3 pt-4 border-t">
+                  <Label>Adicionar coordenador</Label>
+                  {coordinatorsLoading ? (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">Carregando coordenadores...</p>
+                  ) : (() => {
+                    const assignedIds = coordinatorAssignments.map((a: any) => a.coordinatorId);
+                    const unassigned = availableCoordinators.filter((c: any) => !assignedIds.includes(c.userId));
+                    
+                    if (unassigned.length === 0) {
+                      return (
+                        <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                          {availableCoordinators.length === 0
+                            ? "Nao ha coordenadores cadastrados na organizacao. Adicione membros com a funcao 'Coordenador' na pagina de Equipe."
+                            : "Todos os coordenadores ja estao designados para esta pesquisa."}
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        {unassigned.map((c: any) => (
+                          <div key={c.userId} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>
+                                  {(c.user?.firstName?.[0] || c.user?.email?.[0] || '?').toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium text-sm">
+                                  {c.user?.firstName && c.user?.lastName
+                                    ? `${c.user.firstName} ${c.user.lastName}`
+                                    : c.user?.email || 'Coordenador'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{c.user?.email}</p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => assignCoordinator.mutate(c.userId)}
+                              disabled={assignCoordinator.isPending}
+                              data-testid={`button-assign-coordinator-${c.userId}`}
                             >
                               <UserPlus className="w-4 h-4 mr-2" /> Adicionar
                             </Button>
