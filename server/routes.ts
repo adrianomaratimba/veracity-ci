@@ -1334,6 +1334,95 @@ export async function registerRoutes(
     }
   });
 
+  // Export survey data as CSV
+  app.get("/api/surveys/:surveyId/export", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      const format = (req.query.format as string) || 'csv';
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const role = member.role as UserRole;
+      if (isInterviewerRole(role)) {
+        return res.status(403).json({ message: "Você não tem permissão para exportar dados" });
+      }
+      
+      if (!hasPermission(role, "analytics:view")) {
+        return res.status(403).json({ message: "Você não tem permissão para exportar dados" });
+      }
+      
+      // Get all responses with answers
+      const responsesData = await storage.getResponsesWithAnswers(surveyId);
+      const questions = survey.questions || [];
+      
+      // Build CSV
+      const headers = [
+        'ID',
+        'Entrevistador',
+        'Data/Hora',
+        'Latitude',
+        'Longitude',
+        'Precisão GPS (m)',
+        'Duração (s)',
+        'Status',
+        ...questions.map(q => q.text)
+      ];
+      
+      const rows = responsesData.map(r => {
+        const answerMap = new Map(r.answers.map(a => [a.questionId, a.value]));
+        return [
+          r.id,
+          r.interviewerId,
+          new Date(r.createdAt!).toLocaleString('pt-BR'),
+          r.latitude,
+          r.longitude,
+          r.accuracy?.toFixed(1) || '',
+          r.duration || '',
+          r.status,
+          ...questions.map(q => {
+            const value = answerMap.get(q.id);
+            if (Array.isArray(value)) return value.join('; ');
+            return value || '';
+          })
+        ];
+      });
+      
+      // Generate CSV content
+      const escapeCSV = (val: any) => {
+        const str = String(val ?? '');
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+      
+      const csvContent = [
+        headers.map(escapeCSV).join(','),
+        ...rows.map(row => row.map(escapeCSV).join(','))
+      ].join('\n');
+      
+      // Add BOM for Excel UTF-8 compatibility
+      const bom = '\uFEFF';
+      const csvWithBom = bom + csvContent;
+      
+      const filename = `${survey.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csvWithBom);
+    } catch (err) {
+      console.error("Erro ao exportar dados:", err);
+      res.status(500).json({ message: "Erro ao exportar dados" });
+    }
+  });
+
   // === ACCESS CONTROL & PERMISSIONS ===
   
   // Get role matrix (permissions for each role)

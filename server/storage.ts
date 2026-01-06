@@ -70,6 +70,7 @@ export interface IStorage {
   createResponse(response: InsertResponse, answers: Omit<InsertAnswer, 'responseId'>[]): Promise<Response>;
   getResponses(surveyId: number): Promise<Response[]>;
   getResponse(id: number): Promise<(Response & { answers: Answer[] }) | undefined>;
+  getResponsesWithAnswers(surveyId: number): Promise<(Response & { answers: Answer[] })[]>;
   
   // Analytics
   getSurveyAnalytics(surveyId: number): Promise<any>;
@@ -499,6 +500,17 @@ export class DatabaseStorage implements IStorage {
       }
     });
     return response;
+  }
+
+  async getResponsesWithAnswers(surveyId: number): Promise<(Response & { answers: Answer[] })[]> {
+    const result = await db.query.responses.findMany({
+      where: eq(responses.surveyId, surveyId),
+      with: {
+        answers: true
+      },
+      orderBy: (responses, { desc }) => [desc(responses.createdAt)]
+    });
+    return result;
   }
 
   async updateResponseStatus(id: number, status: string, reviewNote?: string): Promise<Response | undefined> {
