@@ -834,6 +834,114 @@ export async function registerRoutes(
     }
   });
 
+  // ============= SURVEY COORDINATORS =============
+  
+  // List coordinators for a survey
+  app.get("/api/surveys/:surveyId/coordinators", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const coordinators = await storage.getSurveyCoordinators(surveyId);
+      res.json(coordinators);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao listar coordenadores" });
+    }
+  });
+
+  // Assign coordinator to survey
+  app.post("/api/surveys/:surveyId/coordinators", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para designar coordenadores" });
+      }
+      
+      const { coordinatorId } = req.body;
+      if (!coordinatorId) {
+        return res.status(400).json({ message: "ID do coordenador é obrigatório" });
+      }
+      
+      // Check if coordinator is a member of the organization with coordinator role
+      const coordinatorMember = await storage.getMemberByUserId(coordinatorId, survey.organizationId);
+      if (!coordinatorMember) {
+        return res.status(400).json({ message: "O usuário não é membro desta organização" });
+      }
+      
+      if (coordinatorMember.role !== 'coordinator') {
+        return res.status(400).json({ message: "O usuário não tem a função de coordenador" });
+      }
+      
+      // Check if already assigned
+      const isAssigned = await storage.isCoordinatorAssigned(surveyId, coordinatorId);
+      if (isAssigned) {
+        return res.status(400).json({ message: "Coordenador já está designado para esta pesquisa" });
+      }
+      
+      const assignment = await storage.assignCoordinator({
+        surveyId,
+        coordinatorId,
+        assignedBy: userId
+      });
+      
+      res.status(201).json(assignment);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao designar coordenador" });
+    }
+  });
+
+  // Remove coordinator from survey
+  app.delete("/api/surveys/:surveyId/coordinators/:coordinatorId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      const coordinatorId = req.params.coordinatorId;
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para remover designações" });
+      }
+      
+      await storage.unassignCoordinator(surveyId, coordinatorId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao remover coordenador" });
+    }
+  });
+  
+  // Get coordinators available for assignment (members with coordinator role)
+  app.get("/api/organizations/:id/coordinators", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.id);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const members = await storage.getOrganizationMembers(orgId);
+      // Filter to only coordinators
+      const coordinators = members.filter(m => m.role === 'coordinator');
+      res.json(coordinators);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao listar coordenadores" });
+    }
+  });
+
   // 5. Responses (Collection) - CRITICAL: GPS & Audio Validation - SECURED
   app.post(api.responses.submit.path, isAuthenticated, async (req, res) => {
     try {
