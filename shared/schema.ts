@@ -126,6 +126,8 @@ export const surveys = pgTable("surveys", {
   endDate: timestamp("end_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  deletedAt: timestamp("deleted_at"),
+  deletedBy: varchar("deleted_by").references(() => users.id),
 });
 
 export const questions = pgTable("questions", {
