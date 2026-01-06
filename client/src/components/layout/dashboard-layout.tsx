@@ -15,7 +15,8 @@ import {
   Eye,
   ChevronsUpDown,
   Building2,
-  Check
+  Check,
+  Radar
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
       return [
         { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
         { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
+        { name: 'Supervisor', href: `/org/${orgId}/supervisor`, icon: Radar },
       ];
     }
     
@@ -96,6 +98,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
     const items = [
       { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
       { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
+      { name: 'Supervisor', href: `/org/${orgId}/supervisor`, icon: Radar },
     ];
     
     // Auditoria - only for admin/owner

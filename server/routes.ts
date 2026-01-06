@@ -1968,5 +1968,17 @@ export async function registerRoutes(
     }
   });
 
+  // Supervisor Dashboard - Real-time overview
+  app.get("/api/organizations/:id/supervisor/overview", isAuthenticated, requireOrgAccess("id", "analytics:view"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id);
+      const overview = await storage.getSupervisorOverview(orgId);
+      res.json(overview);
+    } catch (err) {
+      console.error('[supervisor/overview] error:', err);
+      res.status(500).json({ message: "Erro ao carregar visão geral do supervisor" });
+    }
+  });
+
   return httpServer;
 }

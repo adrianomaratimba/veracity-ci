@@ -1251,6 +1251,100 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return plan;
   }
+
+  // --- SUPERVISOR DASHBOARD ---
+  async getSupervisorOverview(orgId: number): Promise<{
+    interviewers: Array<{
+      userId: string;
+      name: string;
+      email: string | null;
+      profileImageUrl: string | null;
+      lastLocation: { lat: number | null; lng: number | null } | null;
+      lastActivity: Date | null;
+      currentSurvey: { id: number; title: string } | null;
+      interviewsToday: number;
+      interviewsTotal: number;
+      status: 'active' | 'idle' | 'offline';
+    }>;
+    totalInterviewsToday: number;
+    activeInterviewers: number;
+  }> {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const idleThreshold = 30 * 60 * 1000; // 30 minutes
+    const offlineThreshold = 2 * 60 * 60 * 1000; // 2 hours
+    
+    // Get all interviewers in the organization
+    const members = await db.select({
+      userId: organizationMembers.userId,
+      role: organizationMembers.role,
+      user: users
+    })
+      .from(organizationMembers)
+      .innerJoin(users, eq(organizationMembers.userId, users.id))
+      .where(and(
+        eq(organizationMembers.organizationId, orgId),
+        eq(organizationMembers.role, 'interviewer')
+      ));
+    
+    // Get all surveys for this org
+    const orgSurveys = await db.select().from(surveys).where(eq(surveys.organizationId, orgId));
+    const surveyIds = orgSurveys.map(s => s.id);
+    const surveyMap = new Map(orgSurveys.map(s => [s.id, { id: s.id, title: s.title }]));
+    
+    // Get all responses for org surveys
+    let allResponses: Response[] = [];
+    if (surveyIds.length > 0) {
+      allResponses = await db.select().from(responses).where(
+        sql`${responses.surveyId} IN (${sql.join(surveyIds.map(id => sql`${id}`), sql`, `)})`
+      );
+    }
+    
+    const interviewerData = members.map(m => {
+      const userResponses = allResponses.filter(r => r.interviewerId === m.userId);
+      const responsesToday = userResponses.filter(r => 
+        r.createdAt && new Date(r.createdAt) >= todayStart
+      );
+      
+      // Get last response with location
+      const lastResponse = userResponses.sort((a, b) => 
+        (new Date(b.createdAt!).getTime()) - (new Date(a.createdAt!).getTime())
+      )[0];
+      
+      const lastActivity = lastResponse?.createdAt ? new Date(lastResponse.createdAt) : null;
+      const timeSinceActivity = lastActivity ? now.getTime() - lastActivity.getTime() : Infinity;
+      
+      let status: 'active' | 'idle' | 'offline' = 'offline';
+      if (timeSinceActivity < idleThreshold) {
+        status = 'active';
+      } else if (timeSinceActivity < offlineThreshold) {
+        status = 'idle';
+      }
+      
+      return {
+        userId: m.userId,
+        name: `${m.user.firstName || ''} ${m.user.lastName || ''}`.trim() || m.user.email || 'Sem nome',
+        email: m.user.email,
+        profileImageUrl: m.user.profileImageUrl,
+        lastLocation: lastResponse?.latitude && lastResponse?.longitude 
+          ? { lat: lastResponse.latitude, lng: lastResponse.longitude }
+          : null,
+        lastActivity,
+        currentSurvey: lastResponse ? surveyMap.get(lastResponse.surveyId) || null : null,
+        interviewsToday: responsesToday.length,
+        interviewsTotal: userResponses.length,
+        status
+      };
+    });
+    
+    return {
+      interviewers: interviewerData,
+      totalInterviewsToday: allResponses.filter(r => 
+        r.createdAt && new Date(r.createdAt) >= todayStart
+      ).length,
+      activeInterviewers: interviewerData.filter(i => i.status === 'active').length
+    };
+  }
 }
 
 export const storage = new DatabaseStorage();

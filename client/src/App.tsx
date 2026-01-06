@@ -50,6 +50,7 @@ import Onboarding from "@/pages/onboarding";
 import NoOrganizationPage from "@/pages/no-organization";
 import DashboardOverview from "@/pages/dashboard/overview";
 import SurveysPage from "@/pages/dashboard/surveys";
+import SupervisorDashboard from "@/pages/dashboard/supervisor";
 import SurveyEditorPage from "@/pages/dashboard/survey-editor";
 import SurveyAnalytics from "@/pages/dashboard/survey-analytics";
 import SurveyResults from "@/pages/dashboard/survey-results";
@@ -108,6 +109,7 @@ function AuthenticatedRoutes() {
       <Route path="/org/:orgId/settings" component={SettingsPage} />
       <Route path="/org/:orgId/portal" component={ViewerPortal} />
       <Route path="/org/:orgId/access" component={AccessControlPage} />
+      <Route path="/org/:orgId/supervisor" component={SupervisorDashboard} />
       
       {/* PWA / Mobile Collection Routes */}
       <Route path="/collect/pending" component={PendingInterviews} />
