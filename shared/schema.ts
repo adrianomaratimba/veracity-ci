@@ -122,6 +122,7 @@ export const surveys = pgTable("surveys", {
   targetSample: integer("target_sample"),
   marginOfError: doublePrecision("margin_of_error"),
   quotas: jsonb("quotas"),
+  shuffleQuestions: boolean("shuffle_questions").default(false),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -139,6 +140,7 @@ export const questions = pgTable("questions", {
   order: integer("order").notNull(),
   required: boolean("required").default(true),
   logic: jsonb("logic"),
+  shuffleOptions: boolean("shuffle_options").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
