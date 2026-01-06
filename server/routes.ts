@@ -576,6 +576,8 @@ export async function registerRoutes(
       const orgId = Number(req.params.orgId);
       
       const member = await storage.getMemberByUserId(userId, orgId);
+      console.log('[surveys/list] Debug:', { userId, orgId, member: member ? { id: member.id, role: member.role, memberId: member.userId } : null });
+      
       if (!member) {
         return res.status(403).json({ message: "Acesso negado" });
       }
@@ -585,6 +587,7 @@ export async function registerRoutes(
       // Entrevistadores só veem pesquisas designadas e ativas
       if (isInterviewerRole(role)) {
         const assignedSurveys = await storage.getAssignedSurveys(userId, orgId);
+        console.log('[surveys/list] Interviewer assigned surveys:', { userId, count: assignedSurveys.length, surveyIds: assignedSurveys.map(s => s.id) });
         // Filter to only show active surveys to interviewers
         const activeSurveys = assignedSurveys.filter(s => s.status === 'active');
         return res.json(activeSurveys);
