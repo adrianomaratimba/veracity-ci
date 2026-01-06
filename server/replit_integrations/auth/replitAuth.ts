@@ -184,14 +184,50 @@ export const isAuthenticated: RequestHandler = async (req: any, res, next) => {
 
 // Helper to get userId from either native session or Replit Auth
 // Should only be called after isAuthenticated middleware
+// IMPORTANT: This returns the INTERNAL user ID, not the Replit external ID
 export function getUserId(req: any): string {
-  // Native session
+  // Native session - uses internal ID directly
   if (req.session?.userId) {
     return req.session.userId;
   }
-  // Replit Auth
+  // Replit Auth - need to resolve internal ID
+  // The req.user object should have the internal ID stored after upsert
+  // Check if we have the cached internal ID first
+  if (req.session?.internalUserId) {
+    return req.session.internalUserId;
+  }
+  // Fallback to Replit ID - this will be resolved by async middleware
   if (req.user?.claims?.sub) {
+    // WARNING: This returns Replit ID which may not match internal user ID
+    // Use getResolvedUserId for operations requiring internal ID
+    console.warn('[auth] getUserId returning Replit sub, may not match internal ID:', req.user.claims.sub);
     return req.user.claims.sub;
+  }
+  throw new Error("User not authenticated");
+}
+
+// Async helper that resolves to internal user ID (preferred for DB operations)
+export async function getResolvedUserId(req: any): Promise<string> {
+  // Native session - uses internal ID directly
+  if (req.session?.userId) {
+    return req.session.userId;
+  }
+  // Check cached internal ID
+  if (req.session?.internalUserId) {
+    return req.session.internalUserId;
+  }
+  // Replit Auth - resolve to internal ID
+  if (req.user?.claims?.sub) {
+    const { authStorage } = await import('./storage');
+    const user = await authStorage.getUser(req.user.claims.sub);
+    if (user) {
+      // Cache for future requests
+      if (req.session) {
+        req.session.internalUserId = user.id;
+      }
+      return user.id;
+    }
+    throw new Error("User not found in database");
   }
   throw new Error("User not authenticated");
 }

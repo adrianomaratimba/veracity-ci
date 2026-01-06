@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { setupAuth, registerAuthRoutes, isAuthenticated, getUserId } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, getUserId, getResolvedUserId } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { requireOrgAccess, requireHasOrganization } from "./middleware/org-access";
 import { hasPermission, UserRole, canManageRole, getManageableRoles, isInterviewerRole, canManageSurveys, canViewResponses, canViewAnalytics, canAuditResponses } from "@shared/rbac";
@@ -24,13 +24,13 @@ export async function registerRoutes(
 
   // 2. Organizations - SECURED: Only show orgs where user is a member
   app.get(api.organizations.list.path, isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
+    const userId = await getResolvedUserId(req);
     const orgs = await storage.getOrganizationsByUserId(userId);
     res.json(orgs);
   });
 
   app.get("/api/organizations/:id", isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
+    const userId = await getResolvedUserId(req);
     const orgId = Number(req.params.id);
     
     // Security check: User must be member of the organization
@@ -52,7 +52,7 @@ export async function registerRoutes(
       const org = await storage.createOrganization({ ...input, slug });
       
       // Auto-add creator as 'owner'
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       await storage.addMember({
         organizationId: org.id,
         userId,
@@ -67,7 +67,7 @@ export async function registerRoutes(
   });
 
   app.get(api.organizations.members.list.path, isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
+    const userId = await getResolvedUserId(req);
     const orgId = Number(req.params.id);
     
     const currentMember = await storage.getMemberByUserId(userId, orgId);
@@ -107,7 +107,7 @@ export async function registerRoutes(
 
   // Get current user's membership in organization
   app.get(api.organizations.members.me.path, isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
+    const userId = await getResolvedUserId(req);
     const orgId = Number(req.params.id);
     
     const member = await storage.getMemberByUserId(userId, orgId);
@@ -197,7 +197,7 @@ export async function registerRoutes(
 
   app.get(api.organizations.invitations.list.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const orgId = Number(req.params.id);
       
       const isMember = await storage.isUserMemberOfOrg(userId, orgId);
@@ -226,7 +226,7 @@ export async function registerRoutes(
 
   app.delete(api.organizations.invitations.cancel.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const orgId = Number(req.params.id);
       const inviteId = Number(req.params.inviteId);
       
@@ -249,7 +249,7 @@ export async function registerRoutes(
 
   app.patch(api.organizations.members.updateRole.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const memberId = Number(req.params.memberId);
       
       const targetMember = await storage.getMemberById(memberId);
@@ -296,7 +296,7 @@ export async function registerRoutes(
 
   app.delete(api.organizations.members.remove.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const memberId = Number(req.params.memberId);
       
       const targetMember = await storage.getMemberById(memberId);
@@ -342,7 +342,7 @@ export async function registerRoutes(
   // Set password for a member (admin function)
   app.post(api.organizations.members.setPassword.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const memberId = Number(req.params.memberId);
       
       const input = api.organizations.members.setPassword.input.parse(req.body);
@@ -393,7 +393,7 @@ export async function registerRoutes(
   // Update member name
   app.patch(api.organizations.members.updateName.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const memberId = Number(req.params.memberId);
       
       const input = api.organizations.members.updateName.input.parse(req.body);
@@ -445,7 +445,7 @@ export async function registerRoutes(
   // Reset member login method (changes from replit to pending, allowing password setup)
   app.post(api.organizations.members.resetLogin.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const memberId = Number(req.params.memberId);
       
       const targetMember = await storage.getMemberById(memberId);
@@ -571,7 +571,8 @@ export async function registerRoutes(
   // Entrevistadores só veem pesquisas designadas a eles
   app.get(api.surveys.list.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      // Use getResolvedUserId to get internal ID (important for Replit Auth users)
+      const userId = await getResolvedUserId(req);
       const orgId = Number(req.params.orgId);
       
       const member = await storage.getMemberByUserId(userId, orgId);
@@ -581,12 +582,12 @@ export async function registerRoutes(
       
       const role = member.role as UserRole;
       
-      // Entrevistadores só veem pesquisas designadas
+      // Entrevistadores só veem pesquisas designadas e ativas
       if (isInterviewerRole(role)) {
-        console.log(`[DEBUG] Fetching assigned surveys for interviewer ${userId} in org ${orgId}`);
         const assignedSurveys = await storage.getAssignedSurveys(userId, orgId);
-        console.log(`[DEBUG] Found ${assignedSurveys.length} assigned surveys:`, assignedSurveys.map(s => s.id));
-        return res.json(assignedSurveys);
+        // Filter to only show active surveys to interviewers
+        const activeSurveys = assignedSurveys.filter(s => s.status === 'active');
+        return res.json(activeSurveys);
       }
       
       // Outros usuários com permissão surveys:view veem todas
@@ -603,7 +604,7 @@ export async function registerRoutes(
   });
 
   app.get(api.surveys.get.path, isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
+    const userId = await getResolvedUserId(req);
     const surveyId = Number(req.params.id);
     const survey = await storage.getSurvey(surveyId);
     if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
@@ -644,7 +645,7 @@ export async function registerRoutes(
 
   app.patch(api.surveys.update.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const surveyId = Number(req.params.id);
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa nao encontrada" });
@@ -666,7 +667,7 @@ export async function registerRoutes(
   // 4. Questions - SECURED with RBAC
   app.post(api.questions.create.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const surveyId = Number(req.params.surveyId);
       
       const survey = await storage.getSurvey(surveyId);
@@ -691,7 +692,7 @@ export async function registerRoutes(
 
   app.patch(api.questions.update.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const surveyId = Number(req.params.surveyId);
       const questionId = Number(req.params.id);
       
@@ -714,7 +715,7 @@ export async function registerRoutes(
 
   app.delete(api.questions.delete.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const surveyId = Number(req.params.surveyId);
       const questionId = Number(req.params.id);
       
@@ -736,7 +737,7 @@ export async function registerRoutes(
   // Survey Assignments - Designar entrevistadores para pesquisas
   app.get("/api/surveys/:surveyId/assignments", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const surveyId = Number(req.params.surveyId);
       
       const survey = await storage.getSurvey(surveyId);
@@ -754,7 +755,7 @@ export async function registerRoutes(
 
   app.post("/api/surveys/:surveyId/assignments", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const surveyId = Number(req.params.surveyId);
       
       const survey = await storage.getSurvey(surveyId);
@@ -796,7 +797,7 @@ export async function registerRoutes(
 
   app.delete("/api/surveys/:surveyId/assignments/:interviewerId", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const surveyId = Number(req.params.surveyId);
       const interviewerId = req.params.interviewerId;
       
@@ -818,7 +819,7 @@ export async function registerRoutes(
   // Get interviewers available for assignment (members with interviewer role)
   app.get("/api/organizations/:id/interviewers", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const orgId = Number(req.params.id);
       
       const member = await storage.getMemberByUserId(userId, orgId);
@@ -906,7 +907,7 @@ export async function registerRoutes(
   });
 
   app.get(api.responses.list.path, isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
+    const userId = await getResolvedUserId(req);
     const surveyId = Number(req.params.surveyId);
     
     // Get survey to check org membership
@@ -923,7 +924,7 @@ export async function registerRoutes(
   });
 
   app.get(api.analytics.surveySummary.path, isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
+    const userId = await getResolvedUserId(req);
     const surveyId = Number(req.params.id);
     
     // Get survey to check org membership
@@ -940,7 +941,7 @@ export async function registerRoutes(
   });
 
   app.get(api.analytics.organizationStats.path, isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
+    const userId = await getResolvedUserId(req);
     const orgId = Number(req.params.id);
     
     const isMember = await storage.isUserMemberOfOrg(userId, orgId);
@@ -955,7 +956,7 @@ export async function registerRoutes(
   // === AUDIT / RESPONSE STATUS ===
   app.patch(api.responses.updateStatus.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const responseId = Number(req.params.id);
       
       const response = await storage.getResponse(responseId);
@@ -983,7 +984,7 @@ export async function registerRoutes(
   });
 
   app.get(api.responses.listByOrg.path, isAuthenticated, async (req, res) => {
-    const userId = getUserId(req);
+    const userId = await getResolvedUserId(req);
     const orgId = Number(req.params.orgId);
     
     const isMember = await storage.isUserMemberOfOrg(userId, orgId);
@@ -998,7 +999,7 @@ export async function registerRoutes(
   // === INTERVIEWER COMPARISON (Audit) ===
   app.get("/api/organizations/:orgId/audit/interviewers", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const orgId = Number(req.params.orgId);
       
       const member = await storage.getMemberByUserId(userId, orgId);
@@ -1034,7 +1035,7 @@ export async function registerRoutes(
   // === RESULTS DASHBOARD (For Viewers/Contractors) - Aggregated Data Only ===
   app.get("/api/surveys/:surveyId/results/aggregated", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const surveyId = Number(req.params.surveyId);
       
       const survey = await storage.getSurvey(surveyId);
@@ -1068,7 +1069,7 @@ export async function registerRoutes(
   // Evolução temporal das respostas
   app.get("/api/surveys/:surveyId/results/timeline", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const surveyId = Number(req.params.surveyId);
       
       const survey = await storage.getSurvey(surveyId);
@@ -1142,7 +1143,7 @@ export async function registerRoutes(
   // Add permission override
   app.post("/api/organizations/:id/access/overrides", isAuthenticated, requireOrgAccess("id", "members:edit_role"), async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const { memberId, permission, allowed, reason, expiresAt } = req.body;
       
       if (!memberId || !permission || allowed === undefined) {
@@ -1193,7 +1194,7 @@ export async function registerRoutes(
   // Get viewable surveys for current user (for viewer portal)
   app.get("/api/organizations/:id/viewable-surveys", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const orgId = Number(req.params.id);
       
       const member = await storage.getMemberByUserId(userId, orgId);
@@ -1450,7 +1451,7 @@ export async function registerRoutes(
 
   app.get("/api/admin/check", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const user = await storage.getUserById(userId);
       const platformAdminEmails = getPlatformAdminEmails();
       console.log('[admin/check] userId:', userId, 'email:', user?.email, 'adminEmails:', platformAdminEmails);
@@ -1477,7 +1478,7 @@ export async function registerRoutes(
 
   app.patch("/api/plans/:planId", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const user = await storage.getUserById(userId);
       
       const platformAdminEmails = getPlatformAdminEmails();
@@ -1498,7 +1499,7 @@ export async function registerRoutes(
   // Platform Admin - List all organizations with their plans
   app.get("/api/admin/organizations", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const user = await storage.getUserById(userId);
       
       const platformAdminEmails = getPlatformAdminEmails();
@@ -1517,7 +1518,7 @@ export async function registerRoutes(
   // Platform Admin - Change organization plan
   app.patch("/api/admin/organizations/:orgId/plan", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const user = await storage.getUserById(userId);
       
       const platformAdminEmails = getPlatformAdminEmails();
@@ -1560,7 +1561,7 @@ export async function registerRoutes(
   // Platform Admin - List all users
   app.get("/api/admin/users", isAuthenticated, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await getResolvedUserId(req);
       const user = await storage.getUserById(userId);
       
       const platformAdminEmails = getPlatformAdminEmails();
