@@ -175,13 +175,35 @@ The `shared/routes.ts` file defines a typed API contract with:
 - API endpoints: GET `/api/plans` (public), PATCH `/api/plans/:planId` (admin only)
 - Admin verification: GET `/api/admin/check` returns `{ isAdmin: boolean }`
 
-### Platform Admin Features
-- **User Management**: View all platform users in Settings > Plano tab
-  - API endpoint: GET `/api/admin/users` (returns list of all users)
-- **Manual Password Reset**: Reset any user's password without email
-  - API endpoint: POST `/api/admin/users/:userId/reset-password`
-  - Uses bcrypt with 12 salt rounds
-  - Useful when email service is unavailable
+### Platform Admin Features (Super Admin Panel)
+Platform admins are identified by the `PLATFORM_ADMIN_EMAILS` environment variable.
+
+- **Super Admin Panel**: Accessible at `/platform` route
+  - Shows in sidebar only for platform admins (Crown icon)
+  - Two tabs: Organizações (Organizations) and Usuários (Users)
+  
+- **Organization Management**:
+  - List all organizations with member count and owner email
+  - Create new organizations with owner email and plan type
+  - Delete organizations permanently (cascade deletes all data)
+  - API endpoints:
+    - GET `/api/platform/organizations` - list all orgs
+    - POST `/api/platform/organizations` - create org with owner
+    - DELETE `/api/platform/organizations/:id` - hard delete with cascade
+    - POST `/api/platform/organizations/:id/members` - add member
+
+- **User Management**:
+  - List all platform users with their organization memberships
+  - View user roles across all organizations
+  - Reset any user's password without email
+  - Delete users permanently
+  - API endpoints:
+    - GET `/api/platform/users` - list all users with memberships
+    - DELETE `/api/platform/users/:userId` - delete user
+    - POST `/api/admin/users/:userId/reset-password` - reset password
+    - GET `/api/admin/check` - verify if current user is platform admin
+
+- **Note**: Super Admin panel manages only the development database. Production database is separate and cannot be accessed directly from code.
 
 ### Pending Implementations
 - **Stripe Integration**: Payment processing for subscriptions is NOT yet configured. User declined Replit integration setup. When ready, configure Stripe API keys as secrets and implement:

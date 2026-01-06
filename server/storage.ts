@@ -172,6 +172,13 @@ export interface IStorage {
   addOrganizationDomain(data: InsertOrganizationDomain): Promise<OrganizationDomain>;
   removeOrganizationDomain(id: number): Promise<void>;
   verifyOrganizationDomain(id: number): Promise<OrganizationDomain>;
+
+  // Platform Admin - Global Operations
+  listAllOrganizations(): Promise<(Organization & { memberCount: number; ownerEmail: string | null })[]>;
+  deleteOrganizationHard(id: number): Promise<void>;
+  listAllUsersWithMemberships(): Promise<(User & { 
+    memberships: { organizationId: number; organizationName: string; role: string }[] 
+  })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1344,6 +1351,114 @@ export class DatabaseStorage implements IStorage {
       ).length,
       activeInterviewers: interviewerData.filter(i => i.status === 'active').length
     };
+  }
+
+  // --- PLATFORM ADMIN - GLOBAL OPERATIONS ---
+  async listAllOrganizations(): Promise<(Organization & { memberCount: number; ownerEmail: string | null })[]> {
+    const orgs = await db.select().from(organizations).orderBy(desc(organizations.createdAt));
+    
+    const result = await Promise.all(orgs.map(async (org) => {
+      const memberCountResult = await db.select({ count: sql<number>`count(*)` })
+        .from(organizationMembers)
+        .where(eq(organizationMembers.organizationId, org.id));
+      
+      const ownerMember = await db.select({ email: users.email })
+        .from(organizationMembers)
+        .innerJoin(users, eq(organizationMembers.userId, users.id))
+        .where(and(
+          eq(organizationMembers.organizationId, org.id),
+          eq(organizationMembers.role, 'owner')
+        ))
+        .limit(1);
+      
+      return {
+        ...org,
+        memberCount: Number(memberCountResult[0]?.count || 0),
+        ownerEmail: ownerMember[0]?.email || null
+      };
+    }));
+    
+    return result;
+  }
+
+  async deleteOrganizationHard(id: number): Promise<void> {
+    // Delete in order: responses/answers -> surveys -> members -> invitations -> domains -> organization
+    
+    // Get all surveys for the org
+    const orgSurveys = await db.select({ id: surveys.id }).from(surveys).where(eq(surveys.organizationId, id));
+    const surveyIds = orgSurveys.map(s => s.id);
+    
+    if (surveyIds.length > 0) {
+      // Delete answers for responses
+      for (const surveyId of surveyIds) {
+        const surveyResponses = await db.select({ id: responses.id }).from(responses).where(eq(responses.surveyId, surveyId));
+        for (const resp of surveyResponses) {
+          await db.delete(answers).where(eq(answers.responseId, resp.id));
+        }
+        await db.delete(responses).where(eq(responses.surveyId, surveyId));
+      }
+      
+      // Delete questions, survey assignments, coordinators
+      for (const surveyId of surveyIds) {
+        await db.delete(questions).where(eq(questions.surveyId, surveyId));
+        await db.delete(surveyAssignments).where(eq(surveyAssignments.surveyId, surveyId));
+        await db.delete(surveyCoordinators).where(eq(surveyCoordinators.surveyId, surveyId));
+      }
+      
+      // Delete surveys
+      await db.delete(surveys).where(eq(surveys.organizationId, id));
+    }
+    
+    // Delete permission overrides for members
+    const orgMemberIds = await db.select({ id: organizationMembers.id })
+      .from(organizationMembers)
+      .where(eq(organizationMembers.organizationId, id));
+    
+    for (const member of orgMemberIds) {
+      await db.delete(memberPermissionOverrides).where(eq(memberPermissionOverrides.memberId, member.id));
+    }
+    
+    // Delete members
+    await db.delete(organizationMembers).where(eq(organizationMembers.organizationId, id));
+    
+    // Delete pending invitations
+    await db.delete(pendingInvitations).where(eq(pendingInvitations.organizationId, id));
+    
+    // Delete domains
+    await db.delete(organizationDomains).where(eq(organizationDomains.organizationId, id));
+    
+    // Delete question modules
+    await db.delete(questionModules).where(eq(questionModules.organizationId, id));
+    
+    // Delete access audit log
+    await db.delete(accessAuditLog).where(eq(accessAuditLog.organizationId, id));
+    
+    // Finally, delete the organization
+    await db.delete(organizations).where(eq(organizations.id, id));
+  }
+
+  async listAllUsersWithMemberships(): Promise<(User & { 
+    memberships: { organizationId: number; organizationName: string; role: string }[] 
+  })[]> {
+    const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
+    
+    const result = await Promise.all(allUsers.map(async (user) => {
+      const memberships = await db.select({
+        organizationId: organizationMembers.organizationId,
+        organizationName: organizations.name,
+        role: organizationMembers.role
+      })
+        .from(organizationMembers)
+        .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
+        .where(eq(organizationMembers.userId, user.id));
+      
+      return {
+        ...user,
+        memberships
+      };
+    }));
+    
+    return result;
   }
 }
 

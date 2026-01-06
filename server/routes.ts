@@ -9,8 +9,9 @@ import { hasPermission, UserRole, canManageRole, getManageableRoles, isInterview
 import { z } from "zod";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { authService } from "./auth-service";
+import { organizationMembers } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1977,6 +1978,171 @@ export async function registerRoutes(
     } catch (err) {
       console.error('[supervisor/overview] error:', err);
       res.status(500).json({ message: "Erro ao carregar visão geral do supervisor" });
+    }
+  });
+
+  // ==========================================
+  // PLATFORM ADMIN - SUPER ADMIN PANEL
+  // ==========================================
+
+  // Helper to check if user is platform admin
+  const requirePlatformAdmin = async (req: any, res: any, next: any) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const user = await storage.getUserById(userId);
+      const platformAdminEmails = getPlatformAdminEmails();
+      
+      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+        return res.status(403).json({ message: "Apenas administradores da plataforma podem acessar este recurso" });
+      }
+      next();
+    } catch (err) {
+      return res.status(403).json({ message: "Erro de autenticação" });
+    }
+  };
+
+  // List all organizations (platform admin only)
+  app.get("/api/platform/organizations", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const orgs = await storage.listAllOrganizations();
+      res.json(orgs);
+    } catch (err) {
+      console.error('[platform/organizations] error:', err);
+      res.status(500).json({ message: "Erro ao listar organizações" });
+    }
+  });
+
+  // Create organization (platform admin only)
+  app.post("/api/platform/organizations", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const input = z.object({
+        name: z.string().min(2),
+        slug: z.string().min(2).optional(),
+        ownerEmail: z.string().email(),
+        planType: z.enum(['basic', 'pro', 'enterprise']).default('basic')
+      }).parse(req.body);
+      
+      const slug = input.slug || input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      
+      // Check if owner user exists or create
+      let ownerUser = await storage.getUserByEmail(input.ownerEmail);
+      if (!ownerUser) {
+        ownerUser = await storage.createUserByEmail(input.ownerEmail);
+      }
+      
+      const org = await storage.createOrganization({ 
+        name: input.name, 
+        slug,
+        plan: input.planType
+      });
+      
+      // Add owner as member
+      await storage.addMember({
+        organizationId: org.id,
+        userId: ownerUser.id,
+        role: 'owner'
+      });
+      
+      res.status(201).json({ ...org, ownerEmail: input.ownerEmail, memberCount: 1 });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      console.error('[platform/organizations/create] error:', err);
+      res.status(500).json({ message: "Erro ao criar organização" });
+    }
+  });
+
+  // Delete organization (platform admin only) - HARD DELETE
+  app.delete("/api/platform/organizations/:id", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id);
+      const org = await storage.getOrganization(orgId);
+      
+      if (!org) {
+        return res.status(404).json({ message: "Organização não encontrada" });
+      }
+      
+      await storage.deleteOrganizationHard(orgId);
+      res.json({ success: true, message: `Organização "${org.name}" excluída permanentemente` });
+    } catch (err) {
+      console.error('[platform/organizations/delete] error:', err);
+      res.status(500).json({ message: "Erro ao excluir organização" });
+    }
+  });
+
+  // List all users with memberships (platform admin only)
+  app.get("/api/platform/users", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const usersWithMemberships = await storage.listAllUsersWithMemberships();
+      res.json(usersWithMemberships);
+    } catch (err) {
+      console.error('[platform/users] error:', err);
+      res.status(500).json({ message: "Erro ao listar usuários" });
+    }
+  });
+
+  // Delete user from platform (platform admin only)
+  app.delete("/api/platform/users/:userId", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const targetUserId = req.params.userId;
+      const user = await storage.getUserById(targetUserId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      }
+      
+      // Remove user from all organizations first
+      const memberships = await db.select().from(organizationMembers).where(eq(organizationMembers.userId, targetUserId));
+      for (const membership of memberships) {
+        await storage.removeMember(membership.id);
+      }
+      
+      // Delete user
+      await db.delete(users).where(eq(users.id, targetUserId));
+      
+      res.json({ success: true, message: `Usuário "${user.email}" excluído permanentemente` });
+    } catch (err) {
+      console.error('[platform/users/delete] error:', err);
+      res.status(500).json({ message: "Erro ao excluir usuário" });
+    }
+  });
+
+  // Add user to organization (platform admin only)
+  app.post("/api/platform/organizations/:id/members", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id);
+      const input = z.object({
+        email: z.string().email(),
+        role: z.enum(['owner', 'admin', 'coordinator', 'interviewer', 'viewer'])
+      }).parse(req.body);
+      
+      const org = await storage.getOrganization(orgId);
+      if (!org) {
+        return res.status(404).json({ message: "Organização não encontrada" });
+      }
+      
+      // Check if user exists or create
+      let user = await storage.getUserByEmail(input.email);
+      if (!user) {
+        user = await storage.createUserByEmail(input.email);
+      }
+      
+      // Check if already member
+      const existingMember = await storage.getMemberByUserId(user.id, orgId);
+      if (existingMember) {
+        return res.status(400).json({ message: "Usuário já é membro desta organização" });
+      }
+      
+      const member = await storage.addMember({
+        organizationId: orgId,
+        userId: user.id,
+        role: input.role
+      });
+      
+      res.status(201).json({ ...member, user });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      console.error('[platform/organizations/members/add] error:', err);
+      res.status(500).json({ message: "Erro ao adicionar membro" });
     }
   });
 

@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrentMember, useOrganizations } from "@/hooks/use-organizations";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { 
   LayoutDashboard, 
   FileText, 
@@ -16,7 +17,8 @@ import {
   ChevronsUpDown,
   Building2,
   Check,
-  Radar
+  Radar,
+  Crown
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -45,13 +47,27 @@ interface DashboardLayoutProps {
   orgId?: string;
 }
 
+function usePlatformAdminCheck() {
+  return useQuery<{ isAdmin: boolean }>({
+    queryKey: ['/api/admin/check'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/check', { credentials: 'include' });
+      if (!res.ok) return { isAdmin: false };
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { data: currentMember } = useCurrentMember(orgId ? parseInt(orgId) : 0);
   const { data: organizations } = useOrganizations();
+  const { data: adminCheck } = usePlatformAdminCheck();
   
+  const isPlatformAdmin = adminCheck?.isAdmin || false;
   const currentOrg = organizations?.find(org => org.id === parseInt(orgId || '0'));
   
   const handleOrgChange = (newOrgId: number) => {
@@ -204,6 +220,25 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
                 </Link>
               );
             })}
+            
+            {isPlatformAdmin && (
+              <div className="pt-4 mt-4 border-t">
+                <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Super Admin
+                </p>
+                <Link href="/platform">
+                  <div className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer group",
+                    location === '/platform'
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 shadow-sm" 
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )} data-testid="link-platform-admin">
+                    <Crown className={cn("w-5 h-5", location === '/platform' ? "text-amber-500" : "text-muted-foreground group-hover:text-foreground")} />
+                    Painel Administrativo
+                  </div>
+                </Link>
+              </div>
+            )}
           </div>
 
           <div className="border-t pt-4 mt-4">
