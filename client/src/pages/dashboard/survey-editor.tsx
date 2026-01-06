@@ -39,6 +39,7 @@ interface QuestionForm {
   options: QuestionOption[];
   required: boolean;
   order: number;
+  shuffleOptions?: boolean;
 }
 
 function normalizeOption(opt: string | QuestionOption): QuestionOption {
@@ -264,7 +265,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     marginOfError: null as number | null,
     startDate: "",
     endDate: "",
-    status: "draft"
+    status: "draft",
+    shuffleQuestions: false
   });
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
@@ -293,7 +295,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         marginOfError: survey.marginOfError || null,
         startDate: survey.startDate ? new Date(survey.startDate).toISOString().split('T')[0] : "",
         endDate: survey.endDate ? new Date(survey.endDate).toISOString().split('T')[0] : "",
-        status: survey.status || "draft"
+        status: survey.status || "draft",
+        shuffleQuestions: (survey as any).shuffleQuestions ?? false
       });
       if (survey.questions) {
         setQuestions(survey.questions.map(q => ({
@@ -302,7 +305,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
           type: q.type,
           options: normalizeOptions(q.options),
           required: q.required ?? true,
-          order: q.order
+          order: q.order,
+          shuffleOptions: (q as any).shuffleOptions ?? false
         })));
       }
       if (survey.quotas) {
@@ -312,7 +316,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
   }, [survey]);
 
   const createQuestion = useMutation({
-    mutationFn: async (data: { text: string; type: string; options?: QuestionOption[] | string[]; required: boolean; order: number }) => {
+    mutationFn: async (data: { text: string; type: string; options?: QuestionOption[] | string[]; required: boolean; order: number; shuffleOptions?: boolean }) => {
       const url = buildUrl(api.questions.create.path, { surveyId });
       const res = await fetch(url, {
         method: "POST",
@@ -374,7 +378,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             targetSample: surveyForm.targetSample,
             marginOfError: surveyForm.marginOfError ?? undefined,
             startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : undefined,
-            endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : undefined
+            endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : undefined,
+            shuffleQuestions: surveyForm.shuffleQuestions
           }
         });
         toast({ title: "Criada", description: "Pesquisa criada com sucesso!" });
@@ -393,7 +398,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : undefined,
             endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : undefined,
             status: surveyForm.status,
-            quotas: quotas
+            quotas: quotas,
+            shuffleQuestions: surveyForm.shuffleQuestions
           }
         });
         toast({ title: "Salvo", description: "Pesquisa atualizada com sucesso!" });
@@ -451,9 +457,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     const q = questions[index];
     try {
       if (q.id) {
-        await updateQuestion.mutateAsync({ id: q.id, data: { text: q.text, type: q.type, options: q.options, required: q.required } });
+        await updateQuestion.mutateAsync({ id: q.id, data: { text: q.text, type: q.type, options: q.options, required: q.required, shuffleOptions: q.shuffleOptions } });
       } else {
-        await createQuestion.mutateAsync({ text: q.text, type: q.type, options: q.options, required: q.required, order: q.order });
+        await createQuestion.mutateAsync({ text: q.text, type: q.type, options: q.options, required: q.required, order: q.order, shuffleOptions: q.shuffleOptions });
       }
       toast({ title: "Salvo", description: "Pergunta salva com sucesso!" });
     } catch (error) {
@@ -606,14 +612,26 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                             </div>
                           )}
 
-                          <div className="flex items-center justify-between pt-2 border-t">
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={q.required}
-                                onCheckedChange={(v) => updateQuestionField(index, "required", v)}
-                                data-testid={`switch-required-${index}`}
-                              />
-                              <Label className="text-sm text-muted-foreground">Obrigatoria</Label>
+                          <div className="flex items-center justify-between pt-2 border-t flex-wrap gap-4">
+                            <div className="flex items-center gap-4 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  checked={q.required}
+                                  onCheckedChange={(v) => updateQuestionField(index, "required", v)}
+                                  data-testid={`switch-required-${index}`}
+                                />
+                                <Label className="text-sm text-muted-foreground">Obrigatoria</Label>
+                              </div>
+                              {(q.type === "single_choice" || q.type === "multiple_choice") && (
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={q.shuffleOptions ?? false}
+                                    onCheckedChange={(v) => updateQuestionField(index, "shuffleOptions", v)}
+                                    data-testid={`switch-shuffle-options-${index}`}
+                                  />
+                                  <Label className="text-sm text-muted-foreground">Embaralhar opcoes</Label>
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <Button variant="outline" size="sm" onClick={() => handleSaveQuestion(index)} data-testid={`button-save-question-${index}`}>
@@ -1226,6 +1244,26 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                <div className="space-y-3 pt-4 border-t">
+                  <Label className="text-base font-medium">Randomizacao</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Opcoes para evitar vies de ordem nas respostas
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={surveyForm.shuffleQuestions}
+                      onCheckedChange={(v) => { setSurveyForm({ ...surveyForm, shuffleQuestions: v }); setHasChanges(true); }}
+                      data-testid="switch-shuffle-questions"
+                    />
+                    <Label className="text-sm text-muted-foreground">
+                      Embaralhar ordem das perguntas
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-10">
+                    Cada entrevista mostra as perguntas em ordem aleatoria diferente
+                  </p>
                 </div>
 
                 <div className="flex justify-end pt-4 border-t">

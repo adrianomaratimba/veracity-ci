@@ -37,6 +37,15 @@ function getOptionImage(opt: string | QuestionOption): string | undefined {
   return opt.imageUrl;
 }
 
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 interface InterviewSessionProps {
   params: { surveyId: string };
 }
@@ -62,6 +71,10 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [pendingCount, setPendingCount] = useState(0);
   const [isSavingOffline, setIsSavingOffline] = useState(false);
   const [startTime] = useState(new Date());
+  
+  const [shuffledQuestions, setShuffledQuestions] = useState<typeof survey extends { questions: infer Q } ? Q : any[]>([]);
+  const [shuffledOptionsMap, setShuffledOptionsMap] = useState<Record<number, (string | QuestionOption)[]>>({});
+  const [shuffleVersion, setShuffleVersion] = useState(0);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -89,6 +102,26 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     }
   }, []);
 
+  useEffect(() => {
+    if (!survey?.questions) return;
+    
+    let questionsToUse = [...survey.questions];
+    if ((survey as any).shuffleQuestions) {
+      questionsToUse = shuffleArray(questionsToUse);
+    }
+    setShuffledQuestions(questionsToUse);
+    
+    const optionsMap: Record<number, (string | QuestionOption)[]> = {};
+    for (const q of survey.questions) {
+      if ((q as any).shuffleOptions && Array.isArray(q.options)) {
+        optionsMap[q.id] = shuffleArray(q.options as (string | QuestionOption)[]);
+      } else if (Array.isArray(q.options)) {
+        optionsMap[q.id] = q.options as (string | QuestionOption)[];
+      }
+    }
+    setShuffledOptionsMap(optionsMap);
+  }, [survey, shuffleVersion]);
+
   const handleStartInterview = async () => {
     if (!gpsCoords) return;
     await startRecording();
@@ -100,11 +133,12 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     setAnswers({});
     setCurrentQuestionIndex(0);
     setSubmitError(null);
+    setShuffleVersion(v => v + 1);
   };
 
   const handleNextQuestion = () => {
-    if (!survey) return;
-    if (currentQuestionIndex < survey.questions.length - 1) {
+    if (!survey || shuffledQuestions.length === 0) return;
+    if (currentQuestionIndex < shuffledQuestions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
       stopRecording();
@@ -337,45 +371,45 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
           </Card>
         )}
 
-        {step === 'questions' && (
+        {step === 'questions' && shuffledQuestions.length > 0 && (
           <div className="space-y-6">
             <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
               <div 
                 className="bg-primary h-full transition-all duration-300" 
-                style={{ width: `${((currentQuestionIndex + 1) / survey.questions.length) * 100}%` }}
+                style={{ width: `${((currentQuestionIndex + 1) / shuffledQuestions.length) * 100}%` }}
               />
             </div>
             
             <Card className="p-6 min-h-[300px] flex flex-col">
               <span className="text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">
-                Pergunta {currentQuestionIndex + 1} de {survey.questions.length}
+                Pergunta {currentQuestionIndex + 1} de {shuffledQuestions.length}
               </span>
-              <h3 className="text-xl font-medium mb-6">{survey.questions[currentQuestionIndex].text}</h3>
+              <h3 className="text-xl font-medium mb-6">{shuffledQuestions[currentQuestionIndex].text}</h3>
 
               <div className="flex-1">
-                {survey.questions[currentQuestionIndex].type === 'text' && (
+                {shuffledQuestions[currentQuestionIndex].type === 'text' && (
                   <Input 
                     placeholder="Digite sua resposta..." 
-                    value={answers[survey.questions[currentQuestionIndex].id] || ''}
-                    onChange={(e) => handleAnswer(survey.questions[currentQuestionIndex].id, e.target.value)}
+                    value={answers[shuffledQuestions[currentQuestionIndex].id] || ''}
+                    onChange={(e) => handleAnswer(shuffledQuestions[currentQuestionIndex].id, e.target.value)}
                     className="text-lg py-6"
                   />
                 )}
-                {survey.questions[currentQuestionIndex].type === 'number' && (
+                {shuffledQuestions[currentQuestionIndex].type === 'number' && (
                   <Input 
                     type="number"
                     placeholder="Digite um número..." 
-                    value={answers[survey.questions[currentQuestionIndex].id] || ''}
-                    onChange={(e) => handleAnswer(survey.questions[currentQuestionIndex].id, e.target.value)}
+                    value={answers[shuffledQuestions[currentQuestionIndex].id] || ''}
+                    onChange={(e) => handleAnswer(shuffledQuestions[currentQuestionIndex].id, e.target.value)}
                     className="text-lg py-6"
                   />
                 )}
-                {survey.questions[currentQuestionIndex].type === 'single_choice' && (
+                {shuffledQuestions[currentQuestionIndex].type === 'single_choice' && (
                   <RadioGroup 
-                    value={answers[survey.questions[currentQuestionIndex].id]} 
-                    onValueChange={(val) => handleAnswer(survey.questions[currentQuestionIndex].id, val)}
+                    value={answers[shuffledQuestions[currentQuestionIndex].id]} 
+                    onValueChange={(val) => handleAnswer(shuffledQuestions[currentQuestionIndex].id, val)}
                   >
-                    {(survey.questions[currentQuestionIndex].options as (string | QuestionOption)[]).map((opt, idx) => {
+                    {(shuffledOptionsMap[shuffledQuestions[currentQuestionIndex].id] || []).map((opt, idx) => {
                        const optText = getOptionText(opt);
                        const optImage = getOptionImage(opt);
                        return (
@@ -394,26 +428,26 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     })}
                   </RadioGroup>
                 )}
-                {survey.questions[currentQuestionIndex].type === 'scale' && (
+                {shuffledQuestions[currentQuestionIndex].type === 'scale' && (
                   <div className="flex flex-wrap justify-center gap-3">
-                    {(survey.questions[currentQuestionIndex].options as string[] || ['1','2','3','4','5','6','7','8','9','10']).map((opt, idx) => (
+                    {(shuffledOptionsMap[shuffledQuestions[currentQuestionIndex].id] as string[] || ['1','2','3','4','5','6','7','8','9','10']).map((opt, idx) => (
                        <Button 
                          key={`scale-${idx}`}
-                         variant={answers[survey.questions[currentQuestionIndex].id] === opt ? "default" : "outline"}
-                         onClick={() => handleAnswer(survey.questions[currentQuestionIndex].id, opt)}
+                         variant={answers[shuffledQuestions[currentQuestionIndex].id] === opt ? "default" : "outline"}
+                         onClick={() => handleAnswer(shuffledQuestions[currentQuestionIndex].id, typeof opt === 'string' ? opt : getOptionText(opt))}
                          className="min-w-[80px]"
                        >
-                         {opt}
+                         {typeof opt === 'string' ? opt : getOptionText(opt)}
                        </Button>
                     ))}
                   </div>
                 )}
-                {survey.questions[currentQuestionIndex].type === 'multiple_choice' && (
+                {shuffledQuestions[currentQuestionIndex].type === 'multiple_choice' && (
                   <div className="space-y-2">
-                    {(survey.questions[currentQuestionIndex].options as (string | QuestionOption)[]).map((opt, idx) => {
+                    {(shuffledOptionsMap[shuffledQuestions[currentQuestionIndex].id] || []).map((opt, idx) => {
                       const optText = getOptionText(opt);
                       const optImage = getOptionImage(opt);
-                      const currentVal = answers[survey.questions[currentQuestionIndex].id] || [];
+                      const currentVal = answers[shuffledQuestions[currentQuestionIndex].id] || [];
                       const isSelected = Array.isArray(currentVal) && currentVal.includes(optText);
                       return (
                         <div 
@@ -422,9 +456,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                           onClick={() => {
                             const arr = Array.isArray(currentVal) ? [...currentVal] : [];
                             if (isSelected) {
-                              handleAnswer(survey.questions[currentQuestionIndex].id, arr.filter(v => v !== optText));
+                              handleAnswer(shuffledQuestions[currentQuestionIndex].id, arr.filter(v => v !== optText));
                             } else {
-                              handleAnswer(survey.questions[currentQuestionIndex].id, [...arr, optText]);
+                              handleAnswer(shuffledQuestions[currentQuestionIndex].id, [...arr, optText]);
                             }
                           }}
                         >
@@ -444,21 +478,21 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     })}
                   </div>
                 )}
-                {survey.questions[currentQuestionIndex].type === 'boolean' && (
+                {shuffledQuestions[currentQuestionIndex].type === 'boolean' && (
                   <div className="flex gap-4 justify-center">
                     <Button 
-                      variant={answers[survey.questions[currentQuestionIndex].id] === 'true' ? "default" : "outline"}
+                      variant={answers[shuffledQuestions[currentQuestionIndex].id] === 'true' ? "default" : "outline"}
                       size="lg"
                       className="flex-1 max-w-32"
-                      onClick={() => handleAnswer(survey.questions[currentQuestionIndex].id, 'true')}
+                      onClick={() => handleAnswer(shuffledQuestions[currentQuestionIndex].id, 'true')}
                     >
                       Sim
                     </Button>
                     <Button 
-                      variant={answers[survey.questions[currentQuestionIndex].id] === 'false' ? "default" : "outline"}
+                      variant={answers[shuffledQuestions[currentQuestionIndex].id] === 'false' ? "default" : "outline"}
                       size="lg"
                       className="flex-1 max-w-32"
-                      onClick={() => handleAnswer(survey.questions[currentQuestionIndex].id, 'false')}
+                      onClick={() => handleAnswer(shuffledQuestions[currentQuestionIndex].id, 'false')}
                     >
                       Não
                     </Button>
@@ -468,7 +502,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
               <div className="mt-8 pt-4 border-t flex justify-end">
                 <Button onClick={handleNextQuestion} size="lg" className="px-8">
-                  {currentQuestionIndex === survey.questions.length - 1 ? "Finalizar" : "Próxima"} <ChevronRight className="ml-2 w-4 h-4" />
+                  {currentQuestionIndex === shuffledQuestions.length - 1 ? "Finalizar" : "Próxima"} <ChevronRight className="ml-2 w-4 h-4" />
                 </Button>
               </div>
             </Card>
@@ -500,7 +534,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             <div className="bg-muted p-4 rounded-lg text-sm text-left space-y-2">
               <div className="flex justify-between">
                 <span>Perguntas Respondidas:</span>
-                <span className="font-bold">{Object.keys(answers).length}/{survey.questions.length}</span>
+                <span className="font-bold">{Object.keys(answers).length}/{shuffledQuestions.length}</span>
               </div>
               <div className="flex justify-between">
                 <span>Evidência de Áudio:</span>
@@ -552,7 +586,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             <div className="bg-green-50 border border-green-200 p-4 rounded-lg text-sm text-left space-y-2">
               <div className="flex justify-between">
                 <span>Perguntas Respondidas:</span>
-                <span className="font-bold text-green-700">{Object.keys(answers).length}/{survey.questions.length}</span>
+                <span className="font-bold text-green-700">{Object.keys(answers).length}/{shuffledQuestions.length}</span>
               </div>
               <div className="flex justify-between">
                 <span>Áudio Registrado:</span>
