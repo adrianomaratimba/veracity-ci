@@ -8,6 +8,7 @@ import {
   responses, Response, InsertResponse,
   answers, Answer, InsertAnswer,
   surveyAssignments, SurveyAssignment, InsertSurveyAssignment,
+  surveyCoordinators, SurveyCoordinator, InsertSurveyCoordinator,
   memberPermissionOverrides, MemberPermissionOverride, InsertMemberPermissionOverride,
   accessAuditLog, AccessAuditLog, InsertAccessAuditLog,
   questionModules, QuestionModule, InsertQuestionModule,
@@ -127,12 +128,18 @@ export interface IStorage {
     }>;
   }>;
 
-  // Survey Assignments
+  // Survey Assignments (Interviewers)
   getSurveyAssignments(surveyId: number): Promise<(SurveyAssignment & { interviewer: User })[]>;
   getAssignedSurveys(interviewerId: string, orgId: number): Promise<Survey[]>;
   assignInterviewer(data: InsertSurveyAssignment): Promise<SurveyAssignment>;
   unassignInterviewer(surveyId: number, interviewerId: string): Promise<void>;
   isInterviewerAssigned(surveyId: number, interviewerId: string): Promise<boolean>;
+
+  // Survey Coordinators
+  getSurveyCoordinators(surveyId: number): Promise<(SurveyCoordinator & { coordinator: User })[]>;
+  assignCoordinator(data: InsertSurveyCoordinator): Promise<SurveyCoordinator>;
+  unassignCoordinator(surveyId: number, coordinatorId: string): Promise<void>;
+  isCoordinatorAssigned(surveyId: number, coordinatorId: string): Promise<boolean>;
 
   // Permission Overrides
   getMemberPermissionOverrides(memberId: number): Promise<MemberPermissionOverride[]>;
@@ -541,6 +548,42 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(surveyAssignments.surveyId, surveyId),
         eq(surveyAssignments.interviewerId, interviewerId)
+      ))
+      .limit(1);
+    return !!assignment;
+  }
+
+  // --- SURVEY COORDINATORS ---
+  async getSurveyCoordinators(surveyId: number): Promise<(SurveyCoordinator & { coordinator: User })[]> {
+    const result = await db.select({
+      assignment: surveyCoordinators,
+      coordinator: users
+    })
+      .from(surveyCoordinators)
+      .innerJoin(users, eq(surveyCoordinators.coordinatorId, users.id))
+      .where(eq(surveyCoordinators.surveyId, surveyId));
+    
+    return result.map(r => ({ ...r.assignment, coordinator: r.coordinator }));
+  }
+
+  async assignCoordinator(data: InsertSurveyCoordinator): Promise<SurveyCoordinator> {
+    const [assignment] = await db.insert(surveyCoordinators).values(data).returning();
+    return assignment;
+  }
+
+  async unassignCoordinator(surveyId: number, coordinatorId: string): Promise<void> {
+    await db.delete(surveyCoordinators).where(and(
+      eq(surveyCoordinators.surveyId, surveyId),
+      eq(surveyCoordinators.coordinatorId, coordinatorId)
+    ));
+  }
+
+  async isCoordinatorAssigned(surveyId: number, coordinatorId: string): Promise<boolean> {
+    const [assignment] = await db.select()
+      .from(surveyCoordinators)
+      .where(and(
+        eq(surveyCoordinators.surveyId, surveyId),
+        eq(surveyCoordinators.coordinatorId, coordinatorId)
       ))
       .limit(1);
     return !!assignment;
