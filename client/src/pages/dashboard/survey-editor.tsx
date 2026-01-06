@@ -259,6 +259,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     type: "electoral",
     location: "",
     targetSample: 400,
+    marginOfError: null as number | null,
+    startDate: "",
+    endDate: "",
     status: "draft"
   });
 
@@ -280,6 +283,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         type: survey.type || "electoral",
         location: survey.location || "",
         targetSample: survey.targetSample || 400,
+        marginOfError: survey.marginOfError || null,
+        startDate: survey.startDate ? new Date(survey.startDate).toISOString().split('T')[0] : "",
+        endDate: survey.endDate ? new Date(survey.endDate).toISOString().split('T')[0] : "",
         status: survey.status || "draft"
       });
       if (survey.questions) {
@@ -355,7 +361,10 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             description: surveyForm.description || undefined,
             type: surveyForm.type,
             location: surveyForm.location || undefined,
-            targetSample: surveyForm.targetSample
+            targetSample: surveyForm.targetSample,
+            marginOfError: surveyForm.marginOfError ?? undefined,
+            startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : undefined,
+            endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : undefined
           }
         });
         toast({ title: "Criada", description: "Pesquisa criada com sucesso!" });
@@ -370,6 +379,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             type: surveyForm.type,
             location: surveyForm.location || undefined,
             targetSample: surveyForm.targetSample,
+            marginOfError: surveyForm.marginOfError ?? undefined,
+            startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : undefined,
+            endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : undefined,
             status: surveyForm.status
           }
         });
@@ -905,6 +917,41 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                       value={surveyForm.targetSample}
                       onChange={(e) => { setSurveyForm({ ...surveyForm, targetSample: parseInt(e.target.value) || 400 }); setHasChanges(true); }}
                       data-testid="input-settings-sample"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="margin">Margem de Erro (%)</Label>
+                    <Input
+                      id="margin"
+                      type="number"
+                      step="0.1"
+                      placeholder="Ex: 3"
+                      value={surveyForm.marginOfError ?? ""}
+                      onChange={(e) => { setSurveyForm({ ...surveyForm, marginOfError: e.target.value ? parseFloat(e.target.value) : null }); setHasChanges(true); }}
+                      data-testid="input-settings-margin"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="startDate">Data de Inicio</Label>
+                    <Input
+                      id="startDate"
+                      type="date"
+                      value={surveyForm.startDate}
+                      onChange={(e) => { setSurveyForm({ ...surveyForm, startDate: e.target.value }); setHasChanges(true); }}
+                      data-testid="input-settings-start-date"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="endDate">Data de Termino</Label>
+                    <Input
+                      id="endDate"
+                      type="date"
+                      value={surveyForm.endDate}
+                      onChange={(e) => { setSurveyForm({ ...surveyForm, endDate: e.target.value }); setHasChanges(true); }}
+                      data-testid="input-settings-end-date"
                     />
                   </div>
                   <div className="space-y-2">
