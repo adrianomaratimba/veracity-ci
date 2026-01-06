@@ -62,6 +62,7 @@ export interface IStorage {
   duplicateSurvey(id: number, newTitle: string, userId: string): Promise<Survey>;
 
   // Questions
+  getQuestion(id: number): Promise<Question | undefined>;
   createQuestion(question: InsertQuestion): Promise<Question>;
   updateQuestion(id: number, question: Partial<InsertQuestion>): Promise<Question>;
   deleteQuestion(id: number): Promise<void>;
@@ -453,6 +454,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- QUESTIONS ---
+  async getQuestion(id: number): Promise<Question | undefined> {
+    const [question] = await db.select().from(questions).where(eq(questions.id, id));
+    return question;
+  }
+
   async createQuestion(question: InsertQuestion): Promise<Question> {
     const [newQuestion] = await db.insert(questions).values(question).returning();
     return newQuestion;

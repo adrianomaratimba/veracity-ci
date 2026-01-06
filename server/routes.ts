@@ -618,6 +618,13 @@ export async function registerRoutes(
     const survey = await storage.getSurvey(surveyId);
     if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
     
+    // Debug log para verificar shuffleOptions nas perguntas
+    console.log('[surveys/get] Survey questions shuffleOptions:', survey.questions?.map(q => ({
+      id: q.id,
+      text: q.text.substring(0, 30),
+      shuffleOptions: q.shuffleOptions
+    })));
+    
     const member = await storage.getMemberByUserId(userId, survey.organizationId);
     if (!member) {
       return res.status(403).json({ message: "Acesso negado" });
@@ -825,12 +832,15 @@ export async function registerRoutes(
   app.patch(api.questions.update.path, isAuthenticated, async (req, res) => {
     try {
       const userId = await getResolvedUserId(req);
-      const surveyId = Number(req.params.surveyId);
       const questionId = Number(req.params.id);
       
       console.log('[questions/update] Request body:', JSON.stringify(req.body, null, 2));
       
-      const survey = await storage.getSurvey(surveyId);
+      // Primeiro buscar a pergunta para obter o surveyId
+      const question = await storage.getQuestion(questionId);
+      if (!question) return res.status(404).json({ message: "Pergunta não encontrada" });
+      
+      const survey = await storage.getSurvey(question.surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
       
       const member = await storage.getMemberByUserId(userId, survey.organizationId);
@@ -852,10 +862,13 @@ export async function registerRoutes(
   app.delete(api.questions.delete.path, isAuthenticated, async (req, res) => {
     try {
       const userId = await getResolvedUserId(req);
-      const surveyId = Number(req.params.surveyId);
       const questionId = Number(req.params.id);
       
-      const survey = await storage.getSurvey(surveyId);
+      // Primeiro buscar a pergunta para obter o surveyId
+      const question = await storage.getQuestion(questionId);
+      if (!question) return res.status(404).json({ message: "Pergunta não encontrada" });
+      
+      const survey = await storage.getSurvey(question.surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
       
       const member = await storage.getMemberByUserId(userId, survey.organizationId);
