@@ -149,6 +149,27 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
   const handleNextQuestion = () => {
     if (!survey || shuffledQuestions.length === 0) return;
+    
+    const currentQuestion = shuffledQuestions[currentQuestionIndex];
+    const currentAnswer = answers[currentQuestion.id];
+    
+    // Validar pergunta obrigatória
+    if (currentQuestion.required) {
+      const isEmpty = currentAnswer === undefined || 
+                      currentAnswer === null || 
+                      currentAnswer === '' ||
+                      (Array.isArray(currentAnswer) && currentAnswer.length === 0);
+      
+      if (isEmpty) {
+        toast({
+          title: "Resposta obrigatória",
+          description: "Esta pergunta é obrigatória. Por favor, selecione uma resposta.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+    
     if (currentQuestionIndex < shuffledQuestions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
