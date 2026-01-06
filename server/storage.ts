@@ -510,6 +510,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAssignedSurveys(interviewerId: string, orgId: number): Promise<Survey[]> {
+    console.log(`[DEBUG getAssignedSurveys] Looking for interviewerId=${interviewerId}, orgId=${orgId}`);
+    
+    // First check what assignments exist for this org
+    const allAssignments = await db.select().from(surveyAssignments);
+    console.log(`[DEBUG getAssignedSurveys] All assignments:`, allAssignments.map(a => ({ surveyId: a.surveyId, interviewerId: a.interviewerId })));
+    
     const result = await db.select({
       survey: surveys
     })
@@ -520,6 +526,7 @@ export class DatabaseStorage implements IStorage {
         eq(surveys.organizationId, orgId)
       ));
     
+    console.log(`[DEBUG getAssignedSurveys] Found ${result.length} surveys`);
     return result.map(r => r.survey);
   }
 
@@ -605,7 +612,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Get unique interviewer IDs
-    const interviewerIds = [...new Set(allResponses.map(r => r.interviewerId))];
+    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId)));
     if (interviewerIds.length === 0) {
       return { interviewers: [], questions: [], comparison: [] };
     }

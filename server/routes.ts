@@ -78,8 +78,6 @@ export async function registerRoutes(
     const allMembers = await storage.getOrganizationMembers(orgId);
     
     // Owner sees all members
-    // Admin sees all except other admins and owner (can only manage coordinator, interviewer, viewer)
-    // Others see all members but can't take actions (handled in frontend)
     if (currentMember.role === 'owner') {
       res.json(allMembers);
     } else if (currentMember.role === 'admin') {
@@ -92,9 +90,18 @@ export async function registerRoutes(
         manageableRoles.includes(m.role as UserRole)
       );
       res.json(visibleMembers);
+    } else if (currentMember.role === 'coordinator') {
+      // Coordinator sees: themselves and all interviewers in the organization
+      // Note: Cannot filter by "their surveys" as there's no ownership field on surveys
+      const visibleMembers = allMembers.filter(m => 
+        m.userId === userId || // themselves
+        m.role === 'interviewer'
+      );
+      res.json(visibleMembers);
     } else {
-      // Others see all members (read-only)
-      res.json(allMembers);
+      // Interviewers and viewers see only themselves
+      const visibleMembers = allMembers.filter(m => m.userId === userId);
+      res.json(visibleMembers);
     }
   });
 
@@ -576,7 +583,9 @@ export async function registerRoutes(
       
       // Entrevistadores só veem pesquisas designadas
       if (isInterviewerRole(role)) {
+        console.log(`[DEBUG] Fetching assigned surveys for interviewer ${userId} in org ${orgId}`);
         const assignedSurveys = await storage.getAssignedSurveys(userId, orgId);
+        console.log(`[DEBUG] Found ${assignedSurveys.length} assigned surveys:`, assignedSurveys.map(s => s.id));
         return res.json(assignedSurveys);
       }
       
