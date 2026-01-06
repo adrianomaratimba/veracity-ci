@@ -11,7 +11,15 @@ import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { sql, eq } from "drizzle-orm";
 import { authService } from "./auth-service";
-import { organizationMembers } from "@shared/schema";
+import { 
+  organizationMembers, 
+  pendingInvitations, 
+  surveyAssignments, 
+  surveyCoordinators, 
+  responses, 
+  surveys
+} from "@shared/schema";
+import { verificationTokens } from "@shared/models/auth";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -2090,13 +2098,34 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Usuário não encontrado" });
       }
       
-      // Remove user from all organizations first
-      const memberships = await db.select().from(organizationMembers).where(eq(organizationMembers.userId, targetUserId));
-      for (const membership of memberships) {
-        await storage.removeMember(membership.id);
-      }
+      // Cascade delete all user dependencies in correct order
+      // 1. Remove organization memberships
+      await db.delete(organizationMembers).where(eq(organizationMembers.userId, targetUserId));
       
-      // Delete user
+      // 2. Remove pending invitations created by this user
+      await db.delete(pendingInvitations).where(eq(pendingInvitations.invitedBy, targetUserId));
+      
+      // 3. Remove survey assignments where user is interviewer or assigner
+      await db.delete(surveyAssignments).where(eq(surveyAssignments.interviewerId, targetUserId));
+      await db.delete(surveyAssignments).where(eq(surveyAssignments.assignedBy, targetUserId));
+      
+      // 4. Remove coordinator assignments
+      await db.delete(surveyCoordinators).where(eq(surveyCoordinators.coordinatorId, targetUserId));
+      await db.delete(surveyCoordinators).where(eq(surveyCoordinators.assignedBy, targetUserId));
+      
+      // 5. Set NULL for responses (preserve data for audit)
+      await db.update(responses).set({ interviewerId: null as any }).where(eq(responses.interviewerId, targetUserId));
+      
+      // 6. Set NULL for surveys deleted by this user
+      await db.update(surveys).set({ deletedBy: null }).where(eq(surveys.deletedBy, targetUserId));
+      
+      // 7. Remove verification tokens
+      await db.delete(verificationTokens).where(eq(verificationTokens.userId, targetUserId));
+      
+      // 9. Remove sessions
+      await db.execute(sql`DELETE FROM sessions WHERE sess::jsonb->>'userId' = ${targetUserId}`);
+      
+      // 10. Finally delete the user
       await db.delete(users).where(eq(users.id, targetUserId));
       
       res.json({ success: true, message: `Usuário "${user.email}" excluído permanentemente` });
