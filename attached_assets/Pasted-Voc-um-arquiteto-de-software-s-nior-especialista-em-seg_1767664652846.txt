@@ -1,0 +1,195 @@
+Você é um arquiteto de software sênior especialista em segurança, RBAC (Role-Based Access Control) e SaaS multi-tenant.
+
+O sistema atual apresenta FALHAS GRAVES DE PERMISSÃO:
+- Coordenadores conseguem adicionar administradores
+- Usuários visualizam pesquisas que não deveriam
+- Telas aparecem para funções incorretas
+- Ações críticas não estão protegidas no backend
+
+REFATORE COMPLETAMENTE o sistema de permissões, garantindo SEGURANÇA TOTAL, isolamento por organização e acesso correto por função.
+
+================================================================
+1. PRINCÍPIO FUNDAMENTAL (OBRIGATÓRIO)
+================================================================
+
+- NENHUMA permissão pode ser baseada apenas no frontend
+- TODA ação sensível deve ser validada no BACKEND
+- O frontend apenas exibe ou oculta telas conforme permissões vindas da API
+- Cada requisição deve validar:
+  - JWT válido
+  - organization_id
+  - role do usuário
+  - ação permitida
+
+================================================================
+2. FUNÇÕES (ROLES) DEFINITIVAS
+================================================================
+
+As únicas funções permitidas são:
+
+- PROPRIETÁRIO (Owner)
+- ADMINISTRADOR
+- COORDENADOR
+- ENTREVISTADOR
+- VISUALIZADOR
+
+================================================================
+3. MATRIZ DE PERMISSÕES (NÃO INTERPRETAR, SEGUIR EXATAMENTE)
+================================================================
+
+------------------------------------------------
+PROPRIETÁRIO
+------------------------------------------------
+Pode:
+- Tudo dentro da organização
+- Alterar plano
+- Adicionar/remover administradores
+- Acessar todas as telas
+- Configurações sensíveis
+
+------------------------------------------------
+ADMINISTRADOR
+------------------------------------------------
+Pode:
+- Criar, editar e excluir pesquisas
+- Criar e editar questionários
+- Designar entrevistadores a pesquisas
+- Cadastrar usuários (EXCETO Proprietário)
+- Alterar funções (EXCETO Proprietário)
+- Visualizar todas as pesquisas da organização
+- Acessar dashboards completos
+- Acessar auditoria
+- Configurar marca, módulos e domínios (se plano permitir)
+
+NÃO pode:
+- Alterar plano
+- Remover proprietário
+
+------------------------------------------------
+COORDENADOR
+------------------------------------------------
+Pode:
+- Visualizar pesquisas da organização
+- Acompanhar andamento das pesquisas
+- Visualizar resultados agregados
+- Visualizar entrevistas (SEM editar ou excluir)
+- Acessar mapas e produtividade
+- Designar entrevistadores SOMENTE às pesquisas já criadas
+
+NÃO pode:
+- Criar, editar ou excluir pesquisas
+- Criar ou remover usuários
+- Alterar função de usuários
+- Acessar configurações
+- Visualizar auditoria sensível
+- Ver pesquisas de outras organizações
+
+------------------------------------------------
+ENTREVISTADOR
+------------------------------------------------
+Pode:
+- Ver SOMENTE pesquisas atribuídas a ele
+- Iniciar entrevistas
+- Enviar respostas
+- Capturar GPS e áudio obrigatórios
+
+NÃO pode:
+- Ver resultados
+- Ver dashboards
+- Ver outras pesquisas
+- Acessar equipe
+- Acessar configurações
+- Ver auditoria
+
+------------------------------------------------
+VISUALIZADOR (CLIENTE)
+------------------------------------------------
+Pode:
+- Ver dashboards agregados
+- Ver gráficos e relatórios finais
+- Exportar relatórios (se plano permitir)
+
+NÃO pode:
+- Ver entrevistas individuais
+- Ver GPS
+- Ver áudio
+- Ver equipe
+- Criar ou editar qualquer dado
+- Ver auditoria
+
+================================================================
+4. CONTROLE DE TELAS (FRONTEND)
+================================================================
+
+Implemente um mapa explícito de telas por função:
+
+- Menu "Equipe" → SOMENTE Proprietário e Administrador
+- Botão "Adicionar Membro" → SOMENTE Proprietário e Administrador
+- Alterar Função → SOMENTE Proprietário
+- Menu "Configurações" → Proprietário e Administrador
+- Menu "Auditoria" → Proprietário e Administrador
+- Menu "Pesquisas" → Todos, com filtros por função
+- Menu "Dashboards" → Administrador, Coordenador e Visualizador
+
+Se o usuário não tiver permissão:
+- NÃO renderizar o menu
+- Bloquear rota
+- Backend retorna 403
+
+================================================================
+5. CONTROLE DE AÇÕES (BACKEND)
+================================================================
+
+Implemente guards/middlewares como:
+
+- requireRole(["ADMINISTRADOR", "PROPRIETÁRIO"])
+- requireRole(["ENTREVISTADOR"])
+- requirePermission("CREATE_SURVEY")
+
+Exemplos obrigatórios:
+- Criar pesquisa → ADMINISTRADOR ou PROPRIETÁRIO
+- Alterar função → PROPRIETÁRIO
+- Adicionar administrador → PROPRIETÁRIO
+- Ver entrevistas → ADMINISTRADOR ou COORDENADOR
+- Criar entrevista → ENTREVISTADOR
+
+================================================================
+6. ISOLAMENTO DE DADOS (CRÍTICO)
+================================================================
+
+- TODA query deve filtrar por organization_id
+- Coordenadores NÃO podem ver dados criados por outras organizações
+- Entrevistadores NÃO podem ver entrevistas de outros entrevistadores
+
+================================================================
+7. AUDITORIA DE SEGURANÇA
+================================================================
+
+Registrar:
+- Alteração de funções
+- Acesso a auditoria
+- Tentativas de acesso negadas
+- Quem fez o quê, quando e onde
+
+================================================================
+8. TESTES OBRIGATÓRIOS
+================================================================
+
+Crie testes manuais ou automatizados para garantir:
+- Coordenador NÃO vê botão "Adicionar Administrador"
+- Coordenador NÃO acessa /team/add
+- Visualizador NÃO acessa /pesquisas/config
+- Entrevistador NÃO acessa dashboards
+- Qualquer acesso indevido retorna 403
+
+================================================================
+9. OBJETIVO FINAL
+================================================================
+
+O sistema deve se comportar como um SaaS PROFISSIONAL e SEGURO:
+- Cada usuário vê APENAS o que precisa
+- Nenhuma permissão implícita
+- Nenhuma confiança no frontend
+- Zero vazamento de acesso
+
+REFATORE o código existente. NÃO crie um sistema novo. Corrija o atual.
