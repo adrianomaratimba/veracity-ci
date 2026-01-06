@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers, Image, X, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers, Image, X, Loader2, Target, AlertTriangle } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import type { SurveyQuotas, QuotaGroup, QuotaTarget } from "@shared/schema";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -268,6 +270,11 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [modulesDialogOpen, setModulesDialogOpen] = useState(false);
+  
+  const [quotas, setQuotas] = useState<SurveyQuotas>({
+    enabled: false,
+    groups: []
+  });
 
   // Question modules query
   const { data: questionModules = [] } = useQuery<QuestionModule[]>({
@@ -297,6 +304,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
           required: q.required ?? true,
           order: q.order
         })));
+      }
+      if (survey.quotas) {
+        setQuotas(survey.quotas as SurveyQuotas);
       }
     }
   }, [survey]);
@@ -382,7 +392,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             marginOfError: surveyForm.marginOfError ?? undefined,
             startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : undefined,
             endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : undefined,
-            status: surveyForm.status
+            status: surveyForm.status,
+            quotas: quotas
           }
         });
         toast({ title: "Salvo", description: "Pesquisa atualizada com sucesso!" });
@@ -511,9 +522,12 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         </div>
 
         <Tabs defaultValue={isNewSurvey ? "settings" : "questions"} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+          <TabsList className="grid w-full grid-cols-5 max-w-3xl">
             <TabsTrigger value="questions" className="gap-2" disabled={isNewSurvey} data-testid="tab-questions">
               <FileText className="w-4 h-4" /> Perguntas
+            </TabsTrigger>
+            <TabsTrigger value="quotas" className="gap-2" disabled={isNewSurvey} data-testid="tab-quotas">
+              <Target className="w-4 h-4" /> Cotas
             </TabsTrigger>
             <TabsTrigger value="interviewers" className="gap-2" disabled={isNewSurvey} data-testid="tab-interviewers">
               <Users className="w-4 h-4" /> Entrevistadores
@@ -522,7 +536,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
               <Users className="w-4 h-4" /> Coordenadores
             </TabsTrigger>
             <TabsTrigger value="settings" className="gap-2" data-testid="tab-settings">
-              <Settings2 className="w-4 h-4" /> Configuracoes
+              <Settings2 className="w-4 h-4" /> Config
             </TabsTrigger>
           </TabsList>
 
@@ -852,6 +866,250 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                     );
                   })()}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="quotas" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="w-5 h-5" /> Controle de Cotas
+                </CardTitle>
+                <CardDescription>
+                  Configure cotas para garantir amostragem representativa por segmento demografico
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                  <div>
+                    <p className="font-medium">Sistema de Cotas</p>
+                    <p className="text-sm text-muted-foreground">
+                      Ative para controlar a distribuicao de entrevistas por segmento
+                    </p>
+                  </div>
+                  <Switch
+                    checked={quotas.enabled}
+                    onCheckedChange={(enabled) => {
+                      setQuotas({ ...quotas, enabled });
+                      setHasChanges(true);
+                    }}
+                    data-testid="switch-quotas-enabled"
+                  />
+                </div>
+
+                {quotas.enabled && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium">Grupos de Cotas</h3>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const newGroup: QuotaGroup = {
+                            id: `quota-${Date.now()}`,
+                            category: "gender",
+                            name: "Novo Grupo",
+                            enabled: true,
+                            hardLimit: false,
+                            targets: []
+                          };
+                          setQuotas({ ...quotas, groups: [...quotas.groups, newGroup] });
+                          setHasChanges(true);
+                        }}
+                        data-testid="button-add-quota-group"
+                      >
+                        <Plus className="w-4 h-4 mr-2" /> Adicionar Grupo
+                      </Button>
+                    </div>
+
+                    {quotas.groups.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Target className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p>Nenhum grupo de cotas configurado</p>
+                        <p className="text-sm">Adicione grupos para definir metas por segmento</p>
+                      </div>
+                    ) : (
+                      quotas.groups.map((group, groupIndex) => (
+                        <Card key={group.id} data-testid={`card-quota-group-${groupIndex}`}>
+                          <CardContent className="p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4 flex-1">
+                                <Input
+                                  value={group.name}
+                                  onChange={(e) => {
+                                    const updated = [...quotas.groups];
+                                    updated[groupIndex] = { ...group, name: e.target.value };
+                                    setQuotas({ ...quotas, groups: updated });
+                                    setHasChanges(true);
+                                  }}
+                                  placeholder="Nome do grupo"
+                                  className="max-w-xs"
+                                  data-testid={`input-quota-name-${groupIndex}`}
+                                />
+                                <Select
+                                  value={group.category}
+                                  onValueChange={(v) => {
+                                    const updated = [...quotas.groups];
+                                    updated[groupIndex] = { ...group, category: v as QuotaGroup['category'] };
+                                    setQuotas({ ...quotas, groups: updated });
+                                    setHasChanges(true);
+                                  }}
+                                >
+                                  <SelectTrigger className="w-40" data-testid={`select-quota-category-${groupIndex}`}>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="gender">Genero</SelectItem>
+                                    <SelectItem value="age">Faixa Etaria</SelectItem>
+                                    <SelectItem value="neighborhood">Bairro</SelectItem>
+                                    <SelectItem value="education">Escolaridade</SelectItem>
+                                    <SelectItem value="income">Renda</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={group.hardLimit}
+                                    onCheckedChange={(hardLimit) => {
+                                      const updated = [...quotas.groups];
+                                      updated[groupIndex] = { ...group, hardLimit };
+                                      setQuotas({ ...quotas, groups: updated });
+                                      setHasChanges(true);
+                                    }}
+                                    data-testid={`switch-hard-limit-${groupIndex}`}
+                                  />
+                                  <Label className="text-sm">Limite rigido</Label>
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  const updated = quotas.groups.filter((_, i) => i !== groupIndex);
+                                  setQuotas({ ...quotas, groups: updated });
+                                  setHasChanges(true);
+                                }}
+                                data-testid={`button-delete-quota-group-${groupIndex}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-sm text-muted-foreground">Metas por Segmento</Label>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newTarget: QuotaTarget = {
+                                      id: `target-${Date.now()}`,
+                                      value: "",
+                                      targetCount: 0,
+                                      currentCount: 0
+                                    };
+                                    const updated = [...quotas.groups];
+                                    updated[groupIndex] = { ...group, targets: [...group.targets, newTarget] };
+                                    setQuotas({ ...quotas, groups: updated });
+                                    setHasChanges(true);
+                                  }}
+                                  data-testid={`button-add-target-${groupIndex}`}
+                                >
+                                  <Plus className="w-4 h-4 mr-1" /> Meta
+                                </Button>
+                              </div>
+
+                              {group.targets.map((target, targetIndex) => {
+                                const progress = target.targetCount > 0 
+                                  ? Math.min(100, (target.currentCount / target.targetCount) * 100)
+                                  : 0;
+                                const isComplete = target.currentCount >= target.targetCount && target.targetCount > 0;
+                                const isOverLimit = target.currentCount > target.targetCount && target.targetCount > 0;
+
+                                return (
+                                  <div key={target.id} className="flex items-center gap-3 p-3 bg-muted/30 rounded-md">
+                                    <Input
+                                      value={target.value}
+                                      onChange={(e) => {
+                                        const updatedTargets = [...group.targets];
+                                        updatedTargets[targetIndex] = { ...target, value: e.target.value };
+                                        const updated = [...quotas.groups];
+                                        updated[groupIndex] = { ...group, targets: updatedTargets };
+                                        setQuotas({ ...quotas, groups: updated });
+                                        setHasChanges(true);
+                                      }}
+                                      placeholder="Ex: Masculino, 18-24, Centro..."
+                                      className="flex-1 max-w-[200px]"
+                                      data-testid={`input-target-value-${groupIndex}-${targetIndex}`}
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        value={target.targetCount}
+                                        onChange={(e) => {
+                                          const updatedTargets = [...group.targets];
+                                          updatedTargets[targetIndex] = { ...target, targetCount: parseInt(e.target.value) || 0 };
+                                          const updated = [...quotas.groups];
+                                          updated[groupIndex] = { ...group, targets: updatedTargets };
+                                          setQuotas({ ...quotas, groups: updated });
+                                          setHasChanges(true);
+                                        }}
+                                        className="w-20"
+                                        data-testid={`input-target-count-${groupIndex}-${targetIndex}`}
+                                      />
+                                      <span className="text-sm text-muted-foreground">meta</span>
+                                    </div>
+                                    <div className="flex-1 max-w-[150px]">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-xs text-muted-foreground">
+                                          {target.currentCount}/{target.targetCount}
+                                        </span>
+                                        {isOverLimit && (
+                                          <AlertTriangle className="w-3 h-3 text-amber-500" />
+                                        )}
+                                        {isComplete && !isOverLimit && (
+                                          <CheckCircle className="w-3 h-3 text-green-500" />
+                                        )}
+                                      </div>
+                                      <Progress value={progress} className="h-2" />
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => {
+                                        const updatedTargets = group.targets.filter((_, i) => i !== targetIndex);
+                                        const updated = [...quotas.groups];
+                                        updated[groupIndex] = { ...group, targets: updatedTargets };
+                                        setQuotas({ ...quotas, groups: updated });
+                                        setHasChanges(true);
+                                      }}
+                                      data-testid={`button-delete-target-${groupIndex}-${targetIndex}`}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+
+                    {quotas.groups.some(g => g.hardLimit) && (
+                      <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
+                        <div className="text-sm">
+                          <p className="font-medium text-amber-800 dark:text-amber-200">Limite Rigido Ativo</p>
+                          <p className="text-amber-700 dark:text-amber-300">
+                            Novas entrevistas serao bloqueadas quando as cotas forem atingidas
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

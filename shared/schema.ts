@@ -428,3 +428,34 @@ export type InsertSubscriptionPlan = Omit<SubscriptionPlan, 'updatedAt'>;
 
 export type SurveyWithQuestions = Survey & { questions: Question[] };
 export type FullResponse = Response & { answers: Answer[], interviewer: typeof users.$inferSelect };
+
+// === QUOTA SYSTEM TYPES ===
+
+export const quotaCategoryEnum = z.enum(["age", "gender", "neighborhood", "education", "income"]);
+export type QuotaCategory = z.infer<typeof quotaCategoryEnum>;
+
+export const quotaTargetSchema = z.object({
+  id: z.string(),
+  value: z.string(),
+  targetCount: z.number().min(0),
+  targetPercentage: z.number().min(0).max(100).optional(),
+  currentCount: z.number().default(0),
+});
+export type QuotaTarget = z.infer<typeof quotaTargetSchema>;
+
+export const quotaGroupSchema = z.object({
+  id: z.string(),
+  category: quotaCategoryEnum,
+  name: z.string(),
+  questionId: z.number().optional(),
+  enabled: z.boolean().default(true),
+  hardLimit: z.boolean().default(false),
+  targets: z.array(quotaTargetSchema),
+});
+export type QuotaGroup = z.infer<typeof quotaGroupSchema>;
+
+export const surveyQuotasSchema = z.object({
+  enabled: z.boolean().default(false),
+  groups: z.array(quotaGroupSchema).default([]),
+});
+export type SurveyQuotas = z.infer<typeof surveyQuotasSchema>;
