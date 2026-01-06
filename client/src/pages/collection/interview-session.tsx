@@ -105,6 +105,14 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   useEffect(() => {
     if (!survey?.questions) return;
     
+    // Debug log para verificar shuffleOptions
+    console.log('[InterviewSession] Survey questions shuffleOptions:', survey.questions.map(q => ({
+      id: q.id,
+      text: q.text.substring(0, 30),
+      shuffleOptions: (q as any).shuffleOptions,
+      optionsCount: Array.isArray(q.options) ? q.options.length : 0
+    })));
+    
     let questionsToUse = [...survey.questions];
     if ((survey as any).shuffleQuestions) {
       questionsToUse = shuffleArray(questionsToUse);
@@ -113,8 +121,11 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     
     const optionsMap: Record<number, (string | QuestionOption)[]> = {};
     for (const q of survey.questions) {
-      if ((q as any).shuffleOptions && Array.isArray(q.options)) {
+      const shouldShuffle = (q as any).shuffleOptions === true;
+      console.log(`[InterviewSession] Question ${q.id}: shuffleOptions=${(q as any).shuffleOptions}, shouldShuffle=${shouldShuffle}`);
+      if (shouldShuffle && Array.isArray(q.options)) {
         optionsMap[q.id] = shuffleArray(q.options as (string | QuestionOption)[]);
+        console.log(`[InterviewSession] Shuffled options for question ${q.id}:`, optionsMap[q.id].map(o => getOptionText(o)));
       } else if (Array.isArray(q.options)) {
         optionsMap[q.id] = q.options as (string | QuestionOption)[];
       }
