@@ -461,3 +461,29 @@ export const surveyQuotasSchema = z.object({
   groups: z.array(quotaGroupSchema).default([]),
 });
 export type SurveyQuotas = z.infer<typeof surveyQuotasSchema>;
+
+// === SKIP LOGIC TYPES ===
+
+export const skipLogicOperatorEnum = z.enum(["equals", "not_equals", "contains", "any"]);
+export type SkipLogicOperator = z.infer<typeof skipLogicOperatorEnum>;
+
+export const skipLogicActionTypeEnum = z.enum(["skip_to_question", "skip_to_end"]);
+export type SkipLogicActionType = z.infer<typeof skipLogicActionTypeEnum>;
+
+export const skipLogicRuleSchema = z.object({
+  id: z.string(),
+  condition: z.object({
+    operator: skipLogicOperatorEnum,
+    value: z.union([z.string(), z.array(z.string())]),
+  }),
+  action: z.object({
+    type: skipLogicActionTypeEnum,
+    targetQuestionId: z.number().optional(),
+  }),
+});
+export type SkipLogicRule = z.infer<typeof skipLogicRuleSchema>;
+
+export const questionLogicSchema = z.object({
+  rules: z.array(skipLogicRuleSchema).default([]),
+});
+export type QuestionLogic = z.infer<typeof questionLogicSchema>;
