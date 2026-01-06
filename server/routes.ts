@@ -828,6 +828,8 @@ export async function registerRoutes(
       const surveyId = Number(req.params.surveyId);
       const questionId = Number(req.params.id);
       
+      console.log('[questions/update] Request body:', JSON.stringify(req.body, null, 2));
+      
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
       
@@ -837,7 +839,9 @@ export async function registerRoutes(
       }
       
       const input = api.questions.update.input.parse(req.body);
+      console.log('[questions/update] Parsed input:', JSON.stringify(input, null, 2));
       const updated = await storage.updateQuestion(questionId, input);
+      console.log('[questions/update] Updated question:', JSON.stringify(updated, null, 2));
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) res.status(400).json(err.errors);
