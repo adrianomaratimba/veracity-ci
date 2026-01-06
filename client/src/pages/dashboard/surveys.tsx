@@ -1,11 +1,11 @@
 import { useOrganization, useCurrentMember } from "@/hooks/use-organizations";
 import { useSurveys, useCreateSurvey, useUpdateSurvey, useTrashedSurveys, useTrashSurvey, useRestoreSurvey, useDeleteSurvey, useDuplicateSurvey } from "@/hooks/use-surveys";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { Plus, FileText, MoreVertical, Play, Pause, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive } from "lucide-react";
+import { Plus, FileText, MoreVertical, Play, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { hasPermission, canManageSurveys, canViewAnalytics, isInterviewerRole, type UserRole } from "@shared/rbac";
+import { canManageSurveys, canViewAnalytics, isInterviewerRole, type UserRole } from "@shared/rbac";
 import type { Survey } from "@shared/schema";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -85,6 +85,73 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
     }
   };
 
+  const handleTrash = async () => {
+    if (!surveyToAction) return;
+    try {
+      await trashSurvey.mutateAsync({ id: surveyToAction.id, orgId });
+      toast({ title: "Sucesso", description: "Pesquisa movida para a lixeira" });
+      setTrashConfirmOpen(false);
+      setSurveyToAction(null);
+    } catch (error) {
+      toast({ title: "Erro", description: "Falha ao mover para lixeira", variant: "destructive" });
+    }
+  };
+
+  const handleRestore = async (survey: Survey) => {
+    try {
+      await restoreSurvey.mutateAsync({ id: survey.id, orgId });
+      toast({ title: "Sucesso", description: "Pesquisa restaurada!" });
+    } catch (error) {
+      toast({ title: "Erro", description: "Falha ao restaurar pesquisa", variant: "destructive" });
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    if (!surveyToAction) return;
+    try {
+      await deleteSurvey.mutateAsync({ id: surveyToAction.id, orgId });
+      toast({ title: "Sucesso", description: "Pesquisa excluída permanentemente" });
+      setDeleteConfirmOpen(false);
+      setSurveyToAction(null);
+    } catch (error) {
+      toast({ title: "Erro", description: "Falha ao excluir pesquisa", variant: "destructive" });
+    }
+  };
+
+  const handleDuplicate = async () => {
+    if (!surveyToAction) return;
+    try {
+      const result = await duplicateSurvey.mutateAsync({ 
+        id: surveyToAction.id, 
+        orgId,
+        title: duplicateTitle || `${surveyToAction.title} (Cópia)`
+      });
+      toast({ title: "Sucesso", description: "Pesquisa duplicada!" });
+      setDuplicateDialogOpen(false);
+      setSurveyToAction(null);
+      setDuplicateTitle("");
+      setLocation(`/org/${orgId}/surveys/${result.survey.id}`);
+    } catch (error) {
+      toast({ title: "Erro", description: "Falha ao duplicar pesquisa", variant: "destructive" });
+    }
+  };
+
+  const openDuplicateDialog = (survey: Survey) => {
+    setSurveyToAction(survey);
+    setDuplicateTitle(`${survey.title} (Cópia)`);
+    setDuplicateDialogOpen(true);
+  };
+
+  const openTrashConfirm = (survey: Survey) => {
+    setSurveyToAction(survey);
+    setTrashConfirmOpen(true);
+  };
+
+  const openDeleteConfirm = (survey: Survey) => {
+    setSurveyToAction(survey);
+    setDeleteConfirmOpen(true);
+  };
+
   if (orgLoading || surveysLoading || memberLoading) return <LoadingScreen message="Carregando pesquisas..." />;
   if (!org) return <div>Organizacao nao encontrada</div>;
 
@@ -134,6 +201,142 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
     };
     return labels[type] || type;
   };
+
+  const trashCount = trashedSurveys?.length || 0;
+
+  const renderSurveyCard = (survey: Survey, isTrash: boolean = false) => (
+    <Card key={survey.id} className="hover:shadow-md transition-shadow" data-testid={`card-survey-${survey.id}`}>
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-4 flex-1 min-w-0">
+            <div className={`p-3 rounded-lg shrink-0 ${isTrash ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
+              <FileText className="w-6 h-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3 flex-wrap mb-1">
+                <h3 className="text-lg font-semibold truncate">{survey.title}</h3>
+                {!isTrash && getStatusBadge(survey.status)}
+                <Badge variant="outline" className="text-xs">{getTypeLabel(survey.type)}</Badge>
+                {isTrash && <Badge variant="destructive" className="text-xs">Na Lixeira</Badge>}
+              </div>
+              {survey.description && (
+                <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{survey.description}</p>
+              )}
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                {survey.location && <span>{survey.location}</span>}
+                <span>Amostra: {survey.targetSample || 0}</span>
+                {isTrash && survey.deletedAt ? (
+                  <span>Excluída: {new Date(survey.deletedAt).toLocaleDateString('pt-BR')}</span>
+                ) : (
+                  <span>Criada: {new Date(survey.createdAt!).toLocaleDateString('pt-BR')}</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {isTrash ? (
+              <>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handleRestore(survey)}
+                  disabled={restoreSurvey.isPending}
+                  data-testid={`button-restore-${survey.id}`}
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Restaurar
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={() => openDeleteConfirm(survey)}
+                  data-testid={`button-delete-${survey.id}`}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Excluir
+                </Button>
+              </>
+            ) : (
+              <>
+                {canSeeResults && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                      const isViewerRole = userRole.toLowerCase() === 'viewer';
+                      const resultsPath = isViewerRole 
+                        ? `/org/${orgId}/surveys/${survey.id}/results`
+                        : `/org/${orgId}/surveys/${survey.id}/analytics`;
+                      setLocation(resultsPath);
+                    }} 
+                    data-testid={`button-analytics-${survey.id}`}
+                  >
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    Resultados
+                  </Button>
+                )}
+                {canEdit && (
+                  <Button size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}`)} data-testid={`button-edit-${survey.id}`}>
+                    <Edit className="w-4 h-4 mr-2" />
+                    Editar
+                  </Button>
+                )}
+                {isInterviewer ? (
+                  <Button size="sm" onClick={() => window.open(`/collect/${survey.id}`, '_blank')} data-testid={`button-collect-${survey.id}`}>
+                    <Play className="w-4 h-4 mr-2" />
+                    Iniciar Coleta
+                  </Button>
+                ) : (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" data-testid={`button-more-${survey.id}`}>
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {canEdit && (
+                        <DropdownMenuItem onClick={() => handleOpenRename(survey)} data-testid={`button-rename-${survey.id}`}>
+                          <Pencil className="w-4 h-4 mr-2" />
+                          Renomear
+                        </DropdownMenuItem>
+                      )}
+                      {canCreate && (
+                        <DropdownMenuItem onClick={() => openDuplicateDialog(survey)} data-testid={`button-duplicate-${survey.id}`}>
+                          <Copy className="w-4 h-4 mr-2" />
+                          Duplicar
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/collect/${survey.id}`)}>
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copiar Link de Coleta
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => window.open(`/collect/${survey.id}`, '_blank')}>
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Abrir Coleta
+                      </DropdownMenuItem>
+                      {canEdit && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => openTrashConfirm(survey)} 
+                            className="text-destructive focus:text-destructive"
+                            data-testid={`button-trash-${survey.id}`}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Mover para Lixeira
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <DashboardLayout orgId={params.orgId}>
@@ -226,93 +429,80 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
           )}
         </div>
 
-        {surveys && surveys.length > 0 ? (
+        {canEdit && (
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList>
+              <TabsTrigger value="active" data-testid="tab-active-surveys">
+                <FileText className="w-4 h-4 mr-2" />
+                Pesquisas Ativas
+              </TabsTrigger>
+              <TabsTrigger value="trash" data-testid="tab-trash-surveys">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Lixeira {trashCount > 0 && <Badge variant="secondary" className="ml-2">{trashCount}</Badge>}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="active" className="mt-4">
+              {surveys && surveys.length > 0 ? (
+                <div className="grid gap-4">
+                  {surveys.map((survey) => renderSurveyCard(survey, false))}
+                </div>
+              ) : (
+                <Card className="border-dashed">
+                  <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                      <FileText className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">
+                      {isInterviewer ? "Nenhuma pesquisa designada" : "Nenhuma pesquisa ainda"}
+                    </h3>
+                    <p className="text-muted-foreground mb-6 max-w-sm">
+                      {isInterviewer 
+                        ? "Voce ainda nao foi designado para nenhuma pesquisa. Aguarde ser adicionado a uma pesquisa pelo coordenador."
+                        : "Crie sua primeira pesquisa para comecar a coletar dados com seguranca e auditoria."
+                      }
+                    </p>
+                    {canCreate && (
+                      <Button onClick={() => setIsCreateOpen(true)} className="gap-2" data-testid="button-create-first-survey">
+                        <Plus className="w-4 h-4" /> Criar Primeira Pesquisa
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="trash" className="mt-4">
+              {trashLoading ? (
+                <LoadingScreen message="Carregando lixeira..." />
+              ) : trashedSurveys && trashedSurveys.length > 0 ? (
+                <div className="grid gap-4">
+                  {trashedSurveys.map((survey: Survey) => renderSurveyCard(survey, true))}
+                </div>
+              ) : (
+                <Card className="border-dashed">
+                  <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                      <Trash2 className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Lixeira vazia</h3>
+                    <p className="text-muted-foreground max-w-sm">
+                      Pesquisas excluídas aparecerão aqui. Você pode restaurá-las ou excluí-las permanentemente.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>
+        )}
+
+        {!canEdit && surveys && surveys.length > 0 && (
           <div className="grid gap-4">
-            {surveys.map((survey) => (
-              <Card key={survey.id} className="hover:shadow-md transition-shadow" data-testid={`card-survey-${survey.id}`}>
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-4 flex-1 min-w-0">
-                      <div className="p-3 bg-primary/10 rounded-lg text-primary shrink-0">
-                        <FileText className="w-6 h-6" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-3 flex-wrap mb-1">
-                          <h3 className="text-lg font-semibold truncate">{survey.title}</h3>
-                          {getStatusBadge(survey.status)}
-                          <Badge variant="outline" className="text-xs">{getTypeLabel(survey.type)}</Badge>
-                        </div>
-                        {survey.description && (
-                          <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{survey.description}</p>
-                        )}
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                          {survey.location && <span>{survey.location}</span>}
-                          <span>Amostra: {survey.targetSample || 0}</span>
-                          <span>Criada: {new Date(survey.createdAt!).toLocaleDateString('pt-BR')}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {canSeeResults && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => {
-                            const isViewerRole = userRole.toLowerCase() === 'viewer';
-                            const resultsPath = isViewerRole 
-                              ? `/org/${orgId}/surveys/${survey.id}/results`
-                              : `/org/${orgId}/surveys/${survey.id}/analytics`;
-                            setLocation(resultsPath);
-                          }} 
-                          data-testid={`button-analytics-${survey.id}`}
-                        >
-                          <BarChart3 className="w-4 h-4 mr-2" />
-                          Resultados
-                        </Button>
-                      )}
-                      {canEdit && (
-                        <Button size="sm" onClick={() => setLocation(`/org/${orgId}/surveys/${survey.id}`)} data-testid={`button-edit-${survey.id}`}>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Editar
-                        </Button>
-                      )}
-                      {isInterviewer ? (
-                        <Button size="sm" onClick={() => window.open(`/collect/${survey.id}`, '_blank')} data-testid={`button-collect-${survey.id}`}>
-                          <Play className="w-4 h-4 mr-2" />
-                          Iniciar Coleta
-                        </Button>
-                      ) : (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" data-testid={`button-more-${survey.id}`}>
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {canEdit && (
-                              <DropdownMenuItem onClick={() => handleOpenRename(survey)} data-testid={`button-rename-${survey.id}`}>
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Renomear
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/collect/${survey.id}`)}>
-                              <Copy className="w-4 h-4 mr-2" />
-                              Copiar Link de Coleta
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => window.open(`/collect/${survey.id}`, '_blank')}>
-                              <ExternalLink className="w-4 h-4 mr-2" />
-                              Abrir Coleta
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {surveys.map((survey) => renderSurveyCard(survey, false))}
           </div>
-        ) : (
+        )}
+
+        {!canEdit && (!surveys || surveys.length === 0) && (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -327,11 +517,6 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                   : "Crie sua primeira pesquisa para comecar a coletar dados com seguranca e auditoria."
                 }
               </p>
-              {canCreate && (
-                <Button onClick={() => setIsCreateOpen(true)} className="gap-2" data-testid="button-create-first-survey">
-                  <Plus className="w-4 h-4" /> Criar Primeira Pesquisa
-                </Button>
-              )}
             </CardContent>
           </Card>
         )}
@@ -377,6 +562,88 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Duplicate Dialog */}
+      <Dialog open={duplicateDialogOpen} onOpenChange={setDuplicateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Duplicar Pesquisa</DialogTitle>
+            <DialogDescription>
+              Uma cópia da pesquisa será criada com todas as perguntas
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="duplicate-title">Título da Nova Pesquisa</Label>
+              <Input
+                id="duplicate-title"
+                value={duplicateTitle}
+                onChange={(e) => setDuplicateTitle(e.target.value)}
+                placeholder="Nome da pesquisa"
+                data-testid="input-duplicate-title"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleDuplicate} 
+              disabled={duplicateSurvey.isPending}
+              data-testid="button-confirm-duplicate"
+            >
+              {duplicateSurvey.isPending ? "Duplicando..." : "Duplicar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Trash Confirmation */}
+      <AlertDialog open={trashConfirmOpen} onOpenChange={setTrashConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mover para Lixeira?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A pesquisa "{surveyToAction?.title}" será movida para a lixeira. 
+              Você poderá restaurá-la depois ou excluí-la permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleTrash}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-trash"
+            >
+              {trashSurvey.isPending ? "Movendo..." : "Mover para Lixeira"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Permanent Delete Confirmation */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Permanentemente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A pesquisa "{surveyToAction?.title}" será excluída permanentemente junto com todas as suas 
+              perguntas, respostas e dados relacionados. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handlePermanentDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete"
+            >
+              {deleteSurvey.isPending ? "Excluindo..." : "Excluir Permanentemente"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
