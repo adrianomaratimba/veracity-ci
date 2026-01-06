@@ -1,11 +1,11 @@
 import { useOrganization, useCurrentMember } from "@/hooks/use-organizations";
-import { useSurveys, useCreateSurvey, useUpdateSurvey } from "@/hooks/use-surveys";
+import { useSurveys, useCreateSurvey, useUpdateSurvey, useTrashedSurveys, useTrashSurvey, useRestoreSurvey, useDeleteSurvey, useDuplicateSurvey } from "@/hooks/use-surveys";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { Plus, FileText, MoreVertical, Play, Pause, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil } from "lucide-react";
+import { Plus, FileText, MoreVertical, Play, Pause, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -17,14 +17,21 @@ import { useToast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { hasPermission, canManageSurveys, canViewAnalytics, isInterviewerRole, type UserRole } from "@shared/rbac";
 import type { Survey } from "@shared/schema";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
   const { data: org, isLoading: orgLoading } = useOrganization(orgId);
   const { data: surveys, isLoading: surveysLoading } = useSurveys(orgId);
+  const { data: trashedSurveys, isLoading: trashLoading } = useTrashedSurveys(orgId);
   const { data: currentMember, isLoading: memberLoading } = useCurrentMember(orgId);
   const createSurvey = useCreateSurvey();
   const updateSurvey = useUpdateSurvey();
+  const trashSurvey = useTrashSurvey();
+  const restoreSurvey = useRestoreSurvey();
+  const deleteSurvey = useDeleteSurvey();
+  const duplicateSurvey = useDuplicateSurvey();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -32,6 +39,12 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [surveyToRename, setSurveyToRename] = useState<Survey | null>(null);
   const [newTitle, setNewTitle] = useState("");
+  const [activeTab, setActiveTab] = useState("active");
+  const [trashConfirmOpen, setTrashConfirmOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [surveyToAction, setSurveyToAction] = useState<Survey | null>(null);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [duplicateTitle, setDuplicateTitle] = useState("");
   
   const userRole = (currentMember?.role || 'viewer') as UserRole;
   const canCreate = canManageSurveys(userRole);

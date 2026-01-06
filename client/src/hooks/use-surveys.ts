@@ -90,3 +90,93 @@ export function useSurveyAnalytics(id: number) {
     enabled: !!id,
   });
 }
+
+// Trashed Surveys
+export function useTrashedSurveys(orgId: number) {
+  return useQuery({
+    queryKey: ["/api/organizations", orgId, "surveys", "trash"],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const res = await fetch(`/api/organizations/${orgId}/surveys/trash`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch trashed surveys");
+      return res.json();
+    },
+    enabled: !!orgId,
+  });
+}
+
+// Move survey to trash
+export function useTrashSurvey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, orgId }: { id: number; orgId: number }) => {
+      const res = await fetch(`/api/surveys/${id}/trash`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to trash survey");
+      return { survey: await res.json(), orgId };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: [api.surveys.list.path, result.orgId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", result.orgId, "surveys", "trash"] });
+    },
+  });
+}
+
+// Restore survey from trash
+export function useRestoreSurvey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, orgId }: { id: number; orgId: number }) => {
+      const res = await fetch(`/api/surveys/${id}/restore`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to restore survey");
+      return { survey: await res.json(), orgId };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: [api.surveys.list.path, result.orgId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", result.orgId, "surveys", "trash"] });
+    },
+  });
+}
+
+// Permanently delete survey
+export function useDeleteSurvey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, orgId }: { id: number; orgId: number }) => {
+      const res = await fetch(`/api/surveys/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete survey");
+      return { orgId };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", result.orgId, "surveys", "trash"] });
+    },
+  });
+}
+
+// Duplicate survey
+export function useDuplicateSurvey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, orgId, title }: { id: number; orgId: number; title?: string }) => {
+      const res = await fetch(`/api/surveys/${id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to duplicate survey");
+      return { survey: await res.json(), orgId };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: [api.surveys.list.path, result.orgId] });
+    },
+  });
+}
