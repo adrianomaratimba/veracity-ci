@@ -14,6 +14,7 @@ import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { savePendingInterview, generateInterviewId, getPendingCount } from "@/lib/offlineStorage";
 import { syncAllPending } from "@/lib/syncQueue";
+import type { QuestionLogic, SkipLogicRule } from "@shared/schema";
 
 interface QuestionOption {
   text: string;
@@ -44,6 +45,61 @@ function shuffleArray<T>(array: T[]): T[] {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return shuffled;
+}
+
+function normalizeAnswerForComparison(answer: any): string[] {
+  if (answer === undefined || answer === null) return [];
+  
+  if (Array.isArray(answer)) {
+    return answer.map(a => {
+      if (typeof a === 'string') return a;
+      if (typeof a === 'object' && a.text) return a.text;
+      return String(a);
+    });
+  }
+  
+  if (typeof answer === 'string') return [answer];
+  if (typeof answer === 'object' && answer.text) return [answer.text];
+  return [String(answer)];
+}
+
+function evaluateSkipLogicRule(rule: SkipLogicRule, answer: any): boolean {
+  const { operator, value } = rule.condition;
+  
+  if (operator === 'any') {
+    return answer !== undefined && answer !== null && answer !== '';
+  }
+  
+  const normalizedAnswers = normalizeAnswerForComparison(answer);
+  const targetValue = typeof value === 'string' ? value : String(value);
+  
+  switch (operator) {
+    case 'equals':
+      return normalizedAnswers.length === 1 && normalizedAnswers[0] === targetValue;
+    case 'not_equals':
+      return normalizedAnswers.length === 0 || !normalizedAnswers.includes(targetValue);
+    case 'contains':
+      return normalizedAnswers.includes(targetValue);
+    default:
+      return false;
+  }
+}
+
+function getSkipTarget(logic: QuestionLogic | undefined, answer: any): { type: 'skip_to_question' | 'skip_to_end' | 'continue'; targetQuestionId?: number } {
+  if (!logic?.rules || logic.rules.length === 0) {
+    return { type: 'continue' };
+  }
+  
+  for (const rule of logic.rules) {
+    if (evaluateSkipLogicRule(rule, answer)) {
+      return {
+        type: rule.action.type,
+        targetQuestionId: rule.action.targetQuestionId
+      };
+    }
+  }
+  
+  return { type: 'continue' };
 }
 
 interface InterviewSessionProps {
@@ -170,6 +226,26 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       }
     }
     
+    // Verificar skip logic
+    const skipTarget = getSkipTarget((currentQuestion as any).logic, currentAnswer);
+    console.log('[InterviewSession] Skip logic result:', { questionId: currentQuestion.id, answer: currentAnswer, skipTarget });
+    
+    if (skipTarget.type === 'skip_to_end') {
+      stopRecording();
+      setStep('submit');
+      return;
+    }
+    
+    if (skipTarget.type === 'skip_to_question' && skipTarget.targetQuestionId) {
+      // Encontrar o índice da pergunta destino
+      const targetIndex = shuffledQuestions.findIndex(q => q.id === skipTarget.targetQuestionId);
+      if (targetIndex !== -1 && targetIndex > currentQuestionIndex) {
+        setCurrentQuestionIndex(targetIndex);
+        return;
+      }
+    }
+    
+    // Comportamento padrão: avançar para a próxima pergunta
     if (currentQuestionIndex < shuffledQuestions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {

@@ -5,9 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers, Image, X, Loader2, Target, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers, Image, X, Loader2, Target, AlertTriangle, GitBranch } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import type { SurveyQuotas, QuotaGroup, QuotaTarget } from "@shared/schema";
+import type { SurveyQuotas, QuotaGroup, QuotaTarget, QuestionLogic, SkipLogicRule } from "@shared/schema";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,6 +40,7 @@ interface QuestionForm {
   required: boolean;
   order: number;
   shuffleOptions?: boolean;
+  logic?: QuestionLogic;
 }
 
 function normalizeOption(opt: string | QuestionOption): QuestionOption {
@@ -151,6 +152,205 @@ function OptionEditor({ option, optIndex, questionIndex, canDelete, onUpdate, on
         )}
       </div>
     </div>
+  );
+}
+
+interface SkipLogicEditorProps {
+  question: QuestionForm;
+  questionIndex: number;
+  allQuestions: QuestionForm[];
+  onUpdate: (logic: QuestionLogic) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+function SkipLogicEditor({ question, questionIndex, allQuestions, onUpdate, open, onOpenChange }: SkipLogicEditorProps) {
+  const [rules, setRules] = useState<SkipLogicRule[]>(question.logic?.rules || []);
+
+  useEffect(() => {
+    setRules(question.logic?.rules || []);
+  }, [question.logic, open]);
+
+  const generateId = () => Math.random().toString(36).substring(2, 9);
+
+  const addRule = () => {
+    const newRule: SkipLogicRule = {
+      id: generateId(),
+      condition: {
+        operator: 'equals',
+        value: '',
+      },
+      action: {
+        type: 'skip_to_question',
+        targetQuestionId: undefined,
+      },
+    };
+    setRules([...rules, newRule]);
+  };
+
+  const updateRule = (ruleId: string, updates: Partial<SkipLogicRule>) => {
+    setRules(rules.map(r => r.id === ruleId ? { ...r, ...updates } : r));
+  };
+
+  const updateRuleCondition = (ruleId: string, updates: Partial<SkipLogicRule['condition']>) => {
+    setRules(rules.map(r => r.id === ruleId ? { ...r, condition: { ...r.condition, ...updates } } : r));
+  };
+
+  const updateRuleAction = (ruleId: string, updates: Partial<SkipLogicRule['action']>) => {
+    setRules(rules.map(r => r.id === ruleId ? { ...r, action: { ...r.action, ...updates } } : r));
+  };
+
+  const deleteRule = (ruleId: string) => {
+    setRules(rules.filter(r => r.id !== ruleId));
+  };
+
+  const handleSave = () => {
+    onUpdate({ rules });
+    onOpenChange(false);
+  };
+
+  const futureQuestions = allQuestions.filter((q, idx) => idx > questionIndex);
+  const hasOptions = question.type === 'single_choice' || question.type === 'multiple_choice';
+
+  const operatorLabels: Record<string, string> = {
+    'equals': 'for igual a',
+    'not_equals': 'for diferente de',
+    'contains': 'contiver',
+    'any': 'for qualquer valor',
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <GitBranch className="w-5 h-5" />
+            Logica de Pulo
+          </DialogTitle>
+          <DialogDescription>
+            Configure regras para pular perguntas baseado nas respostas. Pergunta: "{question.text.substring(0, 50)}..."
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {rules.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>Nenhuma regra de pulo configurada.</p>
+              <p className="text-sm">Adicione regras para controlar o fluxo da pesquisa.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {rules.map((rule, ruleIndex) => (
+                <Card key={rule.id} className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Regra {ruleIndex + 1}</span>
+                      <Button variant="ghost" size="icon" onClick={() => deleteRule(rule.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm">Se a resposta</span>
+                        <Select
+                          value={rule.condition.operator}
+                          onValueChange={(v) => updateRuleCondition(rule.id, { operator: v as any })}
+                        >
+                          <SelectTrigger className="w-40" data-testid={`select-operator-${ruleIndex}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="equals">for igual a</SelectItem>
+                            <SelectItem value="not_equals">for diferente de</SelectItem>
+                            {question.type === 'multiple_choice' && (
+                              <SelectItem value="contains">contiver</SelectItem>
+                            )}
+                            <SelectItem value="any">for qualquer valor</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        {rule.condition.operator !== 'any' && hasOptions && (
+                          <Select
+                            value={typeof rule.condition.value === 'string' ? rule.condition.value : ''}
+                            onValueChange={(v) => updateRuleCondition(rule.id, { value: v })}
+                          >
+                            <SelectTrigger className="w-48" data-testid={`select-value-${ruleIndex}`}>
+                              <SelectValue placeholder="Selecione opcao" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {question.options.map((opt, optIdx) => (
+                                <SelectItem key={optIdx} value={opt.text}>
+                                  {opt.text}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+
+                        {rule.condition.operator !== 'any' && !hasOptions && (
+                          <Input
+                            value={typeof rule.condition.value === 'string' ? rule.condition.value : ''}
+                            onChange={(e) => updateRuleCondition(rule.id, { value: e.target.value })}
+                            placeholder="Valor"
+                            className="w-40"
+                            data-testid={`input-value-${ruleIndex}`}
+                          />
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm">Entao</span>
+                        <Select
+                          value={rule.action.type}
+                          onValueChange={(v) => updateRuleAction(rule.id, { type: v as any, targetQuestionId: undefined })}
+                        >
+                          <SelectTrigger className="w-48" data-testid={`select-action-${ruleIndex}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="skip_to_question">Pular para pergunta</SelectItem>
+                            <SelectItem value="skip_to_end">Finalizar pesquisa</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        {rule.action.type === 'skip_to_question' && (
+                          <Select
+                            value={rule.action.targetQuestionId?.toString() || ''}
+                            onValueChange={(v) => updateRuleAction(rule.id, { targetQuestionId: parseInt(v) })}
+                          >
+                            <SelectTrigger className="w-64" data-testid={`select-target-${ruleIndex}`}>
+                              <SelectValue placeholder="Selecione pergunta" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {futureQuestions.map((q) => (
+                                <SelectItem key={q.id || q.order} value={(q.id || q.order).toString()}>
+                                  {q.order + 1}. {q.text.substring(0, 40)}...
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          <Button variant="outline" onClick={addRule} className="w-full" data-testid="button-add-rule">
+            <Plus className="w-4 h-4 mr-2" /> Adicionar Regra
+          </Button>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={handleSave} data-testid="button-save-logic">Salvar Logica</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -272,6 +472,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [modulesDialogOpen, setModulesDialogOpen] = useState(false);
+  const [skipLogicQuestionIndex, setSkipLogicQuestionIndex] = useState<number | null>(null);
   
   const [quotas, setQuotas] = useState<SurveyQuotas>({
     enabled: false,
@@ -306,7 +507,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
           options: normalizeOptions(q.options),
           required: q.required ?? true,
           order: q.order,
-          shuffleOptions: (q as any).shuffleOptions ?? false
+          shuffleOptions: (q as any).shuffleOptions ?? false,
+          logic: (q as any).logic ?? { rules: [] }
         })));
       }
       if (survey.quotas) {
@@ -316,7 +518,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
   }, [survey]);
 
   const createQuestion = useMutation({
-    mutationFn: async (data: { text: string; type: string; options?: QuestionOption[] | string[]; required: boolean; order: number; shuffleOptions?: boolean }) => {
+    mutationFn: async (data: { text: string; type: string; options?: QuestionOption[] | string[]; required: boolean; order: number; shuffleOptions?: boolean; logic?: QuestionLogic }) => {
       const url = buildUrl(api.questions.create.path, { surveyId });
       const res = await fetch(url, {
         method: "POST",
@@ -457,14 +659,18 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     const q = questions[index];
     try {
       if (q.id) {
-        await updateQuestion.mutateAsync({ id: q.id, data: { text: q.text, type: q.type, options: q.options, required: q.required, shuffleOptions: q.shuffleOptions } });
+        await updateQuestion.mutateAsync({ id: q.id, data: { text: q.text, type: q.type, options: q.options, required: q.required, shuffleOptions: q.shuffleOptions, logic: q.logic } });
       } else {
-        await createQuestion.mutateAsync({ text: q.text, type: q.type, options: q.options, required: q.required, order: q.order, shuffleOptions: q.shuffleOptions });
+        await createQuestion.mutateAsync({ text: q.text, type: q.type, options: q.options, required: q.required, order: q.order, shuffleOptions: q.shuffleOptions, logic: q.logic });
       }
       toast({ title: "Salvo", description: "Pergunta salva com sucesso!" });
     } catch (error) {
       toast({ title: "Erro", description: "Falha ao salvar pergunta", variant: "destructive" });
     }
+  };
+  
+  const handleUpdateLogic = (index: number, logic: QuestionLogic) => {
+    updateQuestionField(index, "logic", logic);
   };
 
   const handleDeleteQuestion = async (index: number) => {
@@ -634,6 +840,18 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                               )}
                             </div>
                             <div className="flex items-center gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => setSkipLogicQuestionIndex(index)} 
+                                data-testid={`button-skip-logic-${index}`}
+                              >
+                                <GitBranch className="w-4 h-4 mr-2" /> 
+                                Logica
+                                {q.logic?.rules && q.logic.rules.length > 0 && (
+                                  <Badge variant="secondary" className="ml-1">{q.logic.rules.length}</Badge>
+                                )}
+                              </Button>
                               <Button variant="outline" size="sm" onClick={() => handleSaveQuestion(index)} data-testid={`button-save-question-${index}`}>
                                 <CheckCircle className="w-4 h-4 mr-2" /> Salvar
                               </Button>
@@ -1276,6 +1494,18 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Skip Logic Editor Modal */}
+      {skipLogicQuestionIndex !== null && questions[skipLogicQuestionIndex] && (
+        <SkipLogicEditor
+          question={questions[skipLogicQuestionIndex]}
+          questionIndex={skipLogicQuestionIndex}
+          allQuestions={questions}
+          onUpdate={(logic) => handleUpdateLogic(skipLogicQuestionIndex, logic)}
+          open={true}
+          onOpenChange={(open) => !open && setSkipLogicQuestionIndex(null)}
+        />
+      )}
 
       {/* Import Module Dialog */}
       <Dialog open={modulesDialogOpen} onOpenChange={setModulesDialogOpen}>
