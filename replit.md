@@ -15,6 +15,10 @@ Key capabilities:
 
 Preferred communication style: Simple, everyday language.
 
+### Deployment Preference
+- **Always publish after changes**: User prefers that code changes be deployed to production immediately after implementation
+- **Note**: Database changes (data inserts, updates) cannot be synced automatically - production and development databases are separate
+
 ### Language Convention
 - **UI/Interface**: Portuguese (Brazil) - all user-facing text in Portuguese
 - **Internal Code**: English - all database values, enums, variable names, queries
