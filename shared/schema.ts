@@ -177,6 +177,15 @@ export const surveyAssignments = pgTable("survey_assignments", {
   assignedAt: timestamp("assigned_at").defaultNow(),
 });
 
+// Survey Coordinator assignments - which coordinators can manage this survey
+export const surveyCoordinators = pgTable("survey_coordinators", {
+  id: serial("id").primaryKey(),
+  surveyId: integer("survey_id").references(() => surveys.id).notNull(),
+  coordinatorId: varchar("coordinator_id").references(() => users.id).notNull(),
+  assignedBy: varchar("assigned_by").references(() => users.id).notNull(),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+});
+
 // === QUESTION MODULES (Reusable question templates) ===
 
 export const questionModules = pgTable("question_modules", {
@@ -244,6 +253,7 @@ export const surveysRelations = relations(surveys, ({ one, many }) => ({
   questions: many(questions),
   responses: many(responses),
   assignments: many(surveyAssignments),
+  coordinators: many(surveyCoordinators),
 }));
 
 export const surveyAssignmentsRelations = relations(surveyAssignments, ({ one }) => ({
@@ -257,6 +267,21 @@ export const surveyAssignmentsRelations = relations(surveyAssignments, ({ one })
   }),
   assigner: one(users, {
     fields: [surveyAssignments.assignedBy],
+    references: [users.id],
+  }),
+}));
+
+export const surveyCoordinatorsRelations = relations(surveyCoordinators, ({ one }) => ({
+  survey: one(surveys, {
+    fields: [surveyCoordinators.surveyId],
+    references: [surveys.id],
+  }),
+  coordinator: one(users, {
+    fields: [surveyCoordinators.coordinatorId],
+    references: [users.id],
+  }),
+  assigner: one(users, {
+    fields: [surveyCoordinators.assignedBy],
     references: [users.id],
   }),
 }));
@@ -350,6 +375,7 @@ export const insertAnswerSchema = createInsertSchema(answers).omit({ id: true })
 export const insertMemberSchema = createInsertSchema(organizationMembers).omit({ id: true, joinedAt: true });
 export const insertPendingInvitationSchema = createInsertSchema(pendingInvitations).omit({ id: true, invitedAt: true, respondedAt: true, status: true });
 export const insertSurveyAssignmentSchema = createInsertSchema(surveyAssignments).omit({ id: true, assignedAt: true });
+export const insertSurveyCoordinatorSchema = createInsertSchema(surveyCoordinators).omit({ id: true, assignedAt: true });
 export const insertMemberPermissionOverrideSchema = createInsertSchema(memberPermissionOverrides).omit({ id: true, createdAt: true });
 export const insertAccessAuditLogSchema = createInsertSchema(accessAuditLog).omit({ id: true, createdAt: true });
 export const insertQuestionModuleSchema = createInsertSchema(questionModules).omit({ id: true, createdAt: true, updatedAt: true });
@@ -382,6 +408,9 @@ export type InsertAnswer = z.infer<typeof insertAnswerSchema>;
 
 export type SurveyAssignment = typeof surveyAssignments.$inferSelect;
 export type InsertSurveyAssignment = z.infer<typeof insertSurveyAssignmentSchema>;
+
+export type SurveyCoordinator = typeof surveyCoordinators.$inferSelect;
+export type InsertSurveyCoordinator = z.infer<typeof insertSurveyCoordinatorSchema>;
 
 export type MemberPermissionOverride = typeof memberPermissionOverrides.$inferSelect;
 export type InsertMemberPermissionOverride = z.infer<typeof insertMemberPermissionOverrideSchema>;
