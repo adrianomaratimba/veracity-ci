@@ -27,7 +27,17 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { hasPermission, isInterviewerRole, type UserRole, type Permission } from "@shared/rbac";
+import { 
+  hasPermission, 
+  isInterviewerRole, 
+  isViewerRole,
+  canViewTeam,
+  canViewSettings,
+  canViewAuditLogs,
+  canViewFullAnalytics,
+  type UserRole, 
+  type Permission 
+} from "@shared/rbac";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -52,31 +62,58 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
   const navigation = useMemo(() => {
     if (!orgId) return [];
     
-    // Entrevistadores só veem a página de pesquisas
+    // ================================================================
+    // ENTREVISTADOR - Only sees assigned surveys
+    // ================================================================
     if (isInterviewerRole(userRole)) {
       return [
-        { name: 'Minhas Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText, permission: 'surveys:view_assigned' as Permission },
+        { name: 'Minhas Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
       ];
     }
     
-    // Viewers veem o portal de pesquisas e resultados
-    if (userRole === 'viewer') {
+    // ================================================================
+    // VISUALIZADOR (Client) - Only sees aggregated dashboards
+    // ================================================================
+    if (isViewerRole(userRole)) {
       return [
-        { name: 'Portal', href: `/org/${orgId}/portal`, icon: Eye, permission: 'surveys:view' as Permission },
-        { name: 'Equipe', href: `/org/${orgId}/team`, icon: Users, permission: 'members:view' as Permission },
+        { name: 'Portal', href: `/org/${orgId}/portal`, icon: Eye },
       ];
     }
     
-    const allItems = [
-      { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard, permission: 'analytics:view' as Permission },
-      { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText, permission: 'surveys:view' as Permission },
-      { name: 'Auditoria', href: `/org/${orgId}/audit`, icon: ShieldAlert, permission: 'responses:audit' as Permission },
-      { name: 'Equipe', href: `/org/${orgId}/team`, icon: Users, permission: 'members:view' as Permission },
-      { name: 'Controle de Acesso', href: `/org/${orgId}/access`, icon: Shield, permission: 'members:view' as Permission },
-      { name: 'Configurações', href: `/org/${orgId}/settings`, icon: Settings, permission: 'org:edit' as Permission },
+    // ================================================================
+    // COORDENADOR - View surveys, analytics, maps (NO team, NO settings, NO audit)
+    // ================================================================
+    if (userRole === 'coordinator') {
+      return [
+        { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
+        { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
+      ];
+    }
+    
+    // ================================================================
+    // OWNER & ADMIN - Full navigation access
+    // ================================================================
+    const items = [
+      { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
+      { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
     ];
-
-    return allItems.filter(item => hasPermission(userRole, item.permission));
+    
+    // Auditoria - only for admin/owner
+    if (canViewAuditLogs(userRole)) {
+      items.push({ name: 'Auditoria', href: `/org/${orgId}/audit`, icon: ShieldAlert });
+    }
+    
+    // Equipe - only for admin/owner
+    if (canViewTeam(userRole)) {
+      items.push({ name: 'Equipe', href: `/org/${orgId}/team`, icon: Users });
+    }
+    
+    // Configurações - only for admin/owner
+    if (canViewSettings(userRole)) {
+      items.push({ name: 'Configurações', href: `/org/${orgId}/settings`, icon: Settings });
+    }
+    
+    return items;
   }, [orgId, userRole]);
 
   if (!user) return null;
