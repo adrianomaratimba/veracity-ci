@@ -676,6 +676,123 @@ export async function registerRoutes(
     }
   });
 
+  // ============= SURVEY TRASH/DELETE/DUPLICATE =============
+  
+  // List trashed surveys
+  app.get("/api/organizations/:orgId/surveys/trash", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.orgId);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const trashedSurveys = await storage.getTrashedSurveys(orgId);
+      res.json(trashedSurveys);
+    } catch (err) {
+      console.error("Erro ao listar lixeira:", err);
+      res.status(500).json({ message: "Erro ao listar pesquisas na lixeira" });
+    }
+  });
+
+  // Move survey to trash (soft delete)
+  app.post("/api/surveys/:id/trash", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.id);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para excluir pesquisas" });
+      }
+      
+      const deleted = await storage.softDeleteSurvey(surveyId, userId);
+      res.json(deleted);
+    } catch (err) {
+      console.error("Erro ao mover para lixeira:", err);
+      res.status(500).json({ message: "Erro ao mover pesquisa para lixeira" });
+    }
+  });
+
+  // Restore survey from trash
+  app.post("/api/surveys/:id/restore", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.id);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para restaurar pesquisas" });
+      }
+      
+      const restored = await storage.restoreSurvey(surveyId);
+      res.json(restored);
+    } catch (err) {
+      console.error("Erro ao restaurar:", err);
+      res.status(500).json({ message: "Erro ao restaurar pesquisa" });
+    }
+  });
+
+  // Permanently delete survey
+  app.delete("/api/surveys/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.id);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para excluir pesquisas" });
+      }
+      
+      // Only allow permanent deletion of already trashed surveys
+      if (!survey.deletedAt) {
+        return res.status(400).json({ message: "Mova a pesquisa para a lixeira antes de excluir permanentemente" });
+      }
+      
+      await storage.permanentlyDeleteSurvey(surveyId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("Erro ao excluir permanentemente:", err);
+      res.status(500).json({ message: "Erro ao excluir pesquisa permanentemente" });
+    }
+  });
+
+  // Duplicate survey
+  app.post("/api/surveys/:id/duplicate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.id);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:create")) {
+        return res.status(403).json({ message: "Você não tem permissão para duplicar pesquisas" });
+      }
+      
+      const { title } = req.body;
+      const newTitle = title || `${survey.title} (Cópia)`;
+      
+      const duplicated = await storage.duplicateSurvey(surveyId, newTitle, userId);
+      res.status(201).json(duplicated);
+    } catch (err) {
+      console.error("Erro ao duplicar:", err);
+      res.status(500).json({ message: "Erro ao duplicar pesquisa" });
+    }
+  });
+
   // 4. Questions - SECURED with RBAC
   app.post(api.questions.create.path, isAuthenticated, async (req, res) => {
     try {

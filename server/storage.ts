@@ -52,9 +52,14 @@ export interface IStorage {
 
   // Surveys
   getSurveys(orgId: number): Promise<Survey[]>;
+  getTrashedSurveys(orgId: number): Promise<Survey[]>;
   getSurvey(id: number): Promise<(Survey & { questions: Question[] }) | undefined>;
   createSurvey(survey: InsertSurvey): Promise<Survey>;
   updateSurvey(id: number, survey: Partial<InsertSurvey>): Promise<Survey>;
+  softDeleteSurvey(id: number, deletedBy: string): Promise<Survey>;
+  restoreSurvey(id: number): Promise<Survey>;
+  permanentlyDeleteSurvey(id: number): Promise<void>;
+  duplicateSurvey(id: number, newTitle: string, userId: string): Promise<Survey>;
 
   // Questions
   createQuestion(question: InsertQuestion): Promise<Question>;
@@ -344,7 +349,81 @@ export class DatabaseStorage implements IStorage {
 
   // --- SURVEYS ---
   async getSurveys(orgId: number): Promise<Survey[]> {
-    return await db.select().from(surveys).where(eq(surveys.organizationId, orgId)).orderBy(desc(surveys.createdAt));
+    return await db.select().from(surveys).where(and(eq(surveys.organizationId, orgId), sql`${surveys.deletedAt} IS NULL`)).orderBy(desc(surveys.createdAt));
+  }
+
+  async getTrashedSurveys(orgId: number): Promise<Survey[]> {
+    return await db.select().from(surveys).where(and(eq(surveys.organizationId, orgId), sql`${surveys.deletedAt} IS NOT NULL`)).orderBy(desc(surveys.deletedAt));
+  }
+
+  async softDeleteSurvey(id: number, deletedBy: string): Promise<Survey> {
+    const [updated] = await db.update(surveys)
+      .set({ deletedAt: new Date(), deletedBy })
+      .where(eq(surveys.id, id))
+      .returning();
+    return updated;
+  }
+
+  async restoreSurvey(id: number): Promise<Survey> {
+    const [updated] = await db.update(surveys)
+      .set({ deletedAt: null, deletedBy: null })
+      .where(eq(surveys.id, id))
+      .returning();
+    return updated;
+  }
+
+  async permanentlyDeleteSurvey(id: number): Promise<void> {
+    // Delete in order of dependencies
+    // 1. Delete answers (via responses)
+    const surveyResponses = await db.select({ id: responses.id }).from(responses).where(eq(responses.surveyId, id));
+    const responseIds = surveyResponses.map(r => r.id);
+    if (responseIds.length > 0) {
+      await db.delete(answers).where(sql`${answers.responseId} IN (${sql.join(responseIds, sql`, `)})`);
+    }
+    // 2. Delete responses
+    await db.delete(responses).where(eq(responses.surveyId, id));
+    // 3. Delete questions
+    await db.delete(questions).where(eq(questions.surveyId, id));
+    // 4. Delete survey assignments
+    await db.delete(surveyAssignments).where(eq(surveyAssignments.surveyId, id));
+    // 5. Delete survey coordinators
+    await db.delete(surveyCoordinators).where(eq(surveyCoordinators.surveyId, id));
+    // 6. Finally delete the survey
+    await db.delete(surveys).where(eq(surveys.id, id));
+  }
+
+  async duplicateSurvey(id: number, newTitle: string, userId: string): Promise<Survey> {
+    // Get the original survey with questions
+    const original = await this.getSurvey(id);
+    if (!original) throw new Error("Survey not found");
+
+    // Create a copy of the survey
+    const [newSurvey] = await db.insert(surveys).values({
+      organizationId: original.organizationId,
+      title: newTitle,
+      description: original.description,
+      type: original.type,
+      status: "draft",
+      location: original.location,
+      targetSample: original.targetSample,
+      marginOfError: original.marginOfError,
+      quotas: original.quotas,
+    }).returning();
+
+    // Duplicate questions
+    for (const question of original.questions) {
+      await db.insert(questions).values({
+        surveyId: newSurvey.id,
+        text: question.text,
+        type: question.type,
+        options: question.options,
+        order: question.order,
+        required: question.required,
+        logic: question.logic,
+      });
+    }
+
+    return newSurvey;
   }
 
   async getSurvey(id: number): Promise<(Survey & { questions: Question[] }) | undefined> {
