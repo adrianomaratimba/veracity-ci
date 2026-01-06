@@ -590,6 +590,12 @@ export async function registerRoutes(
         return res.json(activeSurveys);
       }
       
+      // Coordenadores só veem pesquisas designadas a eles
+      if (role === 'coordinator') {
+        const assignedSurveys = await storage.getCoordinatorAssignedSurveys(userId, orgId);
+        return res.json(assignedSurveys);
+      }
+      
       // Outros usuários com permissão surveys:view veem todas
       if (!hasPermission(role, "surveys:view")) {
         return res.status(403).json({ message: "Você não tem permissão para visualizar pesquisas" });
@@ -619,6 +625,12 @@ export async function registerRoutes(
     // Entrevistadores só podem ver pesquisas designadas
     if (isInterviewerRole(role)) {
       const isAssigned = await storage.isInterviewerAssigned(surveyId, userId);
+      if (!isAssigned) {
+        return res.status(403).json({ message: "Você não está designado para esta pesquisa" });
+      }
+    } else if (role === 'coordinator') {
+      // Coordenadores só podem ver pesquisas designadas
+      const isAssigned = await storage.isCoordinatorAssigned(surveyId, userId);
       if (!isAssigned) {
         return res.status(403).json({ message: "Você não está designado para esta pesquisa" });
       }
