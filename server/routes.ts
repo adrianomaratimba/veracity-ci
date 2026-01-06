@@ -123,14 +123,19 @@ export async function registerRoutes(
       
       const input = api.organizations.members.invite.input.parse(req.body);
       
+      // Never allow adding owners
       if (input.role === 'owner') {
+        console.warn(`[SECURITY] Attempt to add owner role. Denied.`);
         return res.status(403).json({ message: "Não é possível convidar como proprietário" });
       }
       
-      // Validate that caller can manage the requested role
+      // Validate that caller can manage the requested role (respects RBAC + overrides)
       if (!canManageRole(callerRole, input.role as UserRole)) {
+        console.warn(`[SECURITY] User with role ${callerRole} cannot manage role ${input.role}. Denied.`);
         return res.status(403).json({ message: "Você não tem permissão para adicionar membros com essa função" });
       }
+      
+      console.log(`[AUDIT] User ${req.orgMember!.userId} (${callerRole}) adding member with role ${input.role}`)
 
       let user = await storage.getUserByEmail(input.email);
       let isNewUser = false;
@@ -256,16 +261,23 @@ export async function registerRoutes(
       
       // Validate caller can manage the target member's current role
       if (!canManageRole(callerRole, targetMember.role as UserRole)) {
+        console.warn(`[SECURITY] User with role ${callerRole} cannot manage role ${targetMember.role}. Denied.`);
         return res.status(403).json({ message: "Você não tem permissão para alterar a função deste membro" });
       }
       
       const input = api.organizations.members.updateRole.input.parse(req.body);
-      if (input.role === 'owner') return res.status(403).json({ message: "Não é possível promover para proprietário" });
+      if (input.role === 'owner') {
+        console.warn(`[SECURITY] Attempt to promote to owner. Denied.`);
+        return res.status(403).json({ message: "Não é possível promover para proprietário" });
+      }
       
       // Validate caller can assign the new role
       if (!canManageRole(callerRole, input.role as UserRole)) {
+        console.warn(`[SECURITY] User with role ${callerRole} cannot assign role ${input.role}. Denied.`);
         return res.status(403).json({ message: "Você não tem permissão para atribuir essa função" });
       }
+      
+      console.log(`[AUDIT] User ${userId} (${callerRole}) changing member ${memberId} role from ${targetMember.role} to ${input.role}`)
       
       const updated = await storage.updateMemberRole(memberId, input.role);
       res.json(updated);
@@ -292,13 +304,27 @@ export async function registerRoutes(
       
       const callerRole = currentMember.role as UserRole;
       
+      // Only owners and admins can remove members
+      if (!['owner', 'admin'].includes(callerRole)) {
+        console.warn(`[SECURITY] User with role ${callerRole} attempted to remove member. Denied.`);
+        return res.status(403).json({ message: "Você não tem permissão para remover membros" });
+      }
+      
       if (targetMember.role === 'owner') return res.status(403).json({ message: "Não é possível remover o proprietário" });
+      
+      // Only owners can remove admins
+      if (targetMember.role === 'admin' && callerRole !== 'owner') {
+        console.warn(`[SECURITY] User with role ${callerRole} attempted to remove admin. Denied.`);
+        return res.status(403).json({ message: "Apenas proprietários podem remover administradores" });
+      }
       
       // Validate caller can manage the target member's role
       if (!canManageRole(callerRole, targetMember.role as UserRole)) {
+        console.warn(`[SECURITY] User with role ${callerRole} cannot remove role ${targetMember.role}. Denied.`);
         return res.status(403).json({ message: "Você não tem permissão para remover este membro" });
       }
       
+      console.log(`[AUDIT] User ${userId} (${callerRole}) removing member ${memberId} with role ${targetMember.role}`)
       await storage.removeMember(memberId);
       res.status(204).send();
     } catch (err) {
@@ -326,13 +352,27 @@ export async function registerRoutes(
       
       const callerRole = currentMember.role as UserRole;
       
+      // Only owners and admins can set passwords
+      if (!['owner', 'admin'].includes(callerRole)) {
+        console.warn(`[SECURITY] User with role ${callerRole} attempted to set password. Denied.`);
+        return res.status(403).json({ message: "Você não tem permissão para alterar senhas" });
+      }
+      
       if (targetMember.role === 'owner') return res.status(403).json({ message: "Não é possível alterar a senha do proprietário" });
+      
+      // Only owners can manage admin passwords
+      if (targetMember.role === 'admin' && callerRole !== 'owner') {
+        console.warn(`[SECURITY] User with role ${callerRole} attempted to set admin password. Denied.`);
+        return res.status(403).json({ message: "Apenas proprietários podem alterar senhas de administradores" });
+      }
       
       // Validate caller can manage the target member's role
       if (!canManageRole(callerRole, targetMember.role as UserRole)) {
+        console.warn(`[SECURITY] User with role ${callerRole} cannot set password for role ${targetMember.role}. Denied.`);
         return res.status(403).json({ message: "Você não tem permissão para alterar a senha deste membro" });
       }
       
+      console.log(`[AUDIT] User ${userId} (${callerRole}) setting password for member ${memberId}`)
       const { authService } = await import("./auth-service");
       await authService.setUserPasswordByAdmin(targetMember.userId, input.password);
       
@@ -363,14 +403,28 @@ export async function registerRoutes(
       
       const callerRole = currentMember.role as UserRole;
       
+      // Only owners and admins can edit other members' names
+      if (!['owner', 'admin'].includes(callerRole) && currentMember.id !== targetMember.id) {
+        console.warn(`[SECURITY] User with role ${callerRole} attempted to edit name. Denied.`);
+        return res.status(403).json({ message: "Você não tem permissão para editar nomes" });
+      }
+      
       if (targetMember.role === 'owner' && currentMember.id !== targetMember.id) {
         return res.status(403).json({ message: "Não é possível alterar o nome do proprietário" });
       }
       
+      // Only owners can edit admin names
+      if (targetMember.role === 'admin' && callerRole !== 'owner' && currentMember.id !== targetMember.id) {
+        console.warn(`[SECURITY] User with role ${callerRole} attempted to edit admin name. Denied.`);
+        return res.status(403).json({ message: "Apenas proprietários podem editar nomes de administradores" });
+      }
+      
       if (!canManageRole(callerRole, targetMember.role as UserRole) && currentMember.id !== targetMember.id) {
+        console.warn(`[SECURITY] User with role ${callerRole} cannot edit name for role ${targetMember.role}. Denied.`);
         return res.status(403).json({ message: "Você não tem permissão para editar o nome deste membro" });
       }
       
+      console.log(`[AUDIT] User ${userId} (${callerRole}) editing name for member ${memberId}`)
       await storage.updateUserName(targetMember.userId, input.firstName, input.lastName || null);
       
       res.json({ success: true });
@@ -399,14 +453,28 @@ export async function registerRoutes(
       
       const callerRole = currentMember.role as UserRole;
       
+      // Only owners and admins can reset logins
+      if (!['owner', 'admin'].includes(callerRole)) {
+        console.warn(`[SECURITY] User with role ${callerRole} attempted to reset login. Denied.`);
+        return res.status(403).json({ message: "Você não tem permissão para resetar login" });
+      }
+      
       if (targetMember.role === 'owner') {
         return res.status(403).json({ message: "Não é possível resetar o login do proprietário" });
       }
       
+      // Only owners can reset admin logins
+      if (targetMember.role === 'admin' && callerRole !== 'owner') {
+        console.warn(`[SECURITY] User with role ${callerRole} attempted to reset admin login. Denied.`);
+        return res.status(403).json({ message: "Apenas proprietários podem resetar login de administradores" });
+      }
+      
       if (!canManageRole(callerRole, targetMember.role as UserRole)) {
+        console.warn(`[SECURITY] User with role ${callerRole} cannot reset login for role ${targetMember.role}. Denied.`);
         return res.status(403).json({ message: "Você não tem permissão para resetar o login deste membro" });
       }
       
+      console.log(`[AUDIT] User ${userId} (${callerRole}) resetting login for member ${memberId}`)
       const { authService } = await import("./auth-service");
       await authService.resetAuthProvider(targetMember.userId);
       
