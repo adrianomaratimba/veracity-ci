@@ -137,6 +137,7 @@ export interface IStorage {
 
   // Survey Coordinators
   getSurveyCoordinators(surveyId: number): Promise<(SurveyCoordinator & { coordinator: User })[]>;
+  getCoordinatorAssignedSurveys(coordinatorId: string, orgId: number): Promise<Survey[]>;
   assignCoordinator(data: InsertSurveyCoordinator): Promise<SurveyCoordinator>;
   unassignCoordinator(surveyId: number, coordinatorId: string): Promise<void>;
   isCoordinatorAssigned(surveyId: number, coordinatorId: string): Promise<boolean>;
@@ -564,6 +565,20 @@ export class DatabaseStorage implements IStorage {
       .where(eq(surveyCoordinators.surveyId, surveyId));
     
     return result.map(r => ({ ...r.assignment, coordinator: r.coordinator }));
+  }
+
+  async getCoordinatorAssignedSurveys(coordinatorId: string, orgId: number): Promise<Survey[]> {
+    const result = await db.select({
+      survey: surveys
+    })
+      .from(surveyCoordinators)
+      .innerJoin(surveys, eq(surveyCoordinators.surveyId, surveys.id))
+      .where(and(
+        eq(surveyCoordinators.coordinatorId, coordinatorId),
+        eq(surveys.organizationId, orgId)
+      ));
+    
+    return result.map(r => r.survey);
   }
 
   async assignCoordinator(data: InsertSurveyCoordinator): Promise<SurveyCoordinator> {
