@@ -83,7 +83,13 @@ export interface IStorage {
   }>;
   
   // Results Dashboard (Aggregated Data)
-  getSurveyAggregatedResults(surveyId: number): Promise<{
+  getSurveyAggregatedResults(surveyId: number, filters?: {
+    interviewerId?: string;
+    neighborhood?: string;
+    ageRange?: string;
+    gender?: string;
+    education?: string;
+  }): Promise<{
     survey: Survey & { questions: Question[] };
     totalResponses: number;
     validResponses: number;
@@ -102,6 +108,9 @@ export interface IStorage {
       results: Array<{ option: string; count: number; percentage: number }>;
     }>;
   }>>;
+
+  // Interviewers for filter
+  getSurveyInterviewers(surveyId: number): Promise<Array<{ id: string; name: string }>>;
 
   // Interviewer Comparison (Audit)
   getInterviewerComparison(orgId: number, filters: {
@@ -912,7 +921,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- RESULTS DASHBOARD (Aggregated Data) ---
-  async getSurveyAggregatedResults(surveyId: number): Promise<{
+  async getSurveyAggregatedResults(surveyId: number, filters?: {
+    interviewerId?: string;
+    neighborhood?: string;
+    ageRange?: string;
+    gender?: string;
+    education?: string;
+  }): Promise<{
     survey: Survey & { questions: Question[] };
     totalResponses: number;
     validResponses: number;
@@ -934,13 +949,18 @@ export class DatabaseStorage implements IStorage {
     const survey = await this.getSurvey(surveyId);
     if (!survey) throw new Error("Pesquisa não encontrada");
 
-    const allResponses = await db.select()
+    let allResponses = await db.select()
       .from(responses)
       .where(eq(responses.surveyId, surveyId))
       .orderBy(responses.createdAt);
     
-    const validResponses = allResponses.filter(r => r.status === 'valid');
-    const validResponseIds = validResponses.map(r => r.id);
+    // Apply interviewerId filter
+    if (filters?.interviewerId) {
+      allResponses = allResponses.filter(r => r.interviewerId === filters.interviewerId);
+    }
+    
+    let validResponses = allResponses.filter(r => r.status === 'valid');
+    let validResponseIds = validResponses.map(r => r.id);
     
     // Calculate collection period from actual responses
     let collectionPeriod: { start: string; end: string } | undefined;
@@ -1092,6 +1112,30 @@ export class DatabaseStorage implements IStorage {
       questionResults,
       filterFacets
     };
+  }
+
+  async getSurveyInterviewers(surveyId: number): Promise<Array<{ id: string; name: string }>> {
+    const allResponses = await db.select()
+      .from(responses)
+      .where(eq(responses.surveyId, surveyId));
+    
+    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId).filter(Boolean)));
+    
+    const interviewersList: Array<{ id: string; name: string }> = [];
+    for (const id of interviewerIds) {
+      if (!id) continue;
+      const user = await db.select().from(users).where(eq(users.id, id)).limit(1);
+      if (user.length > 0) {
+        interviewersList.push({
+          id,
+          name: user[0].firstName && user[0].lastName 
+            ? `${user[0].firstName} ${user[0].lastName}`
+            : user[0].firstName || user[0].email || id
+        });
+      }
+    }
+    
+    return interviewersList;
   }
 
   async getSurveyTimeline(surveyId: number): Promise<Array<{

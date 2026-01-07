@@ -91,19 +91,19 @@ const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages }: Cus
       {hasImage && (
         <image 
           href={imageUrl} 
-          x={-195} 
+          x={-190} 
           y={-16} 
           width={32} 
           height={32} 
           clipPath="inset(0% round 50%)"
-          style={{ borderRadius: '50%' }}
+          preserveAspectRatio="xMidYMid slice"
         />
       )}
       <text 
-        x={hasImage ? -160 : -5}
+        x={hasImage ? -150 : -10}
         y={0} 
         dy={4} 
-        textAnchor="end" 
+        textAnchor="start" 
         fill="currentColor"
         fontSize={13}
         fontWeight={500}
@@ -169,6 +169,7 @@ interface FilterState {
   ageRange: string;
   gender: string;
   education: string;
+  interviewer: string;
   dateFrom: string;
   dateTo: string;
 }
@@ -187,6 +188,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     ageRange: "all",
     gender: "all",
     education: "all",
+    interviewer: "all",
     dateFrom: "",
     dateTo: ""
   });
@@ -197,6 +199,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     if (filters.ageRange !== "all") params.set("ageRange", filters.ageRange);
     if (filters.gender !== "all") params.set("gender", filters.gender);
     if (filters.education !== "all") params.set("education", filters.education);
+    if (filters.interviewer !== "all") params.set("interviewerId", filters.interviewer);
     if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
     if (filters.dateTo) params.set("dateTo", filters.dateTo);
     return params.toString();
@@ -217,6 +220,21 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   
   const { data: timelineData, isLoading: timelineLoading } = useQuery<TimelineData[]>({
     queryKey: ['/api/surveys', surveyId, 'results', 'timeline'],
+    enabled: !!surveyId,
+  });
+
+  // Query for interviewers list (for filter dropdown)
+  interface InterviewerListItem {
+    id: string;
+    name: string;
+  }
+  const { data: interviewersList } = useQuery<InterviewerListItem[]>({
+    queryKey: ['/api/surveys', surveyId, 'interviewers'],
+    queryFn: async () => {
+      const res = await fetch(`/api/surveys/${surveyId}/interviewers`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
     enabled: !!surveyId,
   });
 
@@ -527,6 +545,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       ageRange: "all",
       gender: "all",
       education: "all",
+      interviewer: "all",
       dateFrom: "",
       dateTo: ""
     });
@@ -595,9 +614,9 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {aggregatedData.filterFacets && aggregatedData.filterFacets.length > 0 ? (
+              {(aggregatedData.filterFacets && aggregatedData.filterFacets.length > 0) || (interviewersList && interviewersList.length > 0) ? (
                 <>
-                  {aggregatedData.filterFacets.map((facet) => {
+                  {aggregatedData.filterFacets?.map((facet) => {
                     const filterLabels: Record<string, string> = {
                       neighborhood: 'Bairro / Zona',
                       ageRange: 'Faixa Etária',
@@ -625,6 +644,25 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                       </div>
                     );
                   })}
+                  {interviewersList && interviewersList.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs">Entrevistador</Label>
+                      <Select 
+                        value={filters.interviewer} 
+                        onValueChange={(v) => setFilters(f => ({ ...f, interviewer: v }))}
+                      >
+                        <SelectTrigger data-testid="select-interviewer">
+                          <SelectValue placeholder="Todos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos</SelectItem>
+                          {interviewersList.map((interviewer) => (
+                            <SelectItem key={interviewer.id} value={interviewer.id}>{interviewer.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <Separator />
                   <Button 
                     variant="outline" 

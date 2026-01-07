@@ -1353,11 +1353,47 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Você não tem permissão para ver resultados" });
       }
       
-      const aggregatedResults = await storage.getSurveyAggregatedResults(surveyId);
+      // Build filters from query params
+      const filters: {
+        interviewerId?: string;
+        neighborhood?: string;
+        ageRange?: string;
+        gender?: string;
+        education?: string;
+      } = {};
+      if (req.query.interviewerId) filters.interviewerId = req.query.interviewerId as string;
+      if (req.query.neighborhood) filters.neighborhood = req.query.neighborhood as string;
+      if (req.query.ageRange) filters.ageRange = req.query.ageRange as string;
+      if (req.query.gender) filters.gender = req.query.gender as string;
+      if (req.query.education) filters.education = req.query.education as string;
+      
+      const aggregatedResults = await storage.getSurveyAggregatedResults(surveyId, filters);
       res.json(aggregatedResults);
     } catch (err) {
       console.error("Erro ao buscar resultados agregados:", err);
       res.status(500).json({ message: "Erro ao buscar resultados" });
+    }
+  });
+
+  // Lista de entrevistadores para filtro
+  app.get("/api/surveys/:surveyId/interviewers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const interviewers = await storage.getSurveyInterviewers(surveyId);
+      res.json(interviewers);
+    } catch (error) {
+      console.error("Error fetching interviewers:", error);
+      res.status(500).json({ message: "Erro ao buscar entrevistadores" });
     }
   });
 
