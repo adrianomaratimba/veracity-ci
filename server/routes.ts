@@ -1611,7 +1611,7 @@ export async function registerRoutes(
     }
   });
 
-  // Get viewable surveys for current user (for viewer portal)
+  // Get viewable surveys for current user (for viewer portal) - with progress data
   app.get("/api/organizations/:id/viewable-surveys", isAuthenticated, async (req, res) => {
     try {
       const userId = await getResolvedUserId(req);
@@ -1630,13 +1630,25 @@ export async function registerRoutes(
         return res.json(assignedSurveys.filter(s => s.status === 'active'));
       }
       
-      // Viewers and others with surveys:view can see all active/completed surveys
+      // Viewers and others with surveys:view can see all active/completed surveys with progress
       if (hasPermission(role, "surveys:view")) {
         const allSurveys = await storage.getSurveys(orgId);
         const viewableSurveys = allSurveys.filter(s => 
           s.status === 'active' || s.status === 'completed' || s.status === 'paused'
         );
-        return res.json(viewableSurveys);
+        
+        // Add response counts for each survey
+        const surveysWithProgress = await Promise.all(viewableSurveys.map(async (survey) => {
+          const analytics = await storage.getSurveyAnalytics(survey.id);
+          return {
+            ...survey,
+            totalResponses: analytics.totalResponses,
+            validResponses: analytics.validResponses,
+            progress: survey.targetSample ? Math.min(100, Math.round((analytics.validResponses / survey.targetSample) * 100)) : 0
+          };
+        }));
+        
+        return res.json(surveysWithProgress);
       }
       
       res.json([]);

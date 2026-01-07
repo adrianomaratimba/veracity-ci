@@ -53,7 +53,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { hasPermission, isInterviewerRole, type UserRole } from "@shared/rbac";
+import { hasPermission, isInterviewerRole, isViewerRole, type UserRole } from "@shared/rbac";
 import { useToast } from "@/hooks/use-toast";
 
 const CHART_COLORS = [
@@ -679,12 +679,17 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   });
 
   const userRole = (currentMember?.role as UserRole) || 'viewer';
+  const isViewer = isViewerRole(userRole);
   
   const canViewResults = useMemo(() => {
     if (!currentMember) return false;
     if (isInterviewerRole(userRole)) return false;
     return hasPermission(userRole, 'analytics:view') || hasPermission(userRole, 'analytics:view_aggregate');
   }, [currentMember, userRole]);
+  
+  const canViewInterviewerDetails = useMemo(() => {
+    return !isViewer && hasPermission(userRole, 'analytics:view');
+  }, [isViewer, userRole]);
 
   const voteIntentionQuestion = useMemo(() => {
     if (!aggregatedData?.questionResults) return null;
@@ -1128,7 +1133,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 gap-1">
+            <TabsList className={`grid w-full gap-1 ${canViewInterviewerDetails ? 'grid-cols-4 lg:grid-cols-7' : 'grid-cols-3 lg:grid-cols-6'}`}>
               <TabsTrigger value="overview" data-testid="tab-overview" className="text-xs sm:text-sm">
                 <Eye className="w-4 h-4 mr-1 hidden sm:inline" />
                 Visão Geral
@@ -1149,10 +1154,12 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 <PieChartIcon className="w-4 h-4 mr-1 hidden sm:inline" />
                 Perfil
               </TabsTrigger>
-              <TabsTrigger value="interviewers" data-testid="tab-interviewers" className="text-xs sm:text-sm">
-                <Users className="w-4 h-4 mr-1 hidden sm:inline" />
-                Entrevistadores
-              </TabsTrigger>
+              {canViewInterviewerDetails && (
+                <TabsTrigger value="interviewers" data-testid="tab-interviewers" className="text-xs sm:text-sm">
+                  <Users className="w-4 h-4 mr-1 hidden sm:inline" />
+                  Entrevistadores
+                </TabsTrigger>
+              )}
               <TabsTrigger value="report" data-testid="tab-report" className="text-xs sm:text-sm">
                 <FileText className="w-4 h-4 mr-1 hidden sm:inline" />
                 Relatório
@@ -1599,6 +1606,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               </div>
             </TabsContent>
 
+            {canViewInterviewerDetails && (
             <TabsContent value="interviewers" className="mt-6">
               <Card>
                 <CardHeader>
@@ -1710,6 +1718,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 </CardContent>
               </Card>
             </TabsContent>
+            )}
 
             <TabsContent value="report" className="mt-6">
               <Card>
