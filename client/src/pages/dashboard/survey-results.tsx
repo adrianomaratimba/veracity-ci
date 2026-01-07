@@ -82,7 +82,7 @@ const truncateLabel = (label: string, maxLength: number = 20): string => {
 };
 
 // Helper to consolidate options into top N + "Outros"
-const consolidateOptions = <T extends { option: string; count: number; percentage: number }>(
+const consolidateOptions = <T extends { option: string; count: number; percentage: number; imageUrl?: string }>(
   data: T[],
   maxOptions: number = 8
 ): T[] => {
@@ -100,11 +100,11 @@ const consolidateOptions = <T extends { option: string; count: number; percentag
   return [
     ...topN,
     {
-      ...others[0],
       option: `Outros (${others.length})`,
       count: othersSum,
-      percentage: Math.round(othersPercentage * 10) / 10
-    }
+      percentage: Math.round(othersPercentage * 10) / 10,
+      imageUrl: undefined
+    } as T
   ];
 };
 
@@ -216,58 +216,308 @@ const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages, maxLa
   );
 };
 
-// Printable Chart Card Component
-interface ChartCardProps {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-  onExportPDF?: () => void;
-  onExportImage?: () => void;
-  cardRef?: React.RefObject<HTMLDivElement>;
-  className?: string;
+// Question result item type
+interface QuestionResultItem {
+  option: string;
+  count: number;
+  percentage: number;
+  imageUrl?: string;
 }
 
-const ChartCard = ({ title, subtitle, children, onExportPDF, onExportImage, cardRef, className }: ChartCardProps) => {
+// Question result type
+interface QuestionResultData {
+  questionId: number;
+  questionText: string;
+  questionType: string;
+  showOptionImages?: boolean;
+  results: QuestionResultItem[];
+}
+
+// Dedicated chart component for question results - properly contains useRef hook
+interface QuestionChartCardProps {
+  questionResult: QuestionResultData;
+  validResponses: number;
+  marginOfError: number;
+}
+
+const QuestionChartCard = ({ questionResult: qr, validResponses, marginOfError }: QuestionChartCardProps) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const sortedResults = [...qr.results].sort((a, b) => b.percentage - a.percentage);
+  const displayResults = consolidateOptions(sortedResults, 10);
+  const chartHeight = Math.max(300, displayResults.length * 45);
+  const hasImages = qr.showOptionImages;
+  const yAxisWidth = hasImages ? 220 : 180;
+  
+  const handleExportPDF = () => {
+    if (chartRef.current) {
+      exportCardAsPDF(chartRef.current, `resultado-${qr.questionId}`, qr.questionText);
+    }
+  };
+  
+  const handleExportImage = () => {
+    if (chartRef.current) {
+      exportCardAsImage(chartRef.current, `resultado-${qr.questionId}`);
+    }
+  };
+  
   return (
-    <Card className={className} ref={cardRef}>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <CardTitle className="text-lg leading-tight">{title}</CardTitle>
-            {subtitle && (
-              <CardDescription className="mt-1">{subtitle}</CardDescription>
-            )}
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {onExportImage && (
+    <div ref={chartRef} className="bg-background">
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <CardTitle className="text-lg leading-tight">{qr.questionText}</CardTitle>
+              <CardDescription className="mt-1">
+                Base: {validResponses} entrevistas válidas | Margem de erro: ±{marginOfError}%
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
               <Button 
                 variant="ghost" 
                 size="icon"
-                onClick={onExportImage}
+                onClick={handleExportImage}
                 title="Exportar como imagem"
-                data-testid="button-export-image"
+                data-testid={`button-export-image-${qr.questionId}`}
               >
                 <Camera className="w-4 h-4" />
               </Button>
-            )}
-            {onExportPDF && (
               <Button 
                 variant="ghost" 
                 size="icon"
-                onClick={onExportPDF}
+                onClick={handleExportPDF}
                 title="Exportar como PDF"
-                data-testid="button-export-pdf"
+                data-testid={`button-export-pdf-${qr.questionId}`}
               >
                 <Printer className="w-4 h-4" />
               </Button>
-            )}
+            </div>
           </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {children}
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent>
+          <div style={{ height: chartHeight }} className="mb-6">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={displayResults} 
+                layout="vertical"
+                margin={{ top: 10, right: 50, left: 10, bottom: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.5} />
+                <XAxis 
+                  type="number" 
+                  domain={[0, 100]} 
+                  tickFormatter={(v) => `${v}%`}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="option" 
+                  width={yAxisWidth}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={(props) => (
+                    <CustomYAxisTick 
+                      {...props} 
+                      resultsData={displayResults}
+                      showImages={hasImages}
+                      maxLabelLength={hasImages ? 20 : 25}
+                    />
+                  )}
+                />
+                <Tooltip 
+                  formatter={(value: number) => [`${value}%`, 'Percentual']}
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--background))', 
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                />
+                <Bar 
+                  dataKey="percentage" 
+                  radius={[0, 6, 6, 0]}
+                  barSize={28}
+                >
+                  {displayResults.map((entry, i) => (
+                    <Cell key={`cell-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
+                  <LabelList 
+                    dataKey="percentage" 
+                    position="right" 
+                    formatter={(v: number) => `${v}%`}
+                    style={{ fontSize: 13, fontWeight: 600, fill: 'currentColor' }}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 font-medium">Candidato / Opção</th>
+                  <th className="text-right py-2 font-medium">Votos</th>
+                  <th className="text-right py-2 font-medium">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedResults.map((r, i) => (
+                  <tr key={r.option} className="border-b border-muted">
+                    <td className="py-2">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-3 h-3 rounded-full shrink-0" 
+                          style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                        />
+                        {qr.showOptionImages && r.imageUrl && (
+                          <img 
+                            src={r.imageUrl} 
+                            alt={r.option}
+                            className="w-10 h-10 rounded-full object-cover border-2 border-border shrink-0"
+                          />
+                        )}
+                        <span>{r.option}</span>
+                      </div>
+                    </td>
+                    <td className="text-right py-2 text-muted-foreground">{r.count}</td>
+                    <td className="text-right py-2 font-semibold">{r.percentage}%</td>
+                  </tr>
+                ))}
+                <tr className="font-medium">
+                  <td className="py-2">Total</td>
+                  <td className="text-right py-2">{qr.results.reduce((sum, r) => sum + r.count, 0)}</td>
+                  <td className="text-right py-2">100%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// Main result chart component for overview tab
+interface MainResultChartProps {
+  questionData: {
+    questionText: string;
+    showOptionImages?: boolean;
+    results: QuestionResultItem[];
+  };
+}
+
+const MainResultChart = ({ questionData }: MainResultChartProps) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const sortedResults = [...questionData.results].sort((a, b) => b.percentage - a.percentage);
+  const chartHeight = Math.max(300, sortedResults.length * 50);
+  const hasImages = questionData.showOptionImages;
+  const yAxisWidth = hasImages ? 220 : 180;
+  
+  const handleExportPDF = () => {
+    if (chartRef.current) {
+      exportCardAsPDF(chartRef.current, 'resultado-principal', questionData.questionText);
+    }
+  };
+  
+  const handleExportImage = () => {
+    if (chartRef.current) {
+      exportCardAsImage(chartRef.current, 'resultado-principal');
+    }
+  };
+  
+  return (
+    <div ref={chartRef} className="mt-6 bg-background">
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <CardTitle className="text-lg leading-tight">Resultado Principal</CardTitle>
+              <CardDescription className="mt-1">{questionData.questionText}</CardDescription>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={handleExportImage}
+                title="Exportar como imagem"
+                data-testid="button-export-image-main"
+              >
+                <Camera className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={handleExportPDF}
+                title="Exportar como PDF"
+                data-testid="button-export-pdf-main"
+              >
+                <Printer className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div style={{ height: chartHeight }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={sortedResults} 
+                layout="vertical"
+                margin={{ top: 10, right: 50, left: 10, bottom: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.5} />
+                <XAxis 
+                  type="number" 
+                  domain={[0, 100]} 
+                  tickFormatter={(v) => `${v}%`}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="option" 
+                  width={yAxisWidth}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={(props) => (
+                    <CustomYAxisTick 
+                      {...props} 
+                      resultsData={sortedResults}
+                      showImages={hasImages}
+                      maxLabelLength={hasImages ? 20 : 25}
+                    />
+                  )}
+                />
+                <Tooltip 
+                  formatter={(value: number) => [`${value}%`, 'Percentual']}
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--background))', 
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                />
+                <Bar 
+                  dataKey="percentage" 
+                  radius={[0, 6, 6, 0]}
+                  barSize={32}
+                >
+                  {sortedResults.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                  <LabelList 
+                    dataKey="percentage" 
+                    position="right" 
+                    formatter={(v: number) => `${v}%`}
+                    style={{ fontSize: 14, fontWeight: 700, fill: 'currentColor' }}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
@@ -1045,204 +1295,21 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 </CardContent>
               </Card>
 
-              {voteIntentionQuestion && voteIntentionQuestion.results.length > 0 && (() => {
-                const mainChartRef = useRef<HTMLDivElement>(null);
-                const sortedMainResults = [...voteIntentionQuestion.results].sort((a, b) => b.percentage - a.percentage);
-                const mainChartHeight = Math.max(300, sortedMainResults.length * 50);
-                const hasMainImages = voteIntentionQuestion.showOptionImages;
-                const mainYAxisWidth = hasMainImages ? 220 : 180;
-                
-                return (
-                  <div ref={mainChartRef} className="mt-6 bg-background">
-                    <ChartCard
-                      title="Resultado Principal"
-                      subtitle={voteIntentionQuestion.questionText}
-                      onExportPDF={() => mainChartRef.current && exportCardAsPDF(mainChartRef.current, 'resultado-principal', voteIntentionQuestion.questionText)}
-                      onExportImage={() => mainChartRef.current && exportCardAsImage(mainChartRef.current, 'resultado-principal')}
-                    >
-                      <div style={{ height: mainChartHeight }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart 
-                            data={sortedMainResults} 
-                            layout="vertical"
-                            margin={{ top: 10, right: 50, left: 10, bottom: 10 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.5} />
-                            <XAxis 
-                              type="number" 
-                              domain={[0, 100]} 
-                              tickFormatter={(v) => `${v}%`}
-                              axisLine={false}
-                              tickLine={false}
-                            />
-                            <YAxis 
-                              type="category" 
-                              dataKey="option" 
-                              width={mainYAxisWidth}
-                              axisLine={false}
-                              tickLine={false}
-                              tick={(props) => (
-                                <CustomYAxisTick 
-                                  {...props} 
-                                  resultsData={sortedMainResults}
-                                  showImages={hasMainImages}
-                                  maxLabelLength={hasMainImages ? 20 : 25}
-                                />
-                              )}
-                            />
-                            <Tooltip 
-                              formatter={(value: number) => [`${value}%`, 'Percentual']}
-                              contentStyle={{ 
-                                backgroundColor: 'hsl(var(--background))', 
-                                border: '1px solid hsl(var(--border))',
-                                borderRadius: '8px',
-                                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                              }}
-                            />
-                            <Bar 
-                              dataKey="percentage" 
-                              radius={[0, 6, 6, 0]}
-                              barSize={32}
-                            >
-                              {sortedMainResults.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                              ))}
-                              <LabelList 
-                                dataKey="percentage" 
-                                position="right" 
-                                formatter={(v: number) => `${v}%`}
-                                style={{ fontSize: 14, fontWeight: 700, fill: 'currentColor' }}
-                              />
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </ChartCard>
-                  </div>
-                );
-              })()}
+              {voteIntentionQuestion && voteIntentionQuestion.results.length > 0 && (
+                <MainResultChart questionData={voteIntentionQuestion} />
+              )}
             </TabsContent>
 
             <TabsContent value="vote-intention" className="mt-6">
               <div className="space-y-6">
-                {questionResults.map((qr, index) => {
-                  const chartRef = useRef<HTMLDivElement>(null);
-                  const sortedResults = [...qr.results].sort((a, b) => b.percentage - a.percentage);
-                  const displayResults = consolidateOptions(sortedResults, 10);
-                  const chartHeight = Math.max(300, displayResults.length * 45);
-                  const hasImages = qr.showOptionImages;
-                  const yAxisWidth = hasImages ? 220 : 180;
-                  
-                  return (
-                  <div key={qr.questionId} ref={chartRef} className="bg-background">
-                    <ChartCard
-                      title={qr.questionText}
-                      subtitle={`Base: ${validResponses} entrevistas válidas | Margem de erro: ±${survey.marginOfError || 2}%`}
-                      onExportPDF={() => chartRef.current && exportCardAsPDF(chartRef.current, `resultado-${qr.questionId}`, qr.questionText)}
-                      onExportImage={() => chartRef.current && exportCardAsImage(chartRef.current, `resultado-${qr.questionId}`)}
-                    >
-                      <div style={{ height: chartHeight }} className="mb-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart 
-                            data={displayResults} 
-                            layout="vertical"
-                            margin={{ top: 10, right: 50, left: 10, bottom: 10 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.5} />
-                            <XAxis 
-                              type="number" 
-                              domain={[0, 100]} 
-                              tickFormatter={(v) => `${v}%`}
-                              axisLine={false}
-                              tickLine={false}
-                            />
-                            <YAxis 
-                              type="category" 
-                              dataKey="option" 
-                              width={yAxisWidth}
-                              axisLine={false}
-                              tickLine={false}
-                              tick={(props) => (
-                                <CustomYAxisTick 
-                                  {...props} 
-                                  resultsData={displayResults}
-                                  showImages={hasImages}
-                                  maxLabelLength={hasImages ? 20 : 25}
-                                />
-                              )}
-                            />
-                            <Tooltip 
-                              formatter={(value: number) => [`${value}%`, 'Percentual']}
-                              contentStyle={{ 
-                                backgroundColor: 'hsl(var(--background))', 
-                                border: '1px solid hsl(var(--border))',
-                                borderRadius: '8px',
-                                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                              }}
-                            />
-                            <Bar 
-                              dataKey="percentage" 
-                              radius={[0, 6, 6, 0]}
-                              barSize={28}
-                            >
-                              {displayResults.map((entry, i) => (
-                                <Cell key={`cell-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                              ))}
-                              <LabelList 
-                                dataKey="percentage" 
-                                position="right" 
-                                formatter={(v: number) => `${v}%`}
-                                style={{ fontSize: 13, fontWeight: 600, fill: 'currentColor' }}
-                              />
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left py-2 font-medium">Candidato / Opção</th>
-                              <th className="text-right py-2 font-medium">Votos</th>
-                              <th className="text-right py-2 font-medium">%</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {qr.results.sort((a, b) => b.percentage - a.percentage).map((r, i) => (
-                              <tr key={r.option} className="border-b border-muted">
-                                <td className="py-2">
-                                  <div className="flex items-center gap-3">
-                                    <div 
-                                      className="w-3 h-3 rounded-full shrink-0" 
-                                      style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
-                                    />
-                                    {qr.showOptionImages && r.imageUrl && (
-                                      <img 
-                                        src={r.imageUrl} 
-                                        alt={r.option}
-                                        className="w-10 h-10 rounded-full object-cover border-2 border-border shrink-0"
-                                      />
-                                    )}
-                                    <span>{r.option}</span>
-                                  </div>
-                                </td>
-                                <td className="text-right py-2 text-muted-foreground">{r.count}</td>
-                                <td className="text-right py-2 font-semibold">{r.percentage}%</td>
-                              </tr>
-                            ))}
-                            <tr className="font-medium">
-                              <td className="py-2">Total</td>
-                              <td className="text-right py-2">{qr.results.reduce((sum, r) => sum + r.count, 0)}</td>
-                              <td className="text-right py-2">100%</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </ChartCard>
-                  </div>
-                  );
-                })}
+                {questionResults.map((qr) => (
+                  <QuestionChartCard
+                    key={qr.questionId}
+                    questionResult={qr}
+                    validResponses={validResponses}
+                    marginOfError={survey.marginOfError || 2}
+                  />
+                ))}
                 
                 {questionResults.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
