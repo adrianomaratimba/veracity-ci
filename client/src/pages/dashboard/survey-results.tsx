@@ -193,7 +193,7 @@ const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages, maxLa
       {hasImage && (
         <image 
           href={imageUrl} 
-          x={-195} 
+          x={-40} 
           y={-16} 
           width={32} 
           height={32} 
@@ -202,7 +202,7 @@ const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages, maxLa
         />
       )}
       <text 
-        x={hasImage ? -155 : -8}
+        x={hasImage ? -48 : -8}
         y={0} 
         dy={4} 
         textAnchor="end" 
