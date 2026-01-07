@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
-import type { SubscriptionPlan } from "@shared/schema";
+import { useEffect } from "react";
+import type { SubscriptionPlan, LandingPageConfig } from "@shared/schema";
 
 // Fallback plans in case API fails
 const fallbackPlans = [
@@ -119,13 +120,142 @@ function convertPlanToUI(dbPlan: SubscriptionPlan) {
   };
 }
 
+// Default configuration fallback
+const defaultConfig: Partial<LandingPageConfig> = {
+  siteTitle: "Veracity - Pesquisas Eleitorais Confiáveis",
+  siteDescription: "Plataforma líder em pesquisas eleitorais com GPS, áudio e detecção de fraudes em tempo real.",
+  seoKeywords: "pesquisa eleitoral, coleta de dados, GPS, áudio, detecção de fraudes, LGPD",
+  heroTitle: "Pesquisas Eleitorais com Provas Irrefutáveis",
+  heroSubtitle: "Capture GPS, áudio e impressão digital do dispositivo em cada entrevista. Detecte fraudes em tempo real e entregue resultados que seus clientes podem confiar.",
+  heroCta: "Começar Gratuitamente",
+  heroSecondaryCta: "Ver Demonstração",
+  featuresTitle: "Tecnologia Anti-Fraude de Ponta",
+  featuresSubtitle: "Cada entrevista é validada automaticamente com múltiplas camadas de verificação",
+  testimonialsTitle: "Utilizado pelos Melhores Institutos",
+  testimonialsSubtitle: "Veja o que nossos clientes dizem sobre o Veracity",
+  pricingTitle: "Planos para Cada Necessidade",
+  pricingSubtitle: "Comece grátis e escale conforme sua operação cresce",
+  faqTitle: "Perguntas Frequentes",
+  faqSubtitle: "Tire suas dúvidas sobre a plataforma",
+  ctaTitle: "Pronto para Revolucionar suas Pesquisas?",
+  ctaSubtitle: "Junte-se a centenas de institutos que já confiam no Veracity para entregar resultados precisos e auditáveis.",
+  ctaButtonText: "Criar Conta Grátis",
+  ctaSecondaryButtonText: "Falar com Especialista",
+  footerText: "© 2025 Veracity. Todos os direitos reservados.",
+  showTestimonials: true,
+  showPricing: true,
+  showFaq: true,
+  showStats: true,
+};
+
 export default function Landing() {
   const { user } = useAuth();
+  
+  // Fetch landing page config
+  const { data: landingConfig } = useQuery<LandingPageConfig>({
+    queryKey: ['/api/landing-config'],
+  });
+  
+  // Merge with defaults
+  const config = { ...defaultConfig, ...landingConfig } as LandingPageConfig;
   
   // Fetch plans from database
   const { data: dbPlans } = useQuery<SubscriptionPlan[]>({
     queryKey: ['/api/plans'],
   });
+  
+  // Track created meta elements for cleanup
+  useEffect(() => {
+    const createdElements: Element[] = [];
+    const originalTitle = document.title;
+    
+    if (config) {
+      // Update title
+      document.title = config.siteTitle || defaultConfig.siteTitle!;
+      
+      // Helper to create or update meta tag
+      const setMeta = (selector: string, attrName: string, attrValue: string, content: string) => {
+        if (!content) return;
+        let meta = document.querySelector(selector);
+        if (!meta) {
+          meta = document.createElement('meta');
+          meta.setAttribute(attrName, attrValue);
+          document.head.appendChild(meta);
+          createdElements.push(meta);
+        }
+        meta.setAttribute('content', content);
+      };
+      
+      // Basic meta tags
+      setMeta('meta[name="description"]', 'name', 'description', config.siteDescription || defaultConfig.siteDescription!);
+      setMeta('meta[name="keywords"]', 'name', 'keywords', config.seoKeywords || defaultConfig.seoKeywords!);
+      
+      // Open Graph tags
+      setMeta('meta[property="og:title"]', 'property', 'og:title', config.ogTitle || config.siteTitle || '');
+      setMeta('meta[property="og:description"]', 'property', 'og:description', config.ogDescription || config.siteDescription || '');
+      if (config.ogImage) {
+        setMeta('meta[property="og:image"]', 'property', 'og:image', config.ogImage);
+      }
+      setMeta('meta[property="og:type"]', 'property', 'og:type', 'website');
+      
+      // Twitter Card tags
+      setMeta('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
+      setMeta('meta[name="twitter:title"]', 'name', 'twitter:title', config.twitterTitle || config.siteTitle || '');
+      setMeta('meta[name="twitter:description"]', 'name', 'twitter:description', config.twitterDescription || config.siteDescription || '');
+      if (config.twitterImage || config.ogImage) {
+        setMeta('meta[name="twitter:image"]', 'name', 'twitter:image', config.twitterImage || config.ogImage || '');
+      }
+      
+      // Inject analytics scripts safely (only Google Analytics and similar trusted patterns)
+      // Note: Scripts are only injected if they match safe patterns
+      const safeScriptPatterns = [
+        /^(gtag|dataLayer|ga)\s*\(/,
+        /googletagmanager\.com/,
+        /google-analytics\.com/,
+        /facebook\.net\/.*\/fbevents\.js/,
+        /clarity\.ms/,
+        /hotjar\.com/,
+      ];
+      
+      const isSafeScript = (script: string) => {
+        return safeScriptPatterns.some(pattern => pattern.test(script));
+      };
+      
+      if (config.customHeadScript && isSafeScript(config.customHeadScript)) {
+        const existingScript = document.getElementById('landing-head-script');
+        if (existingScript) existingScript.remove();
+        const script = document.createElement('script');
+        script.id = 'landing-head-script';
+        script.textContent = config.customHeadScript;
+        document.head.appendChild(script);
+        createdElements.push(script);
+      }
+      
+      if (config.customBodyScript && isSafeScript(config.customBodyScript)) {
+        const existingScript = document.getElementById('landing-body-script');
+        if (existingScript) existingScript.remove();
+        const script = document.createElement('script');
+        script.id = 'landing-body-script';
+        script.textContent = config.customBodyScript;
+        document.body.appendChild(script);
+        createdElements.push(script);
+      }
+      
+      // Apply custom primary color as CSS variable
+      if (config.primaryColor) {
+        document.documentElement.style.setProperty('--landing-primary', config.primaryColor);
+      }
+    }
+    
+    return () => {
+      // Cleanup: remove all elements we created
+      createdElements.forEach(el => el.remove());
+      document.getElementById('landing-head-script')?.remove();
+      document.getElementById('landing-body-script')?.remove();
+      document.title = originalTitle;
+      document.documentElement.style.removeProperty('--landing-primary');
+    };
+  }, [config.siteTitle, config.siteDescription, config.seoKeywords, config.ogTitle, config.ogDescription, config.ogImage, config.twitterTitle, config.twitterDescription, config.twitterImage, config.customHeadScript, config.customBodyScript, config.primaryColor]);
   
   // Convert database plans to UI format, or use fallback
   const plans = dbPlans && dbPlans.length > 0 
@@ -135,7 +265,8 @@ export default function Landing() {
         .map(convertPlanToUI)
     : fallbackPlans;
 
-  const testimonials = [
+  // Parse testimonials and FAQs from config or use defaults
+  const testimonials = (config.testimonials as Array<{quote: string, author: string, role: string, company: string}>) || [
     {
       quote: "O Veracity revolucionou nossa operação de campo. A detecção de fraudes em tempo real nos dá confiança total nos dados coletados.",
       author: "Maria Silva",
@@ -156,7 +287,8 @@ export default function Landing() {
     }
   ];
 
-  const faqs = [
+  // Default FAQs
+  const defaultFaqs = [
     {
       question: "Como funciona a gravação de áudio?",
       answer: "O aplicativo grava automaticamente o áudio de cada entrevista quando o entrevistador inicia a coleta. A gravação é obrigatória e fica vinculada à resposta, permitindo auditoria posterior. Os arquivos são criptografados e armazenados de forma segura."
@@ -183,12 +315,16 @@ export default function Landing() {
     }
   ];
 
-  const stats = [
+  // Default stats
+  const defaultStats = [
     { value: "2M+", label: "Entrevistas Realizadas" },
     { value: "99.7%", label: "Uptime Garantido" },
     { value: "500+", label: "Institutos Confiam" },
     { value: "<2s", label: "Tempo de Sincronização" }
   ];
+
+  const faqs = (config.faqs as Array<{question: string, answer: string}>) || defaultFaqs;
+  const stats = (config.stats as Array<{value: string, label: string}>) || defaultStats;
 
   return (
     <div className="min-h-screen bg-background">
@@ -233,28 +369,25 @@ export default function Landing() {
                 Plataforma Líder em Pesquisas Eleitorais Auditáveis
               </Badge>
               <h1 className="text-4xl sm:text-5xl md:text-6xl font-display font-bold text-foreground mb-6 leading-tight">
-                Pesquisas Eleitorais com{" "}
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-primary to-accent">
-                  Provas Irrefutáveis
-                </span>
+                {config.heroTitle || "Pesquisas Eleitorais com Provas Irrefutáveis"}
               </h1>
               <p className="text-lg sm:text-xl text-muted-foreground mb-8 leading-relaxed max-w-2xl mx-auto">
-                Capture GPS, áudio e impressão digital do dispositivo em cada entrevista. 
-                Detecte fraudes em tempo real e entregue resultados que seus clientes podem confiar.
+                {config.heroSubtitle || "Capture GPS, áudio e impressão digital do dispositivo em cada entrevista. Detecte fraudes em tempo real e entregue resultados que seus clientes podem confiar."}
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
                 <Link href="/auth">
                   <Button size="lg" className="w-full sm:w-auto px-8 h-12 text-base gap-2" data-testid="button-start-trial">
-                    Começar Gratuitamente <ArrowRight className="w-4 h-4" />
+                    {config.heroCta || "Começar Gratuitamente"} <ArrowRight className="w-4 h-4" />
                   </Button>
                 </Link>
                 <Button size="lg" variant="outline" className="w-full sm:w-auto px-8 h-12 text-base" data-testid="button-demo">
-                  Ver Demonstração
+                  {config.heroSecondaryCta || "Ver Demonstração"}
                 </Button>
               </div>
             </div>
 
             {/* Stats */}
+            {config.showStats !== false && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
               {stats.map((stat, i) => (
                 <div key={i} className="text-center p-4">
@@ -263,6 +396,7 @@ export default function Landing() {
                 </div>
               ))}
             </div>
+            )}
           </div>
         </section>
 
@@ -271,10 +405,10 @@ export default function Landing() {
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-                Tecnologia Anti-Fraude de Ponta
+                {config.featuresTitle || "Tecnologia Anti-Fraude de Ponta"}
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Cada entrevista é validada automaticamente com múltiplas camadas de verificação
+                {config.featuresSubtitle || "Cada entrevista é validada automaticamente com múltiplas camadas de verificação"}
               </p>
             </div>
 
@@ -332,14 +466,15 @@ export default function Landing() {
         </section>
 
         {/* Social Proof / Testimonials */}
+        {config.showTestimonials !== false && (
         <section className="py-20 px-4 bg-muted/30">
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-                Utilizado pelos Melhores Institutos
+                {config.testimonialsTitle || "Utilizado pelos Melhores Institutos"}
               </h2>
               <p className="text-lg text-muted-foreground">
-                Veja o que nossos clientes dizem sobre o Veracity
+                {config.testimonialsSubtitle || "Veja o que nossos clientes dizem sobre o Veracity"}
               </p>
             </div>
 
@@ -368,16 +503,18 @@ export default function Landing() {
             </div>
           </div>
         </section>
+        )}
 
         {/* Pricing Section */}
+        {config.showPricing !== false && (
         <section id="planos" className="py-20 px-4">
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-                Planos para Cada Necessidade
+                {config.pricingTitle || "Planos para Cada Necessidade"}
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Comece grátis e escale conforme sua operação cresce
+                {config.pricingSubtitle || "Comece grátis e escale conforme sua operação cresce"}
               </p>
             </div>
 
@@ -476,10 +613,10 @@ export default function Landing() {
           <div className="max-w-3xl mx-auto">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-                Perguntas Frequentes
+                {config.faqTitle || "Perguntas Frequentes"}
               </h2>
               <p className="text-lg text-muted-foreground">
-                Tire suas dúvidas sobre a plataforma
+                {config.faqSubtitle || "Tire suas dúvidas sobre a plataforma"}
               </p>
             </div>
 
@@ -500,19 +637,19 @@ export default function Landing() {
         <section className="py-20 px-4 bg-primary text-primary-foreground">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-              Pronto para Revolucionar suas Pesquisas?
+              {config.ctaTitle || "Pronto para Revolucionar suas Pesquisas?"}
             </h2>
             <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto">
-              Junte-se a centenas de institutos que já confiam no Veracity para entregar resultados precisos e auditáveis.
+              {config.ctaSubtitle || "Junte-se a centenas de institutos que já confiam no Veracity para entregar resultados precisos e auditáveis."}
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/auth">
                 <Button size="lg" variant="secondary" className="px-8 h-12 text-base gap-2" data-testid="button-final-cta">
-                  Criar Conta Grátis <ArrowRight className="w-4 h-4" />
+                  {config.ctaButtonText || "Criar Conta Grátis"} <ArrowRight className="w-4 h-4" />
                 </Button>
               </Link>
               <Button size="lg" variant="outline" className="px-8 h-12 text-base border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10" data-testid="button-contact-specialist">
-                Falar com Especialista
+                {config.ctaSecondaryButtonText || "Falar com Especialista"}
               </Button>
             </div>
           </div>
@@ -557,7 +694,7 @@ export default function Landing() {
               </div>
             </div>
             <div className="pt-8 border-t text-center text-sm text-muted-foreground">
-              <p>© 2025 Veracity. Todos os direitos reservados.</p>
+              <p>{config.footerText || "© 2025 Veracity. Todos os direitos reservados."}</p>
             </div>
           </div>
         </footer>
