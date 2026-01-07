@@ -12,7 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { AlertTriangle, CheckCircle, XCircle, MapPin, Clock, FileAudio, Search, Filter, Eye, Users, ClipboardList } from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, MapPin, Clock, FileAudio, Search, Filter, Eye, Users, ClipboardList, CheckSquare, Square } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -45,7 +47,7 @@ export default function AuditPage({ params }: AuditPageProps) {
   const { data: responses, isLoading } = useOrgResponses(orgId);
   const updateStatus = useUpdateResponseStatus();
   const { toast } = useToast();
-  const { surveys } = useSurveys(orgId);
+  const { data: surveys } = useSurveys(orgId);
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -53,6 +55,10 @@ export default function AuditPage({ params }: AuditPageProps) {
   const [reviewNote, setReviewNote] = useState("");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("entrevistas");
+  
+  // Batch selection state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
   // Filtros para aba Entrevistadores
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>("all");
@@ -124,6 +130,52 @@ export default function AuditPage({ params }: AuditPageProps) {
     setSelectedResponse(response);
     setReviewNote(response.reviewNote || "");
     setDetailDialogOpen(true);
+  };
+
+  // Batch selection handlers
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredResponses.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredResponses.map(r => r.id)));
+    }
+  };
+
+  const handleBulkUpdate = async (status: 'valid' | 'invalid') => {
+    if (selectedIds.size === 0) return;
+    
+    const count = selectedIds.size;
+    setIsBulkUpdating(true);
+    try {
+      await apiRequest(
+        'POST',
+        `/api/organizations/${orgId}/audit/responses/bulk-update`,
+        {
+          responseIds: Array.from(selectedIds),
+          status
+        }
+      );
+      
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'responses'] });
+      setSelectedIds(new Set());
+      toast({ 
+        title: status === 'valid' ? "Aprovadas" : "Invalidadas",
+        description: `${count} entrevista(s) atualizadas com sucesso`
+      });
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setIsBulkUpdating(false);
+    }
   };
 
   // Função para determinar cor baseado no desvio
@@ -249,8 +301,36 @@ export default function AuditPage({ params }: AuditPageProps) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Lista de Entrevistas</CardTitle>
-                <CardDescription>{filteredResponses.length} entrevistas encontradas</CardDescription>
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <CardTitle>Lista de Entrevistas</CardTitle>
+                    <CardDescription>{filteredResponses.length} entrevistas encontradas</CardDescription>
+                  </div>
+                  {selectedIds.size > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">{selectedIds.size} selecionada(s)</span>
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleBulkUpdate('valid')}
+                        disabled={isBulkUpdating}
+                        data-testid="button-bulk-approve"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        Aprovar
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="destructive"
+                        onClick={() => handleBulkUpdate('invalid')}
+                        disabled={isBulkUpdating}
+                        data-testid="button-bulk-invalidate"
+                      >
+                        <XCircle className="w-4 h-4 mr-1" />
+                        Invalidar
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {filteredResponses.length === 0 ? (
@@ -259,22 +339,35 @@ export default function AuditPage({ params }: AuditPageProps) {
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    <div className="flex items-center gap-3 pb-2 border-b">
+                      <Checkbox
+                        checked={selectedIds.size === filteredResponses.length && filteredResponses.length > 0}
+                        onCheckedChange={toggleSelectAll}
+                        data-testid="checkbox-select-all"
+                      />
+                      <span className="text-sm text-muted-foreground">Selecionar todas</span>
+                    </div>
                     {filteredResponses.map((response) => (
                       <div
                         key={response.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover-elevate cursor-pointer"
-                        onClick={() => openDetail(response)}
+                        className="flex items-center justify-between p-4 border rounded-lg hover-elevate"
                         data-testid={`row-response-${response.id}`}
                       >
                         <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <Checkbox
+                            checked={selectedIds.has(response.id)}
+                            onCheckedChange={() => toggleSelect(response.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            data-testid={`checkbox-response-${response.id}`}
+                          />
                           <div className="flex-shrink-0">
                             {response.status === 'suspicious' && <AlertTriangle className="w-5 h-5 text-amber-500" />}
                             {response.status === 'valid' && <CheckCircle className="w-5 h-5 text-green-500" />}
                             {response.status === 'invalid' && <XCircle className="w-5 h-5 text-red-500" />}
                           </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openDetail(response)}>
                             <p className="font-medium truncate">{response.survey.title}</p>
-                            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
                                 {response.createdAt ? format(new Date(response.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR }) : '-'}
@@ -299,7 +392,7 @@ export default function AuditPage({ params }: AuditPageProps) {
                             {response.status === 'suspicious' ? 'Suspeita' :
                              response.status === 'valid' ? 'Valida' : 'Invalida'}
                           </Badge>
-                          <Button variant="ghost" size="icon" data-testid={`button-view-${response.id}`}>
+                          <Button variant="ghost" size="icon" onClick={() => openDetail(response)} data-testid={`button-view-${response.id}`}>
                             <Eye className="w-4 h-4" />
                           </Button>
                         </div>

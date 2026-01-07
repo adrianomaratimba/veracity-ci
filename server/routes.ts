@@ -1137,21 +1137,19 @@ export async function registerRoutes(
       let status = "valid";
       let flagReason = null;
 
-      // 1. Verificação de Precisão GPS
-      if (responseMeta.accuracy > 50) {
-        status = "suspicious";
-        flagReason = "Precisão GPS baixa (>50m)";
-      }
+      // Check survey settings for GPS/Audio requirements
+      const requireGps = survey.requireGps ?? true;
+      const requireAudio = survey.requireAudio ?? true;
 
-      // 2. Validação de Áudio (verificação básica de existência)
-      if (!responseMeta.audioUrl || !responseMeta.audioHash) {
+      // 1. Validação de Áudio (apenas se obrigatório)
+      if (requireAudio && (!responseMeta.audioUrl || !responseMeta.audioHash || responseMeta.audioHash === 'no-audio')) {
          return res.status(400).json({ message: "Evidência de áudio obrigatória não encontrada" });
       }
       
-      // 3. Verificação de Duração (Exemplo: muito rápido)
+      // 2. Verificação de Duração (muito rápido indica fraude)
       if (responseMeta.duration && responseMeta.duration < 10) {
         status = "suspicious";
-        flagReason = flagReason ? `${flagReason}, Duração muito curta` : "Duração muito curta (<10s)";
+        flagReason = "Duração muito curta (<10s)";
       }
 
       const newResponse = await storage.createResponse(
@@ -1243,6 +1241,37 @@ export async function registerRoutes(
       const { status, reviewNote } = api.responses.updateStatus.input.parse(req.body);
       const updated = await storage.updateResponseStatus(responseId, status, reviewNote);
       res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      throw err;
+    }
+  });
+
+  // Bulk update response status (batch approve/invalidate)
+  app.post("/api/organizations/:orgId/audit/responses/bulk-update", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.orgId);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member || !['owner', 'admin', 'coordinator'].includes(member.role)) {
+        return res.status(403).json({ message: "Apenas coordenadores ou administradores podem atualizar entrevistas" });
+      }
+      
+      const schema = z.object({
+        responseIds: z.array(z.number()).min(1),
+        status: z.enum(['valid', 'invalid', 'suspicious']),
+        reviewNote: z.string().optional()
+      });
+      
+      const { responseIds, status, reviewNote } = schema.parse(req.body);
+      
+      // Update all responses
+      const results = await Promise.all(
+        responseIds.map(id => storage.updateResponseStatus(id, status, reviewNote))
+      );
+      
+      res.json({ updated: results.length, responses: results });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json(err.errors);
       throw err;
