@@ -1,0 +1,1 @@
+ALTER TABLE "questions" ADD COLUMN "show_option_images" boolean DEFAULT false;

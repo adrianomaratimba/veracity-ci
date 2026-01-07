@@ -141,6 +141,7 @@ export const questions = pgTable("questions", {
   required: boolean("required").default(true),
   logic: jsonb("logic"),
   shuffleOptions: boolean("shuffle_options").default(false),
+  showOptionImages: boolean("show_option_images").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -40,6 +40,7 @@ interface QuestionForm {
   required: boolean;
   order: number;
   shuffleOptions?: boolean;
+  showOptionImages?: boolean;
   logic?: QuestionLogic;
 }
 
@@ -60,13 +61,13 @@ interface OptionEditorProps {
   optIndex: number;
   questionIndex: number;
   canDelete: boolean;
+  showImages?: boolean;
   onUpdate: (opt: QuestionOption) => void;
   onDelete: () => void;
 }
 
-function OptionEditor({ option, optIndex, questionIndex, canDelete, onUpdate, onDelete }: OptionEditorProps) {
+function OptionEditor({ option, optIndex, questionIndex, canDelete, showImages, onUpdate, onDelete }: OptionEditorProps) {
   const { uploadFile, isUploading } = useUpload();
-  const fileInputRef = { current: null as HTMLInputElement | null };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -83,74 +84,71 @@ function OptionEditor({ option, optIndex, questionIndex, canDelete, onUpdate, on
   };
 
   return (
-    <div className="flex flex-col gap-2 p-3 bg-muted/30 rounded-lg">
-      <div className="flex items-center gap-2">
-        <Input
-          value={option.text}
-          onChange={(e) => onUpdate({ ...option, text: e.target.value })}
-          placeholder={`Opcao ${optIndex + 1}`}
-          className="flex-1"
-          data-testid={`input-option-${questionIndex}-${optIndex}`}
-        />
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onDelete}
-          disabled={!canDelete}
-          data-testid={`button-delete-option-${questionIndex}-${optIndex}`}
-        >
-          <Trash2 className="w-4 h-4" />
-        </Button>
-      </div>
+    <div className="flex items-center gap-2">
+      <Input
+        value={option.text}
+        onChange={(e) => onUpdate({ ...option, text: e.target.value })}
+        placeholder={`Opcao ${optIndex + 1}`}
+        className="flex-1"
+        data-testid={`input-option-${questionIndex}-${optIndex}`}
+      />
       
-      <div className="flex items-center gap-2">
-        {option.imageUrl ? (
-          <div className="relative group">
-            <img 
-              src={option.imageUrl} 
-              alt={option.text} 
-              className="w-16 h-16 object-cover rounded-md border"
-            />
-            <Button
-              variant="destructive"
-              size="icon"
-              className="absolute -top-2 -right-2 w-5 h-5"
-              onClick={handleRemoveImage}
-              data-testid={`button-remove-image-${questionIndex}-${optIndex}`}
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          </div>
-        ) : (
-          <>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="hidden"
-              id={`image-${questionIndex}-${optIndex}`}
-              data-testid={`input-image-${questionIndex}-${optIndex}`}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isUploading}
-              onClick={() => document.getElementById(`image-${questionIndex}-${optIndex}`)?.click()}
-              data-testid={`button-add-image-${questionIndex}-${optIndex}`}
-            >
-              {isUploading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Image className="w-4 h-4 mr-2" />
-              )}
-              {isUploading ? "Enviando..." : "Foto"}
-            </Button>
-          </>
-        )}
-        {option.imageUrl && (
-          <span className="text-xs text-muted-foreground">Foto adicionada</span>
-        )}
-      </div>
+      {showImages && (
+        <>
+          {option.imageUrl ? (
+            <div className="relative group">
+              <img 
+                src={option.imageUrl} 
+                alt={option.text} 
+                className="w-10 h-10 object-cover rounded-md border"
+              />
+              <Button
+                variant="destructive"
+                size="icon"
+                className="absolute -top-2 -right-2 w-5 h-5"
+                onClick={handleRemoveImage}
+                data-testid={`button-remove-image-${questionIndex}-${optIndex}`}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                id={`image-${questionIndex}-${optIndex}`}
+                data-testid={`input-image-${questionIndex}-${optIndex}`}
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={isUploading}
+                onClick={() => document.getElementById(`image-${questionIndex}-${optIndex}`)?.click()}
+                data-testid={`button-add-image-${questionIndex}-${optIndex}`}
+              >
+                {isUploading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Image className="w-4 h-4" />
+                )}
+              </Button>
+            </>
+          )}
+        </>
+      )}
+      
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onDelete}
+        disabled={!canDelete}
+        data-testid={`button-delete-option-${questionIndex}-${optIndex}`}
+      >
+        <Trash2 className="w-4 h-4" />
+      </Button>
     </div>
   );
 }
@@ -518,7 +516,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
   }, [survey]);
 
   const createQuestion = useMutation({
-    mutationFn: async (data: { text: string; type: string; options?: QuestionOption[] | string[]; required: boolean; order: number; shuffleOptions?: boolean; logic?: QuestionLogic }) => {
+    mutationFn: async (data: { text: string; type: string; options?: QuestionOption[] | string[]; required: boolean; order: number; shuffleOptions?: boolean; showOptionImages?: boolean; logic?: QuestionLogic }) => {
       const url = buildUrl(api.questions.create.path, { surveyId });
       const res = await fetch(url, {
         method: "POST",
@@ -617,6 +615,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                 options: q.options, 
                 required: q.required, 
                 shuffleOptions: q.shuffleOptions, 
+                showOptionImages: q.showOptionImages,
                 logic: q.logic 
               } 
             });
@@ -629,6 +628,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
               required: q.required,
               order: q.order,
               shuffleOptions: q.shuffleOptions,
+              showOptionImages: q.showOptionImages,
               logic: q.logic
             });
           }
@@ -689,9 +689,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     const q = questions[index];
     try {
       if (q.id) {
-        await updateQuestion.mutateAsync({ id: q.id, data: { text: q.text, type: q.type, options: q.options, required: q.required, shuffleOptions: q.shuffleOptions, logic: q.logic } });
+        await updateQuestion.mutateAsync({ id: q.id, data: { text: q.text, type: q.type, options: q.options, required: q.required, shuffleOptions: q.shuffleOptions, showOptionImages: q.showOptionImages, logic: q.logic } });
       } else {
-        await createQuestion.mutateAsync({ text: q.text, type: q.type, options: q.options, required: q.required, order: q.order, shuffleOptions: q.shuffleOptions, logic: q.logic });
+        await createQuestion.mutateAsync({ text: q.text, type: q.type, options: q.options, required: q.required, order: q.order, shuffleOptions: q.shuffleOptions, showOptionImages: q.showOptionImages, logic: q.logic });
       }
       toast({ title: "Salvo", description: "Pergunta salva com sucesso!" });
     } catch (error) {
@@ -817,7 +817,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                           </div>
 
                           {(q.type === "single_choice" || q.type === "multiple_choice") && (
-                            <div className="space-y-3 pl-4 border-l-2 border-muted">
+                            <div className="space-y-2 pl-4 border-l-2 border-muted">
                               {q.options.map((opt, optIndex) => (
                                 <OptionEditor
                                   key={optIndex}
@@ -825,6 +825,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                                   optIndex={optIndex}
                                   questionIndex={index}
                                   canDelete={q.options.length > 2}
+                                  showImages={q.showOptionImages}
                                   onUpdate={(newOpt) => {
                                     const newOptions = [...q.options];
                                     newOptions[optIndex] = newOpt;
@@ -859,14 +860,24 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                                 <Label className="text-sm text-muted-foreground">Obrigatoria</Label>
                               </div>
                               {(q.type === "single_choice" || q.type === "multiple_choice") && (
-                                <div className="flex items-center gap-2">
-                                  <Switch
-                                    checked={q.shuffleOptions ?? false}
-                                    onCheckedChange={(v) => updateQuestionField(index, "shuffleOptions", v)}
-                                    data-testid={`switch-shuffle-options-${index}`}
-                                  />
-                                  <Label className="text-sm text-muted-foreground">Embaralhar opcoes</Label>
-                                </div>
+                                <>
+                                  <div className="flex items-center gap-2">
+                                    <Switch
+                                      checked={q.shuffleOptions ?? false}
+                                      onCheckedChange={(v) => updateQuestionField(index, "shuffleOptions", v)}
+                                      data-testid={`switch-shuffle-options-${index}`}
+                                    />
+                                    <Label className="text-sm text-muted-foreground">Embaralhar opcoes</Label>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Switch
+                                      checked={q.showOptionImages ?? false}
+                                      onCheckedChange={(v) => updateQuestionField(index, "showOptionImages", v)}
+                                      data-testid={`switch-show-images-${index}`}
+                                    />
+                                    <Label className="text-sm text-muted-foreground">Fotos nas opcoes</Label>
+                                  </div>
+                                </>
                               )}
                             </div>
                             <div className="flex items-center gap-2">
