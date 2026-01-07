@@ -952,7 +952,9 @@ export class DatabaseStorage implements IStorage {
 
     for (const question of survey.questions) {
       if (question.type === 'single_choice' || question.type === 'multiple_choice') {
-        const options = (question.options as string[]) || [];
+        const rawOptions = (question.options as (string | { text: string })[]) || [];
+        // Normalize options - extract text if it's an object
+        const options = rawOptions.map(opt => typeof opt === 'string' ? opt : opt?.text || '').filter(Boolean);
         const optionCounts: Record<string, number> = {};
         options.forEach(opt => { optionCounts[opt] = 0; });
 
@@ -1050,7 +1052,9 @@ export class DatabaseStorage implements IStorage {
 
       for (const question of survey.questions) {
         if (question.type === 'single_choice' || question.type === 'multiple_choice') {
-          const options = (question.options as string[]) || [];
+          const rawOptions = (question.options as (string | { text: string })[]) || [];
+          // Normalize options - extract text if it's an object
+          const options = rawOptions.map(opt => typeof opt === 'string' ? opt : opt?.text || '').filter(Boolean);
           const optionCounts: Record<string, number> = {};
           options.forEach(opt => { optionCounts[opt] = 0; });
 
