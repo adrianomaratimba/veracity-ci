@@ -13,7 +13,8 @@ import {
   accessAuditLog, AccessAuditLog, InsertAccessAuditLog,
   questionModules, QuestionModule, InsertQuestionModule,
   organizationDomains, OrganizationDomain, InsertOrganizationDomain,
-  subscriptionPlans, SubscriptionPlan
+  subscriptionPlans, SubscriptionPlan,
+  landingPageConfig, LandingPageConfig, InsertLandingPageConfig
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -188,6 +189,10 @@ export interface IStorage {
   listAllUsersWithMemberships(): Promise<(User & { 
     memberships: { organizationId: number; organizationName: string; role: string }[] 
   })[]>;
+
+  // Landing Page CMS
+  getLandingPageConfig(): Promise<LandingPageConfig | undefined>;
+  upsertLandingPageConfig(data: Partial<InsertLandingPageConfig>, updatedBy?: string): Promise<LandingPageConfig>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1598,6 +1603,34 @@ export class DatabaseStorage implements IStorage {
     }));
     
     return result;
+  }
+
+  // --- LANDING PAGE CMS ---
+  async getLandingPageConfig(): Promise<LandingPageConfig | undefined> {
+    const [config] = await db.select().from(landingPageConfig).where(eq(landingPageConfig.id, 'default'));
+    return config;
+  }
+
+  async upsertLandingPageConfig(data: Partial<InsertLandingPageConfig>, updatedBy?: string): Promise<LandingPageConfig> {
+    const existing = await this.getLandingPageConfig();
+    
+    if (existing) {
+      const [updated] = await db.update(landingPageConfig)
+        .set({ ...data, updatedAt: new Date(), updatedBy: updatedBy || null })
+        .where(eq(landingPageConfig.id, 'default'))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(landingPageConfig)
+        .values({ 
+          id: 'default', 
+          ...data, 
+          updatedAt: new Date(), 
+          updatedBy: updatedBy || null 
+        })
+        .returning();
+      return created;
+    }
   }
 }
 

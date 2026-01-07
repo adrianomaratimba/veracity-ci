@@ -490,3 +490,107 @@ export const questionLogicSchema = z.object({
   rules: z.array(skipLogicRuleSchema).default([]),
 });
 export type QuestionLogic = z.infer<typeof questionLogicSchema>;
+
+// === LANDING PAGE CMS ===
+
+export const landingPageConfig = pgTable("landing_page_config", {
+  id: text("id").primaryKey().default("default"),
+  
+  // SEO Configuration
+  seoTitle: text("seo_title").default("Veracity - Plataforma de Pesquisas Eleitorais"),
+  seoDescription: text("seo_description").default("Sistema profissional para gestão de pesquisas eleitorais com GPS, gravação de áudio e detecção de fraudes em tempo real."),
+  seoKeywords: text("seo_keywords").default("pesquisa eleitoral, coleta de dados, GPS, anti-fraude, LGPD"),
+  ogImage: text("og_image"),
+  
+  // Hero Section
+  heroHeadline: text("hero_headline").default("Pesquisas Eleitorais com Credibilidade Total"),
+  heroSubheadline: text("hero_subheadline").default("Sistema profissional de coleta de dados com GPS, gravação de áudio e detecção de fraudes em tempo real. Utilizado pelos principais institutos de pesquisa do Brasil."),
+  heroCta: text("hero_cta").default("Começar Agora"),
+  heroCtaSecondary: text("hero_cta_secondary").default("Ver Demonstração"),
+  heroImage: text("hero_image"),
+  
+  // Stats Section (JSON array)
+  statsEnabled: boolean("stats_enabled").default(true),
+  stats: jsonb("stats").default([
+    { value: "+500K", label: "Entrevistas Realizadas" },
+    { value: "99.8%", label: "Precisão GPS" },
+    { value: "24/7", label: "Monitoramento" },
+    { value: "<1%", label: "Taxa de Fraude" }
+  ]),
+  
+  // Features Section
+  featuresTitle: text("features_title").default("Por que escolher o Veracity?"),
+  featuresSubtitle: text("features_subtitle").default("Tecnologia de ponta para pesquisas confiáveis"),
+  features: jsonb("features").default([]),
+  
+  // Testimonials Section
+  testimonialsTitle: text("testimonials_title").default("O que nossos clientes dizem"),
+  testimonials: jsonb("testimonials").default([]),
+  testimonialsEnabled: boolean("testimonials_enabled").default(true),
+  
+  // FAQ Section
+  faqTitle: text("faq_title").default("Perguntas Frequentes"),
+  faqs: jsonb("faqs").default([]),
+  faqEnabled: boolean("faq_enabled").default(true),
+  
+  // CTA Section
+  ctaTitle: text("cta_title").default("Pronto para revolucionar suas pesquisas?"),
+  ctaSubtitle: text("cta_subtitle").default("Comece gratuitamente e descubra como o Veracity pode transformar sua operação de campo."),
+  ctaButton: text("cta_button").default("Criar conta grátis"),
+  
+  // Theme Colors (override defaults)
+  primaryColor: text("primary_color"),
+  secondaryColor: text("secondary_color"),
+  accentColor: text("accent_color"),
+  
+  // Footer
+  footerText: text("footer_text").default("Desenvolvido no Brasil para institutos de pesquisa exigentes."),
+  footerLinks: jsonb("footer_links").default([]),
+  
+  // Analytics & Scripts
+  googleAnalyticsId: text("google_analytics_id"),
+  customHeadScripts: text("custom_head_scripts"),
+  customBodyScripts: text("custom_body_scripts"),
+  
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by").references(() => users.id),
+});
+
+export const insertLandingPageConfigSchema = createInsertSchema(landingPageConfig);
+export type InsertLandingPageConfig = z.infer<typeof insertLandingPageConfigSchema>;
+export type LandingPageConfig = typeof landingPageConfig.$inferSelect;
+
+// Zod schemas for structured JSON fields
+export const landingStatSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+export type LandingStat = z.infer<typeof landingStatSchema>;
+
+export const landingFeatureSchema = z.object({
+  icon: z.string(),
+  title: z.string(),
+  description: z.string(),
+});
+export type LandingFeature = z.infer<typeof landingFeatureSchema>;
+
+export const landingTestimonialSchema = z.object({
+  quote: z.string(),
+  author: z.string(),
+  role: z.string(),
+  company: z.string(),
+  avatar: z.string().optional(),
+});
+export type LandingTestimonial = z.infer<typeof landingTestimonialSchema>;
+
+export const landingFaqSchema = z.object({
+  question: z.string(),
+  answer: z.string(),
+});
+export type LandingFaq = z.infer<typeof landingFaqSchema>;
+
+export const landingFooterLinkSchema = z.object({
+  label: z.string(),
+  url: z.string(),
+});
+export type LandingFooterLink = z.infer<typeof landingFooterLinkSchema>;
