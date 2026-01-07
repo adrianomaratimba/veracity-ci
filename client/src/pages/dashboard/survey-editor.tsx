@@ -1374,10 +1374,10 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="eleitoral">Eleitoral</SelectItem>
-                        <SelectItem value="opiniao">Opiniao</SelectItem>
-                        <SelectItem value="mercado">Mercado</SelectItem>
-                        <SelectItem value="censo">Censo</SelectItem>
+                        <SelectItem value="electoral">Eleitoral</SelectItem>
+                        <SelectItem value="opinion">Opiniao</SelectItem>
+                        <SelectItem value="market">Mercado</SelectItem>
+                        <SelectItem value="census">Censo</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
