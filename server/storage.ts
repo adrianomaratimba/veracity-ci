@@ -817,7 +817,8 @@ export class DatabaseStorage implements IStorage {
 
     for (const q of surveyQuestions) {
       const qAnswers = allAnswers.filter(a => a.questionId === q.id);
-      const options = (q.options as string[]) || [];
+      const rawOptions = q.options as any[] || [];
+      const options = rawOptions.map(opt => typeof opt === 'string' ? opt : opt?.text || '');
       
       const byInterviewer: Array<{
         interviewerId: string;
@@ -893,11 +894,15 @@ export class DatabaseStorage implements IStorage {
     });
 
     // Build questions summary
-    const questionsSummary = surveyQuestions.map(q => ({
-      id: q.id,
-      text: q.text,
-      options: (q.options as string[]) || []
-    }));
+    const questionsSummary = surveyQuestions.map(q => {
+      const rawOptions = q.options as any[] || [];
+      const textOptions = rawOptions.map(opt => typeof opt === 'string' ? opt : opt?.text || '');
+      return {
+        id: q.id,
+        text: q.text,
+        options: textOptions
+      };
+    });
 
     return {
       interviewers: interviewersSummary,

@@ -84,13 +84,14 @@ interface CustomYAxisTickProps {
 
 const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages }: CustomYAxisTickProps) => {
   const imageUrl = resultsData?.find(r => r.option === payload?.value)?.imageUrl;
+  const hasImage = showImages && imageUrl;
   
   return (
     <g transform={`translate(${x},${y})`}>
-      {showImages && imageUrl && (
+      {hasImage && (
         <image 
           href={imageUrl} 
-          x={-170} 
+          x={-195} 
           y={-16} 
           width={32} 
           height={32} 
@@ -99,7 +100,7 @@ const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages }: Cus
         />
       )}
       <text 
-        x={showImages && imageUrl ? -130 : -5}
+        x={hasImage ? -160 : -5}
         y={0} 
         dy={4} 
         textAnchor="end" 
