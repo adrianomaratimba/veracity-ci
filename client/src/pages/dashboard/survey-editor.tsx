@@ -604,9 +604,11 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         });
         
         // Also save all questions (including logic) when saving the survey
-        for (const q of questions) {
+        for (let i = 0; i < questions.length; i++) {
+          const q = questions[i];
+          const newOrder = i + 1; // Order is 1-indexed based on current position
           if (q.id) {
-            // Update existing question with all fields including logic using the mutation
+            // Update existing question with all fields including order and logic
             await updateQuestion.mutateAsync({ 
               id: q.id, 
               data: { 
@@ -614,6 +616,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                 type: q.type, 
                 options: q.options, 
                 required: q.required, 
+                order: newOrder,
                 shuffleOptions: q.shuffleOptions, 
                 showOptionImages: q.showOptionImages,
                 logic: q.logic 
@@ -626,7 +629,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
               type: q.type,
               options: q.options,
               required: q.required,
-              order: q.order,
+              order: newOrder,
               shuffleOptions: q.shuffleOptions,
               showOptionImages: q.showOptionImages,
               logic: q.logic
@@ -687,11 +690,12 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
 
   const handleSaveQuestion = async (index: number) => {
     const q = questions[index];
+    const newOrder = index + 1; // Order is 1-indexed
     try {
       if (q.id) {
-        await updateQuestion.mutateAsync({ id: q.id, data: { text: q.text, type: q.type, options: q.options, required: q.required, shuffleOptions: q.shuffleOptions, showOptionImages: q.showOptionImages, logic: q.logic } });
+        await updateQuestion.mutateAsync({ id: q.id, data: { text: q.text, type: q.type, options: q.options, required: q.required, order: newOrder, shuffleOptions: q.shuffleOptions, showOptionImages: q.showOptionImages, logic: q.logic } });
       } else {
-        await createQuestion.mutateAsync({ text: q.text, type: q.type, options: q.options, required: q.required, order: q.order, shuffleOptions: q.shuffleOptions, showOptionImages: q.showOptionImages, logic: q.logic });
+        await createQuestion.mutateAsync({ text: q.text, type: q.type, options: q.options, required: q.required, order: newOrder, shuffleOptions: q.shuffleOptions, showOptionImages: q.showOptionImages, logic: q.logic });
       }
       toast({ title: "Salvo", description: "Pergunta salva com sucesso!" });
     } catch (error) {
