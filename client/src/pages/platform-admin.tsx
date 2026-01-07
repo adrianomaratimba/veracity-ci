@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Users, Plus, Trash2, KeyRound, Search, Building, Shield, Crown, UserCog, Eye, ClipboardList, RefreshCw } from "lucide-react";
+import { Building2, Users, Plus, Trash2, KeyRound, Search, Building, Shield, Crown, UserCog, Eye, ClipboardList, RefreshCw, ArrowLeft } from "lucide-react";
+import { useLocation } from "wouter";
 import { roleLabels } from "@shared/i18n/labels";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -524,11 +525,15 @@ function UsersTab() {
 
 export default function PlatformAdminPage() {
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
+          <Button variant="ghost" size="icon" onClick={() => setLocation("/")} data-testid="button-back-dashboard">
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
           <div className="p-2 rounded-md bg-primary/10">
             <Shield className="w-6 h-6 text-primary" />
           </div>
