@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { useOrgResponses, useUpdateResponseStatus } from "@/hooks/use-audit";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -102,6 +102,20 @@ export default function AuditPage({ params }: AuditPageProps) {
   const validCount = responses?.filter(r => r.status === 'valid').length || 0;
   const invalidCount = responses?.filter(r => r.status === 'invalid').length || 0;
 
+  // Clear selection when filters change to prevent updating hidden rows
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [statusFilter, searchQuery]);
+
+  // Calculate select-all state (true, false, or "indeterminate")
+  const selectAllState = useMemo(() => {
+    if (filteredResponses.length === 0) return false;
+    const selectedInFilter = filteredResponses.filter(r => selectedIds.has(r.id)).length;
+    if (selectedInFilter === 0) return false;
+    if (selectedInFilter === filteredResponses.length) return true;
+    return "indeterminate";
+  }, [filteredResponses, selectedIds]);
+
   const handleApprove = async (responseId: number) => {
     try {
       await updateStatus.mutateAsync({ responseId, status: 'valid', reviewNote: reviewNote || undefined });
@@ -143,9 +157,11 @@ export default function AuditPage({ params }: AuditPageProps) {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredResponses.length) {
+    if (selectAllState === true) {
+      // All selected, so deselect all
       setSelectedIds(new Set());
     } else {
+      // None or partial selected, so select all filtered
       setSelectedIds(new Set(filteredResponses.map(r => r.id)));
     }
   };
@@ -341,7 +357,7 @@ export default function AuditPage({ params }: AuditPageProps) {
                   <div className="space-y-3">
                     <div className="flex items-center gap-3 pb-2 border-b">
                       <Checkbox
-                        checked={selectedIds.size === filteredResponses.length && filteredResponses.length > 0}
+                        checked={selectAllState}
                         onCheckedChange={toggleSelectAll}
                         data-testid="checkbox-select-all"
                       />
@@ -350,22 +366,24 @@ export default function AuditPage({ params }: AuditPageProps) {
                     {filteredResponses.map((response) => (
                       <div
                         key={response.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover-elevate"
+                        className="flex items-center justify-between p-4 border rounded-lg hover-elevate cursor-pointer"
+                        onClick={() => openDetail(response)}
                         data-testid={`row-response-${response.id}`}
                       >
                         <div className="flex items-center gap-4 flex-1 min-w-0">
-                          <Checkbox
-                            checked={selectedIds.has(response.id)}
-                            onCheckedChange={() => toggleSelect(response.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            data-testid={`checkbox-response-${response.id}`}
-                          />
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedIds.has(response.id)}
+                              onCheckedChange={() => toggleSelect(response.id)}
+                              data-testid={`checkbox-response-${response.id}`}
+                            />
+                          </div>
                           <div className="flex-shrink-0">
                             {response.status === 'suspicious' && <AlertTriangle className="w-5 h-5 text-amber-500" />}
                             {response.status === 'valid' && <CheckCircle className="w-5 h-5 text-green-500" />}
                             {response.status === 'invalid' && <XCircle className="w-5 h-5 text-red-500" />}
                           </div>
-                          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openDetail(response)}>
+                          <div className="flex-1 min-w-0">
                             <p className="font-medium truncate">{response.survey.title}</p>
                             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                               <span className="flex items-center gap-1">
@@ -384,7 +402,7 @@ export default function AuditPage({ params }: AuditPageProps) {
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           <Badge variant={
                             response.status === 'suspicious' ? 'outline' :
                             response.status === 'valid' ? 'default' : 'destructive'
