@@ -604,7 +604,37 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             shuffleQuestions: surveyForm.shuffleQuestions
           }
         });
-        toast({ title: "Salvo", description: "Pesquisa atualizada com sucesso!" });
+        
+        // Also save all questions (including logic) when saving the survey
+        for (const q of questions) {
+          if (q.id) {
+            // Update existing question with all fields including logic using the mutation
+            await updateQuestion.mutateAsync({ 
+              id: q.id, 
+              data: { 
+                text: q.text, 
+                type: q.type, 
+                options: q.options, 
+                required: q.required, 
+                shuffleOptions: q.shuffleOptions, 
+                logic: q.logic 
+              } 
+            });
+          } else if (q.text.trim()) {
+            // Create new question
+            await createQuestion.mutateAsync({
+              text: q.text,
+              type: q.type,
+              options: q.options,
+              required: q.required,
+              order: q.order,
+              shuffleOptions: q.shuffleOptions,
+              logic: q.logic
+            });
+          }
+        }
+        
+        toast({ title: "Salvo", description: "Pesquisa e perguntas atualizadas com sucesso!" });
       }
       setHasChanges(false);
     } catch (error) {
@@ -1493,6 +1523,18 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Floating Save Button at Bottom */}
+        {hasChanges && (
+          <div className="sticky bottom-0 left-0 right-0 p-4 bg-background border-t shadow-lg z-50">
+            <div className="flex justify-end gap-3">
+              <span className="text-sm text-muted-foreground self-center" data-testid="text-unsaved-changes">Alteracoes nao salvas</span>
+              <Button onClick={handleSaveSurvey} disabled={updateSurvey.isPending || createSurvey.isPending} data-testid="button-save-survey-bottom">
+                <Save className="w-4 h-4 mr-2" /> {(updateSurvey.isPending || createSurvey.isPending) ? "Salvando..." : "Salvar Tudo"}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Skip Logic Editor Modal */}
