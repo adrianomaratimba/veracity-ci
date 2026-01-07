@@ -55,22 +55,62 @@ import { hasPermission, isInterviewerRole, type UserRole } from "@shared/rbac";
 import { useToast } from "@/hooks/use-toast";
 
 const CHART_COLORS = [
-  '#2563eb',
-  '#dc2626', 
-  '#16a34a',
-  '#ca8a04',
-  '#9333ea',
-  '#0891b2',
-  '#ea580c',
-  '#4f46e5',
-  '#059669',
-  '#be185d'
+  '#93c5fd',
+  '#fca5a5', 
+  '#86efac',
+  '#fde047',
+  '#c4b5fd',
+  '#67e8f9',
+  '#fdba74',
+  '#a5b4fc',
+  '#6ee7b7',
+  '#f9a8d4'
 ];
 
 const DEMOGRAPHIC_COLORS = {
-  age: ['#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#dbeafe'],
-  gender: ['#2563eb', '#dc2626', '#6b7280'],
-  education: ['#1e3a8a', '#1e40af', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd']
+  age: ['#93c5fd', '#a5b4fc', '#c4b5fd', '#d8b4fe', '#e9d5ff'],
+  gender: ['#93c5fd', '#fca5a5', '#d1d5db'],
+  education: ['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8']
+};
+
+// Custom Y-Axis tick component to show candidate photos
+interface CustomYAxisTickProps {
+  x?: number;
+  y?: number;
+  payload?: { value: string };
+  resultsData?: Array<{ option: string; imageUrl?: string }>;
+  showImages?: boolean;
+}
+
+const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages }: CustomYAxisTickProps) => {
+  const imageUrl = resultsData?.find(r => r.option === payload?.value)?.imageUrl;
+  
+  return (
+    <g transform={`translate(${x},${y})`}>
+      {showImages && imageUrl && (
+        <image 
+          href={imageUrl} 
+          x={-170} 
+          y={-16} 
+          width={32} 
+          height={32} 
+          clipPath="inset(0% round 50%)"
+          style={{ borderRadius: '50%' }}
+        />
+      )}
+      <text 
+        x={showImages && imageUrl ? -130 : -5}
+        y={0} 
+        dy={4} 
+        textAnchor="end" 
+        fill="currentColor"
+        fontSize={13}
+        fontWeight={500}
+      >
+        {payload?.value}
+      </text>
+    </g>
+  );
 };
 
 interface AggregatedResults {
@@ -163,6 +203,14 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
 
   const { data: aggregatedData, isLoading: resultsLoading, error } = useQuery<AggregatedResults>({
     queryKey: ['/api/surveys', surveyId, 'results', 'aggregated', filterQueryString],
+    queryFn: async () => {
+      const url = filterQueryString 
+        ? `/api/surveys/${surveyId}/results/aggregated?${filterQueryString}`
+        : `/api/surveys/${surveyId}/results/aggregated`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error("Erro ao carregar resultados");
+      return res.json();
+    },
     enabled: !!surveyId,
   });
   
@@ -812,15 +860,21 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                       <BarChart 
                         data={voteIntentionQuestion.results.sort((a, b) => b.percentage - a.percentage)} 
                         layout="vertical"
-                        margin={{ top: 5, right: 60, left: 20, bottom: 5 }}
+                        margin={{ top: 5, right: 60, left: voteIntentionQuestion.showOptionImages ? 50 : 20, bottom: 5 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                         <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
                         <YAxis 
                           type="category" 
                           dataKey="option" 
-                          width={180}
-                          tick={{ fontSize: 13, fontWeight: 500 }}
+                          width={voteIntentionQuestion.showOptionImages ? 200 : 180}
+                          tick={(props) => (
+                            <CustomYAxisTick 
+                              {...props} 
+                              resultsData={voteIntentionQuestion.results}
+                              showImages={voteIntentionQuestion.showOptionImages}
+                            />
+                          )}
                         />
                         <Tooltip 
                           formatter={(value: number) => [`${value}%`, 'Percentual']}
@@ -860,15 +914,21 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                           <BarChart 
                             data={qr.results.sort((a, b) => b.percentage - a.percentage)} 
                             layout="vertical"
-                            margin={{ top: 5, right: 60, left: 20, bottom: 5 }}
+                            margin={{ top: 5, right: 60, left: qr.showOptionImages ? 50 : 20, bottom: 5 }}
                           >
                             <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                             <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
                             <YAxis 
                               type="category" 
                               dataKey="option" 
-                              width={180}
-                              tick={{ fontSize: 13 }}
+                              width={qr.showOptionImages ? 200 : 180}
+                              tick={(props) => (
+                                <CustomYAxisTick 
+                                  {...props} 
+                                  resultsData={qr.results}
+                                  showImages={qr.showOptionImages}
+                                />
+                              )}
                             />
                             <Tooltip 
                               formatter={(value: number) => [`${value}%`, 'Percentual']}
