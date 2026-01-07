@@ -123,6 +123,8 @@ export const surveys = pgTable("surveys", {
   marginOfError: doublePrecision("margin_of_error"),
   quotas: jsonb("quotas"),
   shuffleQuestions: boolean("shuffle_questions").default(false),
+  requireGps: boolean("require_gps").default(true),
+  requireAudio: boolean("require_audio").default(true),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   createdAt: timestamp("created_at").defaultNow(),

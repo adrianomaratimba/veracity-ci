@@ -147,16 +147,73 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     };
   }, []);
 
+  // GPS capture with high accuracy and multiple samples
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => setGpsCoords(position.coords),
-        (err) => setGpsError("Acesso à localização é obrigatório.")
-      );
-    } else {
-      setGpsError("Geolocalização não é suportada por este navegador.");
+    // Check if GPS is required for this survey
+    const requireGps = (survey as any)?.requireGps ?? true;
+    if (!requireGps) {
+      // GPS not required - skip capture
+      return;
     }
-  }, []);
+
+    if (!navigator.geolocation) {
+      setGpsError("Geolocalização não é suportada por este navegador.");
+      return;
+    }
+
+    let samples: GeolocationCoordinates[] = [];
+    let watchId: number | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const selectBestSample = () => {
+      if (samples.length === 0) return;
+      // Select sample with lowest accuracy (most precise)
+      const best = samples.reduce((a, b) => (a.accuracy < b.accuracy ? a : b));
+      setGpsCoords(best);
+    };
+
+    // Use watchPosition with high accuracy to collect multiple samples
+    watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        samples.push(position.coords);
+        // Update with current best reading
+        if (samples.length === 1) {
+          setGpsCoords(position.coords);
+        } else {
+          selectBestSample();
+        }
+      },
+      (err) => {
+        // Only show error if we have no samples after timeout
+        if (samples.length === 0) {
+          setGpsError("Erro ao obter localização. Verifique as permissões.");
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+      }
+    );
+
+    // Stop collecting after 5 seconds and use best sample
+    timeoutId = setTimeout(() => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      selectBestSample();
+    }, 5000);
+
+    return () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [survey]);
 
   useEffect(() => {
     if (!survey?.questions) return;
@@ -190,8 +247,16 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   }, [survey, shuffleVersion]);
 
   const handleStartInterview = async () => {
-    if (!gpsCoords) return;
-    await startRecording();
+    const requireGps = (survey as any)?.requireGps ?? true;
+    const requireAudio = (survey as any)?.requireAudio ?? true;
+    
+    // Only check GPS if required
+    if (requireGps && !gpsCoords) return;
+    
+    // Only start recording if audio is required
+    if (requireAudio) {
+      await startRecording();
+    }
     setStep('questions');
   };
 
@@ -259,11 +324,16 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   };
 
   const saveOffline = async () => {
-    if (!audioBlob || !gpsCoords) return;
+    const requireGps = (survey as any)?.requireGps ?? true;
+    const requireAudio = (survey as any)?.requireAudio ?? true;
+    
+    // Only check required fields
+    if (requireAudio && !audioBlob) return;
+    if (requireGps && !gpsCoords) return;
     
     setIsSavingOffline(true);
     try {
-      const audioBuffer = await audioBlob.arrayBuffer();
+      const audioBuffer = requireAudio && audioBlob ? await audioBlob.arrayBuffer() : null;
       const endTime = new Date();
       const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
       
@@ -280,13 +350,13 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         retryCount: 0,
         data: {
           response: {
-            latitude: gpsCoords.latitude,
-            longitude: gpsCoords.longitude,
-            accuracy: gpsCoords.accuracy,
+            latitude: gpsCoords?.latitude ?? 0,
+            longitude: gpsCoords?.longitude ?? 0,
+            accuracy: gpsCoords?.accuracy ?? 0,
             gpsTimestamp: new Date(),
             audioBlob: audioBuffer,
-            audioMimeType: 'audio/webm',
-            audioFileName: `entrevista-${Date.now()}.webm`,
+            audioMimeType: requireAudio && audioBlob ? 'audio/webm' : null,
+            audioFileName: requireAudio && audioBlob ? `entrevista-${Date.now()}.webm` : null,
             deviceInfo: { userAgent: navigator.userAgent },
             startTime,
             endTime,
@@ -317,23 +387,36 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   };
 
   const handleSubmit = async () => {
-    if (!audioBlob || !gpsCoords) return;
+    const requireGps = (survey as any)?.requireGps ?? true;
+    const requireAudio = (survey as any)?.requireAudio ?? true;
+    
+    // Only check required fields
+    if (requireAudio && !audioBlob) return;
+    if (requireGps && !gpsCoords) return;
 
     if (!isOnline) {
       await saveOffline();
       return;
     }
 
-    const audioFile = new File([audioBlob], `entrevista-${Date.now()}.webm`, { type: "audio/webm" });
-    const uploadRes = await uploadFile(audioFile);
+    let audioUrl = "";
+    let audioHash = "no-audio";
+    
+    // Only upload audio if required and available
+    if (requireAudio && audioBlob) {
+      const audioFile = new File([audioBlob], `entrevista-${Date.now()}.webm`, { type: "audio/webm" });
+      const uploadRes = await uploadFile(audioFile);
 
-    if (!uploadRes) {
-      toast({
-        title: "Sem conexão",
-        description: "Salvando entrevista localmente para envio posterior...",
-      });
-      await saveOffline();
-      return;
+      if (!uploadRes) {
+        toast({
+          title: "Sem conexão",
+          description: "Salvando entrevista localmente para envio posterior...",
+        });
+        await saveOffline();
+        return;
+      }
+      audioUrl = uploadRes.objectPath;
+      audioHash = "synced";
     }
 
     const formattedAnswers = Object.entries(answers).map(([qId, val]) => ({
@@ -348,12 +431,12 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       surveyId,
       data: {
         response: {
-          latitude: gpsCoords.latitude,
-          longitude: gpsCoords.longitude,
-          accuracy: gpsCoords.accuracy,
+          latitude: gpsCoords?.latitude ?? 0,
+          longitude: gpsCoords?.longitude ?? 0,
+          accuracy: gpsCoords?.accuracy ?? 0,
           gpsTimestamp: new Date(),
-          audioUrl: uploadRes.objectPath,
-          audioHash: "synced",
+          audioUrl,
+          audioHash,
           audioDuration: 0,
           deviceInfo: { userAgent: navigator.userAgent },
           startTime,
@@ -447,32 +530,36 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             </div>
 
             <div className="space-y-3 text-left">
-              <div className="flex items-center gap-3 p-3 bg-white border rounded-lg">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${gpsCoords ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                  {gpsCoords ? <CheckCircle className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+              {((survey as any)?.requireGps ?? true) && (
+                <div className="flex items-center gap-3 p-3 bg-white border rounded-lg">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${gpsCoords ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                    {gpsCoords ? <CheckCircle className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">Localização GPS</p>
+                    <p className="text-xs text-muted-foreground">{gpsError || (gpsCoords ? `Precisão: ${gpsCoords.accuracy.toFixed(0)}m` : "Aguardando sinal...")}</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="font-medium text-sm">Localização GPS</p>
-                  <p className="text-xs text-muted-foreground">{gpsError || (gpsCoords ? `Precisão: ${gpsCoords.accuracy.toFixed(0)}m` : "Aguardando sinal...")}</p>
-                </div>
-              </div>
+              )}
 
-              <div className="flex items-center gap-3 p-3 bg-white border rounded-lg">
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
-                  <Mic className="w-5 h-5" />
+              {((survey as any)?.requireAudio ?? true) && (
+                <div className="flex items-center gap-3 p-3 bg-white border rounded-lg">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                    <Mic className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">Evidência de Áudio</p>
+                    <p className="text-xs text-muted-foreground">Iniciará automaticamente</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="font-medium text-sm">Evidência de Áudio</p>
-                  <p className="text-xs text-muted-foreground">Iniciará automaticamente</p>
-                </div>
-              </div>
+              )}
             </div>
 
             <Button 
               size="lg" 
               className="w-full" 
               onClick={handleStartInterview}
-              disabled={!gpsCoords}
+              disabled={((survey as any)?.requireGps ?? true) && !gpsCoords}
             >
               Iniciar Entrevista
             </Button>
@@ -644,14 +731,18 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 <span>Perguntas Respondidas:</span>
                 <span className="font-bold">{Object.keys(answers).length}/{shuffledQuestions.length}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Evidência de Áudio:</span>
-                <span className="font-bold">Pronto</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Precisão do GPS:</span>
-                <span className="font-bold">{gpsCoords?.accuracy.toFixed(0)}m</span>
-              </div>
+              {((survey as any)?.requireAudio ?? true) && (
+                <div className="flex justify-between">
+                  <span>Evidência de Áudio:</span>
+                  <span className="font-bold">Pronto</span>
+                </div>
+              )}
+              {((survey as any)?.requireGps ?? true) && (
+                <div className="flex justify-between">
+                  <span>Precisão do GPS:</span>
+                  <span className="font-bold">{gpsCoords?.accuracy.toFixed(0)}m</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>Conexão:</span>
                 <span className={`font-bold ${isOnline ? 'text-green-600' : 'text-yellow-600'}`}>
@@ -696,14 +787,18 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 <span>Perguntas Respondidas:</span>
                 <span className="font-bold text-green-700">{Object.keys(answers).length}/{shuffledQuestions.length}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Áudio Registrado:</span>
-                <span className="font-bold text-green-700">Confirmado</span>
-              </div>
-              <div className="flex justify-between">
-                <span>GPS Verificado:</span>
-                <span className="font-bold text-green-700">Confirmado</span>
-              </div>
+              {((survey as any)?.requireAudio ?? true) && (
+                <div className="flex justify-between">
+                  <span>Áudio Registrado:</span>
+                  <span className="font-bold text-green-700">Confirmado</span>
+                </div>
+              )}
+              {((survey as any)?.requireGps ?? true) && (
+                <div className="flex justify-between">
+                  <span>GPS Verificado:</span>
+                  <span className="font-bold text-green-700">Confirmado</span>
+                </div>
+              )}
             </div>
 
             <Button 

@@ -464,7 +464,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     startDate: "",
     endDate: "",
     status: "draft",
-    shuffleQuestions: false
+    shuffleQuestions: false,
+    requireGps: true,
+    requireAudio: true
   });
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
@@ -495,7 +497,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         startDate: survey.startDate ? new Date(survey.startDate).toISOString().split('T')[0] : "",
         endDate: survey.endDate ? new Date(survey.endDate).toISOString().split('T')[0] : "",
         status: survey.status || "draft",
-        shuffleQuestions: (survey as any).shuffleQuestions ?? false
+        shuffleQuestions: (survey as any).shuffleQuestions ?? false,
+        requireGps: (survey as any).requireGps ?? true,
+        requireAudio: (survey as any).requireAudio ?? true
       });
       if (survey.questions) {
         setQuestions(survey.questions.map(q => ({
@@ -579,7 +583,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             marginOfError: surveyForm.marginOfError ?? undefined,
             startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : null,
             endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : null,
-            shuffleQuestions: surveyForm.shuffleQuestions
+            shuffleQuestions: surveyForm.shuffleQuestions,
+            requireGps: surveyForm.requireGps,
+            requireAudio: surveyForm.requireAudio
           }
         });
         toast({ title: "Criada", description: "Pesquisa criada com sucesso!" });
@@ -599,7 +605,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : null,
             status: surveyForm.status,
             quotas: quotas,
-            shuffleQuestions: surveyForm.shuffleQuestions
+            shuffleQuestions: surveyForm.shuffleQuestions,
+            requireGps: surveyForm.requireGps,
+            requireAudio: surveyForm.requireAudio
           }
         });
         
@@ -1562,6 +1570,39 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                   </div>
                   <p className="text-xs text-muted-foreground pl-10">
                     Cada entrevista mostra as perguntas em ordem aleatoria diferente
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-4 border-t">
+                  <Label className="text-base font-medium">Captacao de Evidencias</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Defina quais evidencias serao capturadas durante as entrevistas
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={surveyForm.requireGps}
+                      onCheckedChange={(v) => { setSurveyForm({ ...surveyForm, requireGps: v }); setHasChanges(true); }}
+                      data-testid="switch-require-gps"
+                    />
+                    <Label className="text-sm text-muted-foreground">
+                      Capturar localizacao GPS
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-10">
+                    Registra as coordenadas geograficas de cada entrevista
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={surveyForm.requireAudio}
+                      onCheckedChange={(v) => { setSurveyForm({ ...surveyForm, requireAudio: v }); setHasChanges(true); }}
+                      data-testid="switch-require-audio"
+                    />
+                    <Label className="text-sm text-muted-foreground">
+                      Gravar audio da entrevista
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-10">
+                    Grava o audio como evidencia de auditoria
                   </p>
                 </div>
 
