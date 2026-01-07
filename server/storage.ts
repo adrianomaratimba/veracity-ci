@@ -916,8 +916,15 @@ export class DatabaseStorage implements IStorage {
       questionId: number;
       questionText: string;
       questionType: string;
-      results: Array<{ option: string; count: number; percentage: number }>;
+      showOptionImages?: boolean;
+      results: Array<{ option: string; count: number; percentage: number; imageUrl?: string }>;
     }>;
+    filterFacets?: {
+      questionId: number;
+      questionText: string;
+      filterKey: string;
+      options: string[];
+    }[];
   }> {
     const survey = await this.getSurvey(surveyId);
     if (!survey) throw new Error("Pesquisa não encontrada");
@@ -943,16 +950,91 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Build option image maps for questions with showOptionImages
+    const optionImageMaps: Map<number, Map<string, string>> = new Map();
+    for (const question of survey.questions) {
+      if (question.showOptionImages) {
+        const rawOptions = (question.options as (string | { text: string; imageUrl?: string })[]) || [];
+        const imageMap = new Map<string, string>();
+        rawOptions.forEach(opt => {
+          if (typeof opt === 'object' && opt?.text && opt?.imageUrl) {
+            imageMap.set(opt.text, opt.imageUrl);
+          }
+        });
+        optionImageMaps.set(question.id, imageMap);
+      }
+    }
+
+    // Identify demographic/filter questions based on common patterns
+    const demographicKeywords: Record<string, string[]> = {
+      neighborhood: ['bairro', 'zona', 'região', 'regiao', 'localidade', 'setor'],
+      ageRange: ['idade', 'faixa etária', 'faixa etaria'],
+      gender: ['sexo', 'gênero', 'genero'],
+      education: ['escolaridade', 'instrução', 'instrucao', 'ensino', 'formação', 'formacao']
+    };
+
+    const filterFacets: Array<{
+      questionId: number;
+      questionText: string;
+      filterKey: string;
+      options: string[];
+    }> = [];
+
+    // Get actual answer values for demographic questions to build filter options
+    for (const question of survey.questions) {
+      if (question.type === 'single_choice' || question.type === 'multiple_choice') {
+        const questionLower = question.text.toLowerCase();
+        let filterKey: string | null = null;
+
+        for (const [key, keywords] of Object.entries(demographicKeywords)) {
+          if (keywords.some(kw => questionLower.includes(kw))) {
+            filterKey = key;
+            break;
+          }
+        }
+
+        if (filterKey && validResponseIds.length > 0) {
+          // Get unique answer values for this question
+          const questionAnswers = await db.select({ value: answers.value })
+            .from(answers)
+            .where(and(
+              eq(answers.questionId, question.id),
+              sql`${answers.responseId} IN (${sql.join(validResponseIds.map(id => sql`${id}`), sql`, `)})`
+            ));
+
+          const uniqueValues = new Set<string>();
+          questionAnswers.forEach(ans => {
+            const value = ans.value as string | string[];
+            if (Array.isArray(value)) {
+              value.forEach(v => uniqueValues.add(v));
+            } else if (typeof value === 'string') {
+              uniqueValues.add(value);
+            }
+          });
+
+          if (uniqueValues.size > 0) {
+            filterFacets.push({
+              questionId: question.id,
+              questionText: question.text,
+              filterKey,
+              options: Array.from(uniqueValues).sort()
+            });
+          }
+        }
+      }
+    }
+
     const questionResults: Array<{
       questionId: number;
       questionText: string;
       questionType: string;
-      results: Array<{ option: string; count: number; percentage: number }>;
+      showOptionImages?: boolean;
+      results: Array<{ option: string; count: number; percentage: number; imageUrl?: string }>;
     }> = [];
 
     for (const question of survey.questions) {
       if (question.type === 'single_choice' || question.type === 'multiple_choice') {
-        const rawOptions = (question.options as (string | { text: string })[]) || [];
+        const rawOptions = (question.options as (string | { text: string; imageUrl?: string })[]) || [];
         // Normalize options - extract text if it's an object
         const options = rawOptions.map(opt => typeof opt === 'string' ? opt : opt?.text || '').filter(Boolean);
         const optionCounts: Record<string, number> = {};
@@ -979,16 +1061,19 @@ export class DatabaseStorage implements IStorage {
         }
 
         const total = Object.values(optionCounts).reduce((a, b) => a + b, 0);
+        const imageMap = optionImageMaps.get(question.id);
         const results = options.map(opt => ({
           option: opt,
           count: optionCounts[opt] || 0,
-          percentage: total > 0 ? Math.round((optionCounts[opt] / total) * 1000) / 10 : 0
+          percentage: total > 0 ? Math.round((optionCounts[opt] / total) * 1000) / 10 : 0,
+          imageUrl: imageMap?.get(opt)
         }));
 
         questionResults.push({
           questionId: question.id,
           questionText: question.text,
           questionType: question.type,
+          showOptionImages: question.showOptionImages ?? false,
           results
         });
       }
@@ -999,7 +1084,8 @@ export class DatabaseStorage implements IStorage {
       totalResponses: allResponses.length,
       validResponses: validResponses.length,
       collectionPeriod,
-      questionResults
+      questionResults,
+      filterFacets
     };
   }
 

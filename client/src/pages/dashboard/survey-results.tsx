@@ -92,7 +92,14 @@ interface AggregatedResults {
     questionId: number;
     questionText: string;
     questionType: string;
-    results: Array<{ option: string; count: number; percentage: number }>;
+    showOptionImages?: boolean;
+    results: Array<{ option: string; count: number; percentage: number; imageUrl?: string }>;
+  }>;
+  filterFacets?: Array<{
+    questionId: number;
+    questionText: string;
+    filterKey: string;
+    options: string[];
   }>;
   demographics?: {
     age?: Array<{ range: string; count: number; percentage: number }>;
@@ -162,6 +169,39 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   const { data: timelineData, isLoading: timelineLoading } = useQuery<TimelineData[]>({
     queryKey: ['/api/surveys', surveyId, 'results', 'timeline'],
     enabled: !!surveyId,
+  });
+
+  // Interviewer comparison data
+  interface InterviewerComparison {
+    interviewers: Array<{ id: string; name: string; totalResponses: number }>;
+    questions: Array<{ id: number; text: string; options: string[] }>;
+    comparison: Array<{
+      questionId: number;
+      questionText: string;
+      byInterviewer: Array<{
+        interviewerId: string;
+        interviewerName: string;
+        totalForQuestion: number;
+        distribution: Array<{ option: string; count: number; percentage: number }>;
+      }>;
+      groupAverage: Array<{ option: string; avgPercentage: number }>;
+      discrepancies: Array<{ interviewerId: string; interviewerName: string; option: string; deviation: number }>;
+    }>;
+  }
+
+  const [selectedQuestionForComparison, setSelectedQuestionForComparison] = useState<string>("all");
+
+  const { data: interviewerData, isLoading: interviewerLoading } = useQuery<InterviewerComparison>({
+    queryKey: ['/api/organizations', orgId, 'audit/interviewers', surveyId.toString(), selectedQuestionForComparison],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.append("surveyId", surveyId.toString());
+      if (selectedQuestionForComparison !== "all") params.append("questionId", selectedQuestionForComparison);
+      const res = await fetch(`/api/organizations/${orgId}/audit/interviewers?${params}`, { credentials: 'include' });
+      if (!res.ok) throw new Error("Erro ao carregar dados");
+      return res.json();
+    },
+    enabled: activeTab === "interviewers" && !!surveyId
   });
 
   const userRole = (currentMember?.role as UserRole) || 'viewer';
@@ -506,81 +546,52 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-xs">Bairro / Zona</Label>
-                <Select value={filters.neighborhood} onValueChange={(v) => setFilters(f => ({ ...f, neighborhood: v }))}>
-                  <SelectTrigger data-testid="select-neighborhood">
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="centro">Centro</SelectItem>
-                    <SelectItem value="zona_norte">Zona Norte</SelectItem>
-                    <SelectItem value="zona_sul">Zona Sul</SelectItem>
-                    <SelectItem value="zona_leste">Zona Leste</SelectItem>
-                    <SelectItem value="zona_oeste">Zona Oeste</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">Faixa Etária</Label>
-                <Select value={filters.ageRange} onValueChange={(v) => setFilters(f => ({ ...f, ageRange: v }))}>
-                  <SelectTrigger data-testid="select-age">
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    <SelectItem value="16-24">16 a 24 anos</SelectItem>
-                    <SelectItem value="25-34">25 a 34 anos</SelectItem>
-                    <SelectItem value="35-44">35 a 44 anos</SelectItem>
-                    <SelectItem value="45-59">45 a 59 anos</SelectItem>
-                    <SelectItem value="60+">60 anos ou mais</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">Sexo</Label>
-                <Select value={filters.gender} onValueChange={(v) => setFilters(f => ({ ...f, gender: v }))}>
-                  <SelectTrigger data-testid="select-gender">
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="male">Masculino</SelectItem>
-                    <SelectItem value="female">Feminino</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">Escolaridade</Label>
-                <Select value={filters.education} onValueChange={(v) => setFilters(f => ({ ...f, education: v }))}>
-                  <SelectTrigger data-testid="select-education">
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    <SelectItem value="fundamental">Fundamental</SelectItem>
-                    <SelectItem value="medio">Médio</SelectItem>
-                    <SelectItem value="superior">Superior</SelectItem>
-                    <SelectItem value="pos">Pós-graduação</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Separator />
-
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={resetFilters}
-                data-testid="button-reset-filters"
-              >
-                Limpar Filtros
-              </Button>
+              {aggregatedData.filterFacets && aggregatedData.filterFacets.length > 0 ? (
+                <>
+                  {aggregatedData.filterFacets.map((facet) => {
+                    const filterLabels: Record<string, string> = {
+                      neighborhood: 'Bairro / Zona',
+                      ageRange: 'Faixa Etária',
+                      gender: 'Sexo',
+                      education: 'Escolaridade'
+                    };
+                    const filterKey = facet.filterKey as keyof FilterState;
+                    return (
+                      <div key={facet.questionId} className="space-y-2">
+                        <Label className="text-xs">{filterLabels[facet.filterKey] || facet.questionText}</Label>
+                        <Select 
+                          value={filters[filterKey] || "all"} 
+                          onValueChange={(v) => setFilters(f => ({ ...f, [filterKey]: v }))}
+                        >
+                          <SelectTrigger data-testid={`select-${facet.filterKey}`}>
+                            <SelectValue placeholder="Todos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            {facet.options.map((opt) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })}
+                  <Separator />
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={resetFilters}
+                    data-testid="button-reset-filters"
+                  >
+                    Limpar Filtros
+                  </Button>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  Nenhum filtro disponível para esta pesquisa
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -623,7 +634,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-1">
+            <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 gap-1">
               <TabsTrigger value="overview" data-testid="tab-overview" className="text-xs sm:text-sm">
                 <Eye className="w-4 h-4 mr-1 hidden sm:inline" />
                 Visão Geral
@@ -643,6 +654,10 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               <TabsTrigger value="distribution" data-testid="tab-distribution" className="text-xs sm:text-sm">
                 <PieChartIcon className="w-4 h-4 mr-1 hidden sm:inline" />
                 Perfil
+              </TabsTrigger>
+              <TabsTrigger value="interviewers" data-testid="tab-interviewers" className="text-xs sm:text-sm">
+                <Users className="w-4 h-4 mr-1 hidden sm:inline" />
+                Entrevistadores
               </TabsTrigger>
               <TabsTrigger value="report" data-testid="tab-report" className="text-xs sm:text-sm">
                 <FileText className="w-4 h-4 mr-1 hidden sm:inline" />
@@ -886,12 +901,21 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                           <tbody>
                             {qr.results.sort((a, b) => b.percentage - a.percentage).map((r, i) => (
                               <tr key={r.option} className="border-b border-muted">
-                                <td className="py-2 flex items-center gap-2">
-                                  <div 
-                                    className="w-3 h-3 rounded-full" 
-                                    style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
-                                  />
-                                  {r.option}
+                                <td className="py-2">
+                                  <div className="flex items-center gap-3">
+                                    <div 
+                                      className="w-3 h-3 rounded-full shrink-0" 
+                                      style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                                    />
+                                    {qr.showOptionImages && r.imageUrl && (
+                                      <img 
+                                        src={r.imageUrl} 
+                                        alt={r.option}
+                                        className="w-10 h-10 rounded-full object-cover border-2 border-border shrink-0"
+                                      />
+                                    )}
+                                    <span>{r.option}</span>
+                                  </div>
                                 </td>
                                 <td className="text-right py-2 text-muted-foreground">{r.count}</td>
                                 <td className="text-right py-2 font-semibold">{r.percentage}%</td>
@@ -1195,6 +1219,118 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                   </Card>
                 ))}
               </div>
+            </TabsContent>
+
+            <TabsContent value="interviewers" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="w-5 h-5" />
+                    Comparação entre Entrevistadores
+                  </CardTitle>
+                  <CardDescription>
+                    Detecte discrepâncias e inconsistências entre entrevistadores
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex flex-wrap gap-4 items-end">
+                    <div className="min-w-[250px]">
+                      <Label className="text-xs text-muted-foreground mb-2 block">Pergunta</Label>
+                      <Select value={selectedQuestionForComparison} onValueChange={setSelectedQuestionForComparison}>
+                        <SelectTrigger data-testid="select-comparison-question">
+                          <SelectValue placeholder="Todas as perguntas" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas as perguntas</SelectItem>
+                          {interviewerData?.questions.map(q => (
+                            <SelectItem key={q.id} value={String(q.id)}>{q.text}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {interviewerLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+                    </div>
+                  ) : interviewerData?.comparison && interviewerData.comparison.length > 0 ? (
+                    <div className="space-y-8">
+                      {interviewerData.comparison.map((comp) => (
+                        <div key={comp.questionId} className="space-y-4">
+                          <h3 className="font-semibold text-lg">{comp.questionText}</h3>
+                          
+                          {comp.discrepancies.length > 0 && (
+                            <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                              <h4 className="text-sm font-medium text-amber-700 dark:text-amber-300 mb-2">
+                                Discrepâncias Detectadas
+                              </h4>
+                              <div className="space-y-1">
+                                {comp.discrepancies.slice(0, 5).map((d, i) => (
+                                  <p key={i} className="text-sm text-amber-600 dark:text-amber-400">
+                                    {d.interviewerName}: desvio de {d.deviation.toFixed(1)}% em "{d.option}"
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <ScrollArea className="w-full">
+                            <table className="w-full text-sm min-w-[600px]">
+                              <thead>
+                                <tr className="border-b">
+                                  <th className="text-left py-2 px-2 font-medium">Opção</th>
+                                  <th className="text-center py-2 px-2 font-medium text-muted-foreground">Média</th>
+                                  {comp.byInterviewer.map(int => (
+                                    <th key={int.interviewerId} className="text-center py-2 px-2 font-medium">
+                                      {int.interviewerName}
+                                      <span className="block text-xs text-muted-foreground font-normal">
+                                        ({int.totalForQuestion} resp.)
+                                      </span>
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {comp.groupAverage.map((avg) => (
+                                  <tr key={avg.option} className="border-b border-muted">
+                                    <td className="py-2 px-2">{avg.option}</td>
+                                    <td className="text-center py-2 px-2 text-muted-foreground font-medium">
+                                      {avg.avgPercentage.toFixed(1)}%
+                                    </td>
+                                    {comp.byInterviewer.map(int => {
+                                      const dist = int.distribution.find(d => d.option === avg.option);
+                                      const deviation = Math.abs((dist?.percentage || 0) - avg.avgPercentage);
+                                      const deviationClass = deviation > 20 
+                                        ? "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 font-bold"
+                                        : deviation > 15 
+                                        ? "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-semibold"
+                                        : deviation > 10
+                                        ? "bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300"
+                                        : "";
+                                      return (
+                                        <td key={int.interviewerId} className={`text-center py-2 px-2 ${deviationClass}`}>
+                                          {dist?.percentage.toFixed(1) || 0}%
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </ScrollArea>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                      <Users className="w-12 h-12 mb-4" />
+                      <p>Nenhum dado de comparação disponível.</p>
+                      <p className="text-sm">São necessárias entrevistas de múltiplos entrevistadores.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="report" className="mt-6">
