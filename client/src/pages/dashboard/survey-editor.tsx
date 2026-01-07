@@ -579,8 +579,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             location: surveyForm.location || undefined,
             targetSample: surveyForm.targetSample,
             marginOfError: surveyForm.marginOfError ?? undefined,
-            startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : undefined,
-            endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : undefined,
+            startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : null,
+            endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : null,
             shuffleQuestions: surveyForm.shuffleQuestions
           }
         });
@@ -597,8 +597,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             location: surveyForm.location || undefined,
             targetSample: surveyForm.targetSample,
             marginOfError: surveyForm.marginOfError ?? undefined,
-            startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : undefined,
-            endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : undefined,
+            startDate: surveyForm.startDate ? new Date(surveyForm.startDate) : null,
+            endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : null,
             status: surveyForm.status,
             quotas: quotas,
             shuffleQuestions: surveyForm.shuffleQuestions

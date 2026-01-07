@@ -280,7 +280,16 @@ export const api = {
     create: {
       method: 'POST' as const,
       path: '/api/organizations/:orgId/surveys',
-      input: insertSurveySchema.omit({ organizationId: true }),
+      input: insertSurveySchema.omit({ organizationId: true }).extend({
+        startDate: z.union([z.date(), z.string(), z.null()]).optional().transform(v => {
+          if (v === null || v === undefined || v === '') return null;
+          return typeof v === 'string' ? new Date(v) : v;
+        }),
+        endDate: z.union([z.date(), z.string(), z.null()]).optional().transform(v => {
+          if (v === null || v === undefined || v === '') return null;
+          return typeof v === 'string' ? new Date(v) : v;
+        }),
+      }),
       responses: {
         201: z.custom<typeof surveys.$inferSelect>(),
         400: errorSchemas.validation,
@@ -289,7 +298,16 @@ export const api = {
     update: {
       method: 'PATCH' as const,
       path: '/api/surveys/:id',
-      input: insertSurveySchema.partial(),
+      input: insertSurveySchema.partial().extend({
+        startDate: z.union([z.date(), z.string(), z.null()]).optional().transform(v => {
+          if (v === null || v === undefined || v === '') return null;
+          return typeof v === 'string' ? new Date(v) : v;
+        }),
+        endDate: z.union([z.date(), z.string(), z.null()]).optional().transform(v => {
+          if (v === null || v === undefined || v === '') return null;
+          return typeof v === 'string' ? new Date(v) : v;
+        }),
+      }),
       responses: {
         200: z.custom<typeof surveys.$inferSelect>(),
         404: errorSchemas.notFound,
