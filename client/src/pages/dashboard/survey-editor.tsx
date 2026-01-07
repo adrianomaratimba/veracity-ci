@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers, Image, X, Loader2, Target, AlertTriangle, GitBranch } from "lucide-react";
+import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers, Image, X, Loader2, Target, AlertTriangle, GitBranch, ChevronUp, ChevronDown } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import type { SurveyQuotas, QuotaGroup, QuotaTarget, QuestionLogic, SkipLogicRule } from "@shared/schema";
 import { LoadingScreen } from "@/components/ui/loading-screen";
@@ -724,6 +724,23 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     setHasChanges(true);
   };
 
+  const moveQuestion = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= questions.length) return;
+    
+    const updated = [...questions];
+    const temp = updated[index];
+    updated[index] = updated[newIndex];
+    updated[newIndex] = temp;
+    
+    // Update order property for both questions
+    updated[index] = { ...updated[index], order: index };
+    updated[newIndex] = { ...updated[newIndex], order: newIndex };
+    
+    setQuestions(updated);
+    setHasChanges(true);
+  };
+
   const questionTypes = [
     { value: "single_choice", label: "Escolha Única" },
     { value: "multiple_choice", label: "Múltipla Escolha" },
@@ -789,9 +806,28 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                   <Card key={q.id || `new-${index}`} data-testid={`card-question-${index}`}>
                     <CardContent className="p-6">
                       <div className="flex items-start gap-4">
-                        <div className="flex items-center gap-2 text-muted-foreground shrink-0 pt-2">
-                          <GripVertical className="w-5 h-5 cursor-grab" />
+                        <div className="flex flex-col items-center gap-1 text-muted-foreground shrink-0 pt-1">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6" 
+                            onClick={() => moveQuestion(index, 'up')}
+                            disabled={index === 0}
+                            data-testid={`button-move-up-${index}`}
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </Button>
                           <span className="font-mono text-sm">{index + 1}</span>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6" 
+                            onClick={() => moveQuestion(index, 'down')}
+                            disabled={index === questions.length - 1}
+                            data-testid={`button-move-down-${index}`}
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </Button>
                         </div>
                         <div className="flex-1 space-y-4">
                           <div className="flex items-start gap-4">
