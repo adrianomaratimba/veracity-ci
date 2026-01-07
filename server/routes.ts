@@ -2252,5 +2252,30 @@ export async function registerRoutes(
     }
   });
 
+  // === LANDING PAGE CMS ===
+  
+  // Get landing page config (public, for landing page)
+  app.get("/api/landing-config", async (req, res) => {
+    try {
+      const config = await storage.getLandingPageConfig();
+      res.json(config || {});
+    } catch (err) {
+      console.error('[landing-config/get] error:', err);
+      res.status(500).json({ message: "Erro ao buscar configurações" });
+    }
+  });
+
+  // Update landing page config (platform admin only)
+  app.put("/api/landing-config", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const updated = await storage.upsertLandingPageConfig(req.body, userId);
+      res.json(updated);
+    } catch (err) {
+      console.error('[landing-config/update] error:', err);
+      res.status(500).json({ message: "Erro ao salvar configurações" });
+    }
+  });
+
   return httpServer;
 }
