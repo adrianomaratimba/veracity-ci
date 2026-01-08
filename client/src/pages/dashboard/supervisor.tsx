@@ -130,16 +130,20 @@ function usePerformanceMetrics(orgId: number) {
     },
     staleTime: 60000,
     enabled: isValidOrgId,
+    retry: 1,
   });
   
-  // isLoading is true when enabled=false and no data exists
-  // We need to differentiate between "not enabled" vs "actively loading"
-  const isActuallyLoading = query.fetchStatus === 'fetching' && !query.data;
+  // Status will be 'pending' when enabled=false OR when first loading
+  // fetchStatus will be 'fetching' when actually making a request
+  // fetchStatus will be 'idle' when query is disabled
+  const isQueryDisabled = !isValidOrgId;
+  const isActuallyLoading = query.status === 'pending' && query.fetchStatus === 'fetching';
   
   return {
     ...query,
     isActuallyLoading,
     isValidOrgId,
+    isQueryDisabled,
   };
 }
 
@@ -260,7 +264,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
-  const { data: performanceData, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError, isActuallyLoading: performanceLoading, isValidOrgId } = usePerformanceMetrics(orgId);
+  const { data: performanceData, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError, isActuallyLoading: performanceLoading, isValidOrgId, isQueryDisabled: performanceQueryDisabled } = usePerformanceMetrics(orgId);
 
   const isFetching = isFetchingOverview || isFetchingRealtime || isFetchingPerformance;
   const isLoading = overviewLoading || realtimeLoading;
@@ -574,7 +578,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-6">
-            {!isValidOrgId ? (
+            {performanceQueryDisabled ? (
               <Card>
                 <CardContent className="py-8 text-center">
                   <p className="text-muted-foreground">Organização inválida</p>
@@ -589,11 +593,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                   </Button>
                 </CardContent>
               </Card>
-            ) : performanceLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : !performanceData ? (
+            ) : (performanceLoading || !performanceData) ? (
               <div className="flex items-center justify-center py-12">
                 <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
               </div>
