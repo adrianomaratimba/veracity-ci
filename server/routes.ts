@@ -2540,7 +2540,7 @@ export async function registerRoutes(
         sessionId: z.string().optional()
       }).parse(req.body);
 
-      const MAX_ACCURACY_THRESHOLD = 100;
+      const MAX_ACCURACY_THRESHOLD = 5000;
       if (input.accuracy != null && input.accuracy > MAX_ACCURACY_THRESHOLD) {
         return res.json({ success: true, skipped: true, reason: 'low_accuracy' });
       }
