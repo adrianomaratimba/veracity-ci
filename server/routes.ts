@@ -1315,7 +1315,20 @@ export async function registerRoutes(
         }
       }
       
-      const { response: responseMeta, answers } = api.responses.submit.input.parse(req.body);
+      const { clientId, response: responseMeta, answers } = api.responses.submit.input.parse(req.body);
+
+      // DEDUPLICATION: Check if response with this clientId already exists
+      if (clientId) {
+        const existingResponse = await storage.getResponseByClientId(clientId);
+        if (existingResponse) {
+          console.log(`[Dedup] Response with clientId ${clientId} already exists (id: ${existingResponse.id}), returning existing`);
+          return res.status(200).json({ 
+            id: existingResponse.id, 
+            status: existingResponse.status,
+            deduplicated: true 
+          });
+        }
+      }
 
       // Backend Validation Logic for Fraud Detection
       let status = "valid";
@@ -1339,6 +1352,7 @@ export async function registerRoutes(
       const newResponse = await storage.createResponse(
         { 
           ...responseMeta, 
+          clientId,
           surveyId: Number(req.params.surveyId),
           interviewerId,
           status,

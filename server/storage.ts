@@ -74,6 +74,7 @@ export interface IStorage {
   createResponse(response: InsertResponse, answers: Omit<InsertAnswer, 'responseId'>[]): Promise<Response>;
   getResponses(surveyId: number): Promise<Response[]>;
   getResponse(id: number): Promise<(Response & { answers: Answer[] }) | undefined>;
+  getResponseByClientId(clientId: string): Promise<Response | undefined>;
   getResponsesWithAnswers(surveyId: number): Promise<(Response & { answers: Answer[] })[]>;
   
   // Analytics
@@ -539,6 +540,13 @@ export class DatabaseStorage implements IStorage {
         answers: true
       }
     });
+    return response;
+  }
+
+  async getResponseByClientId(clientId: string): Promise<Response | undefined> {
+    const [response] = await db.select().from(responses)
+      .where(eq(responses.clientId, clientId))
+      .limit(1);
     return response;
   }
 
