@@ -404,15 +404,8 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
     }
   });
 
-  if (orgLoading) return <LoadingScreen message="Carregando configuracoes..." />;
-  if (!org) return <div>Organizacao nao encontrada</div>;
-
-  const handleSaveOrg = () => {
-    updateOrg.mutate({ name: orgForm.name, slug: orgForm.slug });
-  };
-
   const updateBranding = useMutation({
-    mutationFn: async (data: typeof brandingForm) => {
+    mutationFn: async (data: Partial<typeof brandingForm>) => {
       const res = await fetch(`/api/organizations/${orgId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -430,6 +423,13 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
       toast({ title: "Erro", description: "Falha ao salvar configuracoes de marca", variant: "destructive" });
     }
   });
+
+  if (orgLoading) return <LoadingScreen message="Carregando configuracoes..." />;
+  if (!org) return <div>Organizacao nao encontrada</div>;
+
+  const handleSaveOrg = () => {
+    updateOrg.mutate({ name: orgForm.name, slug: orgForm.slug });
+  };
 
   const handleSaveBranding = () => {
     const changedFields: Partial<typeof brandingForm> = {};
