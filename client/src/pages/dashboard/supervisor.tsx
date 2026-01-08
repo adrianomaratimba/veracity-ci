@@ -120,8 +120,7 @@ function useInterviewerRoute(orgId: number, userId: string | null, date?: Date) 
 }
 
 function usePerformanceMetrics(orgId: number) {
-  const isValidOrgId = !isNaN(orgId) && orgId > 0;
-  const query = useQuery<PerformanceDashboard>({
+  return useQuery<PerformanceDashboard>({
     queryKey: ['/api/organizations', orgId, 'analytics', 'interviewers'],
     queryFn: async () => {
       const res = await fetch(`/api/organizations/${orgId}/analytics/interviewers`, { credentials: "include" });
@@ -129,22 +128,9 @@ function usePerformanceMetrics(orgId: number) {
       return res.json();
     },
     staleTime: 60000,
-    enabled: isValidOrgId,
-    retry: 1,
+    enabled: orgId > 0,
+    retry: 2,
   });
-  
-  // Status will be 'pending' when enabled=false OR when first loading
-  // fetchStatus will be 'fetching' when actually making a request
-  // fetchStatus will be 'idle' when query is disabled
-  const isQueryDisabled = !isValidOrgId;
-  const isActuallyLoading = query.status === 'pending' && query.fetchStatus === 'fetching';
-  
-  return {
-    ...query,
-    isActuallyLoading,
-    isValidOrgId,
-    isQueryDisabled,
-  };
 }
 
 function formatTimeFromMinutes(minutes: number): string {
@@ -256,7 +242,9 @@ function InterviewerListItem({
 const routeColors = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 export default function SupervisorDashboard({ params }: { params: { orgId: string } }) {
-  const orgId = parseInt(params.orgId);
+  const orgId = params.orgId ? parseInt(params.orgId, 10) : 0;
+  const isValidOrgId = orgId > 0 && !isNaN(orgId);
+  
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [selectedInterviewers, setSelectedInterviewers] = useState<Set<string>>(new Set());
   const [routesVisible, setRoutesVisible] = useState<Set<string>>(new Set());
@@ -264,7 +252,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
-  const { data: performanceData, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError, isActuallyLoading: performanceLoading, isValidOrgId, isQueryDisabled: performanceQueryDisabled } = usePerformanceMetrics(orgId);
+  const { data: performanceData, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError, isLoading: performanceLoading } = usePerformanceMetrics(orgId);
 
   const isFetching = isFetchingOverview || isFetchingRealtime || isFetchingPerformance;
   const isLoading = overviewLoading || realtimeLoading;
@@ -578,7 +566,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-6">
-            {performanceQueryDisabled ? (
+            {!isValidOrgId ? (
               <Card>
                 <CardContent className="py-8 text-center">
                   <p className="text-muted-foreground">Organização inválida</p>
