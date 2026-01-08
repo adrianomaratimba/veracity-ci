@@ -120,9 +120,11 @@ function useInterviewerRoute(orgId: number, userId: string | null, date?: Date) 
 }
 
 function usePerformanceMetrics(orgId: number) {
+  console.log('[usePerformanceMetrics] called with orgId:', orgId, 'enabled:', !!orgId);
   return useQuery<PerformanceDashboard>({
     queryKey: ['/api/organizations', orgId, 'analytics', 'interviewers'],
     queryFn: async () => {
+      console.log('[usePerformanceMetrics] queryFn executing for org:', orgId);
       const res = await fetch(`/api/organizations/${orgId}/analytics/interviewers`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch performance metrics");
       return res.json();
@@ -246,6 +248,8 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   const [selectedInterviewers, setSelectedInterviewers] = useState<Set<string>>(new Set());
   const [routesVisible, setRoutesVisible] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("realtime");
+  
+  console.log('[SupervisorDashboard] orgId:', orgId, 'params:', params, 'activeTab:', activeTab);
   
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
