@@ -119,18 +119,45 @@ function useInterviewerRoute(orgId: number, userId: string | null, date?: Date) 
   });
 }
 
-function usePerformanceMetrics(orgId: number) {
-  return useQuery<PerformanceDashboard>({
-    queryKey: ['/api/organizations', orgId, 'analytics', 'interviewers'],
-    queryFn: async () => {
+function usePerformanceMetrics(orgId: number, shouldFetch: boolean) {
+  const [data, setData] = useState<PerformanceDashboard | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isError, setIsError] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+
+  const fetchData = async () => {
+    if (orgId <= 0 || isNaN(orgId)) return;
+    
+    setIsFetching(true);
+    if (!data) setIsLoading(true);
+    setIsError(false);
+    
+    try {
       const res = await fetch(`/api/organizations/${orgId}/analytics/interviewers`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch performance metrics");
-      return res.json();
-    },
-    staleTime: 60000,
-    enabled: orgId > 0,
-    retry: 2,
-  });
+      const result = await res.json();
+      setData(result);
+    } catch (error) {
+      setIsError(true);
+    } finally {
+      setIsLoading(false);
+      setIsFetching(false);
+    }
+  };
+
+  useEffect(() => {
+    if (shouldFetch && orgId > 0 && !data) {
+      fetchData();
+    }
+  }, [shouldFetch, orgId]);
+
+  return {
+    data,
+    isLoading,
+    isError,
+    isFetching,
+    refetch: fetchData,
+  };
 }
 
 function formatTimeFromMinutes(minutes: number): string {
@@ -252,7 +279,9 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
-  const { data: performanceData, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError, isLoading: performanceLoading } = usePerformanceMetrics(orgId);
+  
+  const shouldFetchPerformance = activeTab === "performance" && isValidOrgId;
+  const { data: performanceData, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError, isLoading: performanceLoading } = usePerformanceMetrics(orgId, shouldFetchPerformance);
 
   const isFetching = isFetchingOverview || isFetchingRealtime || isFetchingPerformance;
   const isLoading = overviewLoading || realtimeLoading;
@@ -262,12 +291,6 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
       setLastRefresh(new Date());
     }
   }, [isFetching]);
-
-  useEffect(() => {
-    if (activeTab === "performance" && !performanceData && isValidOrgId) {
-      refetchPerformance();
-    }
-  }, [activeTab, performanceData, isValidOrgId, refetchPerformance]);
 
   const handleManualRefresh = () => {
     refetchOverview();
