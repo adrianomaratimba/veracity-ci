@@ -55,6 +55,8 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const canEdit = canManageSurveys(userRole);
   const canSeeResults = canViewAnalytics(userRole);
   const isInterviewer = isInterviewerRole(userRole);
+  const isViewer = userRole === 'viewer';
+  const canAccessCollection = !isViewer && (isInterviewer || userRole === 'admin' || userRole === 'owner' || userRole === 'coordinator');
   const [newSurvey, setNewSurvey] = useState({
     title: "",
     description: "",
@@ -392,15 +394,19 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                           {isExporting === survey.id ? "Exportando..." : "Exportar Template"}
                         </DropdownMenuItem>
                       )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/collect/${survey.id}`)}>
-                        <Copy className="w-4 h-4 mr-2" />
-                        Copiar Link de Coleta
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => window.open(`/collect/${survey.id}`, '_blank')}>
-                        <ExternalLink className="w-4 h-4 mr-2" />
-                        Abrir Coleta
-                      </DropdownMenuItem>
+                      {canAccessCollection && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/collect/${survey.id}`)}>
+                            <Copy className="w-4 h-4 mr-2" />
+                            Copiar Link de Coleta
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => window.open(`/collect/${survey.id}`, '_blank')}>
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Abrir Coleta
+                          </DropdownMenuItem>
+                        </>
+                      )}
                       {canEdit && (
                         <>
                           <DropdownMenuSeparator />
@@ -432,7 +438,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
           <div>
             <h1 className="text-3xl font-display font-bold">Pesquisas</h1>
             <p className="text-muted-foreground">
-              {isInterviewer ? "Suas pesquisas designadas" : "Gerencie suas pesquisas e questionarios"}
+              {isInterviewer ? "Suas pesquisas designadas" : isViewer ? "Pesquisas atribuídas a você" : "Gerencie suas pesquisas e questionarios"}
             </p>
           </div>
           {canCreate && (
@@ -588,12 +594,14 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                       <FileText className="w-8 h-8 text-muted-foreground" />
                     </div>
                     <h3 className="text-lg font-semibold mb-2">
-                      {isInterviewer ? "Nenhuma pesquisa designada" : "Nenhuma pesquisa ainda"}
+                      {isInterviewer || isViewer ? "Nenhuma pesquisa atribuída" : "Nenhuma pesquisa ainda"}
                     </h3>
                     <p className="text-muted-foreground mb-6 max-w-sm">
                       {isInterviewer 
                         ? "Voce ainda nao foi designado para nenhuma pesquisa. Aguarde ser adicionado a uma pesquisa pelo coordenador."
-                        : "Crie sua primeira pesquisa para comecar a coletar dados com seguranca e auditoria."
+                        : isViewer 
+                          ? "Você ainda não foi atribuído a nenhuma pesquisa. Aguarde um administrador atribuir pesquisas a você."
+                          : "Crie sua primeira pesquisa para comecar a coletar dados com seguranca e auditoria."
                       }
                     </p>
                     {canCreate && (
@@ -643,12 +651,14 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                 <FileText className="w-8 h-8 text-muted-foreground" />
               </div>
               <h3 className="text-lg font-semibold mb-2">
-                {isInterviewer ? "Nenhuma pesquisa designada" : "Nenhuma pesquisa ainda"}
+                {isInterviewer || isViewer ? "Nenhuma pesquisa atribuída" : "Nenhuma pesquisa ainda"}
               </h3>
               <p className="text-muted-foreground mb-6 max-w-sm">
                 {isInterviewer 
                   ? "Voce ainda nao foi designado para nenhuma pesquisa. Aguarde ser adicionado a uma pesquisa pelo coordenador."
-                  : "Crie sua primeira pesquisa para comecar a coletar dados com seguranca e auditoria."
+                  : isViewer 
+                    ? "Você ainda não foi atribuído a nenhuma pesquisa. Aguarde um administrador atribuir pesquisas a você."
+                    : "Crie sua primeira pesquisa para comecar a coletar dados com seguranca e auditoria."
                 }
               </p>
             </CardContent>
