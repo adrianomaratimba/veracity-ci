@@ -4,6 +4,7 @@ import {
   deletePendingInterview,
   type PendingInterview 
 } from './offlineStorage';
+import { apiRequest } from './queryClient';
 
 const MAX_RETRIES = 5;
 const BASE_DELAY = 1000;
