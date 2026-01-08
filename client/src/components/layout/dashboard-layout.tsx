@@ -18,7 +18,8 @@ import {
   Building2,
   Check,
   Radar,
-  Crown
+  Crown,
+  BarChart2
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -80,11 +81,12 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
     if (!orgId) return [];
     
     // ================================================================
-    // ENTREVISTADOR - Only sees assigned surveys
+    // ENTREVISTADOR - Only sees assigned surveys and performance
     // ================================================================
     if (isInterviewerRole(userRole)) {
       return [
         { name: 'Minhas Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
+        { name: 'Meu Desempenho', href: '/collect/my-performance', icon: BarChart2 },
       ];
     }
     
