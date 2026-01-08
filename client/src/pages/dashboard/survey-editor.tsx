@@ -454,6 +454,49 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     }
   });
 
+  // Viewer assignments - only fetch if not new survey
+  const { data: viewerAssignments = [], isLoading: viewerAssignmentsLoading } = useQuery<any[]>({
+    queryKey: [`/api/surveys/${surveyId}/viewers`],
+    enabled: !isNewSurvey && surveyId > 0,
+  });
+
+  const { data: availableViewers = [], isLoading: viewersLoading } = useQuery<any[]>({
+    queryKey: [`/api/organizations/${orgId}/viewers`],
+    enabled: !isNewSurvey && surveyId > 0,
+  });
+
+  const assignViewer = useMutation({
+    mutationFn: async (viewerId: string) => {
+      const res = await apiRequest('POST', `/api/surveys/${surveyId}/viewers`, { userId: viewerId });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Erro ao designar visualizador');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/viewers`] });
+      toast({ title: "Visualizador designado" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const unassignViewer = useMutation({
+    mutationFn: async (viewerId: string) => {
+      const res = await apiRequest('DELETE', `/api/surveys/${surveyId}/viewers/${viewerId}`);
+      if (!res.ok) throw new Error('Erro ao remover designação');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/viewers`] });
+      toast({ title: "Visualizador removido" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao remover visualizador", variant: "destructive" });
+    }
+  });
+
   const [surveyForm, setSurveyForm] = useState({
     title: "",
     description: "",
@@ -793,7 +836,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         </div>
 
         <Tabs defaultValue={isNewSurvey ? "settings" : "questions"} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 max-w-3xl">
+          <TabsList className="grid w-full grid-cols-6 max-w-4xl">
             <TabsTrigger value="questions" className="gap-2" disabled={isNewSurvey} data-testid="tab-questions">
               <FileText className="w-4 h-4" /> Perguntas
             </TabsTrigger>
@@ -805,6 +848,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             </TabsTrigger>
             <TabsTrigger value="coordinators" className="gap-2" disabled={isNewSurvey} data-testid="tab-coordinators">
               <Users className="w-4 h-4" /> Coordenadores
+            </TabsTrigger>
+            <TabsTrigger value="viewers" className="gap-2" disabled={isNewSurvey} data-testid="tab-viewers">
+              <Users className="w-4 h-4" /> Visualizadores
             </TabsTrigger>
             <TabsTrigger value="settings" className="gap-2" data-testid="tab-settings">
               <Settings2 className="w-4 h-4" /> Config
@@ -1182,6 +1228,111 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                               onClick={() => assignCoordinator.mutate(c.userId)}
                               disabled={assignCoordinator.isPending}
                               data-testid={`button-assign-coordinator-${c.userId}`}
+                            >
+                              <UserPlus className="w-4 h-4 mr-2" /> Adicionar
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="viewers" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Visualizadores Designados</CardTitle>
+                <CardDescription>Escolha quais visualizadores podem acessar os resultados desta pesquisa</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-3">
+                  <Label>Visualizadores atribuidos a esta pesquisa</Label>
+                  {viewerAssignmentsLoading ? (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">Carregando...</p>
+                  ) : viewerAssignments.length > 0 ? (
+                    <div className="space-y-2">
+                      {viewerAssignments.map((a: any) => (
+                        <div key={a.userId} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback>
+                                {(a.user?.firstName?.[0] || a.user?.email?.[0] || '?').toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium text-sm">
+                                {a.user?.firstName && a.user?.lastName
+                                  ? `${a.user.firstName} ${a.user.lastName}`
+                                  : a.user?.email || 'Visualizador'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{a.user?.email}</p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => unassignViewer.mutate(a.userId)}
+                            disabled={unassignViewer.isPending}
+                            data-testid={`button-unassign-viewer-${a.userId}`}
+                          >
+                            <UserMinus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                      Nenhum visualizador designado. Adicione visualizadores abaixo.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-3 pt-4 border-t">
+                  <Label>Adicionar visualizador</Label>
+                  {viewersLoading ? (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">Carregando visualizadores...</p>
+                  ) : (() => {
+                    const assignedIds = viewerAssignments.map((a: any) => a.userId);
+                    const unassigned = availableViewers.filter((v: any) => !assignedIds.includes(v.userId));
+                    
+                    if (unassigned.length === 0) {
+                      return (
+                        <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                          {availableViewers.length === 0
+                            ? "Nao ha visualizadores cadastrados na organizacao. Adicione membros com a funcao 'Visualizador' na pagina de Equipe."
+                            : "Todos os visualizadores ja estao designados para esta pesquisa."}
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        {unassigned.map((v: any) => (
+                          <div key={v.userId} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>
+                                  {(v.user?.firstName?.[0] || v.user?.email?.[0] || '?').toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium text-sm">
+                                  {v.user?.firstName && v.user?.lastName
+                                    ? `${v.user.firstName} ${v.user.lastName}`
+                                    : v.user?.email || 'Visualizador'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{v.user?.email}</p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => assignViewer.mutate(v.userId)}
+                              disabled={assignViewer.isPending}
+                              data-testid={`button-assign-viewer-${v.userId}`}
                             >
                               <UserPlus className="w-4 h-4 mr-2" /> Adicionar
                             </Button>
