@@ -121,8 +121,9 @@ async function syncInterview(interview: PendingInterview): Promise<boolean> {
     }
     console.log('[SyncQueue] Áudio enviado:', uploadRes.objectPath);
     
-    console.log('[SyncQueue] Enviando dados da entrevista ao servidor...');
+    console.log('[SyncQueue] Enviando dados da entrevista ao servidor com clientId:', interview.clientId);
     const saveResponse = await apiRequest('POST', `/api/surveys/${interview.surveyId}/responses`, {
+      clientId: interview.clientId,
       response: {
         latitude: interview.data.response.latitude,
         longitude: interview.data.response.longitude,
