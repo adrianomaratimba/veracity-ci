@@ -95,7 +95,7 @@ export default function MyPerformance() {
     <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-sm border-b px-4 py-3">
         <div className="flex items-center gap-3">
-          <Link href="/collect/pending">
+          <Link href={orgId ? `/org/${orgId}/surveys` : "/collect/pending"}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ArrowLeft className="h-5 w-5" />
             </Button>
