@@ -255,6 +255,8 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
   const { data: performanceData, isLoading: performanceLoading, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError } = usePerformanceMetrics(orgId);
 
+  console.log('[SupervisorDashboard] performanceLoading:', performanceLoading, 'performanceData:', !!performanceData, 'performanceError:', performanceError, 'isFetchingPerformance:', isFetchingPerformance);
+
   const isFetching = isFetchingOverview || isFetchingRealtime || isFetchingPerformance;
   const isLoading = overviewLoading || realtimeLoading;
 
