@@ -27,6 +27,7 @@ export interface InterviewerSurveyOption {
 
 export interface IndividualMetrics {
   name: string;
+  profileImageUrl: string | null;
   surveysCompleted: number;
   totalInterviews: number;
   totalTimeMinutes: number;
@@ -75,7 +76,7 @@ export async function getIndividualInterviewerMetrics(
   orgId: number,
   surveyId?: number | null
 ): Promise<IndividualMetrics> {
-  const user = await db.select({ firstName: users.firstName, lastName: users.lastName })
+  const user = await db.select({ firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
     .from(users)
     .where(eq(users.id, interviewerId))
     .limit(1);
@@ -83,6 +84,7 @@ export async function getIndividualInterviewerMetrics(
   const name = user.length > 0 
     ? `${user[0].firstName || ''} ${user[0].lastName || ''}`.trim() || 'Entrevistador'
     : 'Entrevistador';
+  const profileImageUrl = user.length > 0 ? user[0].profileImageUrl : null;
 
   const surveyOptions = await getInterviewerSurveyOptions(interviewerId, orgId);
 
@@ -141,6 +143,7 @@ export async function getIndividualInterviewerMetrics(
 
   return {
     name,
+    profileImageUrl,
     surveysCompleted: surveyId ? (completedSurveys.some(s => s.surveyId === surveyId) ? 1 : 0) : completedSurveys.length,
     totalInterviews: stats.totalInterviews,
     totalTimeMinutes,

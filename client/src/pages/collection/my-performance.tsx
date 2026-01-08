@@ -5,7 +5,8 @@ import { useOrganizations } from "@/hooks/use-organizations";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ClipboardList, Users, Clock, MapPin, Flame, Loader2 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ArrowLeft, ClipboardList, Users, Clock, MapPin, Flame, Loader2, ChevronDown } from "lucide-react";
 import { Link } from "wouter";
 
 interface SurveyOption {
@@ -19,6 +20,7 @@ interface SurveyOption {
 
 interface PerformanceMetrics {
   name: string;
+  profileImageUrl?: string | null;
   surveysCompleted: number;
   totalInterviews: number;
   totalTimeMinutes: number;
@@ -28,18 +30,17 @@ interface PerformanceMetrics {
   participatedSurveys: SurveyOption[];
 }
 
-function formatTime(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+function formatTimeHM(minutes: number): { hours: string; mins: string } {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return { hours: h.toString().padStart(2, '0'), mins: m.toString().padStart(2, '0') };
 }
 
 function formatDistance(meters: number): { value: string; unit: string } {
   if (meters < 1000) {
-    return { value: meters.toFixed(0), unit: "metros" };
+    return { value: meters.toFixed(0), unit: "m" };
   }
-  return { value: (meters / 1000).toFixed(2), unit: "km" };
+  return { value: (meters / 1000).toFixed(1), unit: "km" };
 }
 
 function formatDate(dateStr: string | null): string {
@@ -77,6 +78,10 @@ export default function MyPerformance() {
     : selectedSurvey === "current" ? currentSurvey : null;
 
   const distance = formatDistance(metrics?.totalDistanceMeters || 0);
+  const time = formatTimeHM(metrics?.totalTimeMinutes || 0);
+
+  const initials = (metrics?.name || user?.firstName || "").split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  const profileUrl = metrics?.profileImageUrl || user?.profileImageUrl;
 
   if (isLoading) {
     return (
@@ -87,35 +92,42 @@ export default function MyPerformance() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 bg-background border-b px-4 py-3">
+    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
+      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-sm border-b px-4 py-3">
         <div className="flex items-center gap-3">
           <Link href="/collect/pending">
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </Link>
-          <div>
-            <h1 className="text-lg font-semibold" data-testid="text-interviewer-name">
-              {metrics?.name || user?.firstName || "Meu Desempenho"}
-            </h1>
-            <p className="text-sm text-muted-foreground">Meu desempenho</p>
-          </div>
+          <h1 className="text-lg font-semibold">Meu Desempenho</h1>
         </div>
       </header>
 
-      <main className="p-4 space-y-4">
+      <main className="p-4 space-y-6 max-w-lg mx-auto">
+        <div className="flex flex-col items-center pt-4 pb-2">
+          <Avatar className="w-24 h-24 border-4 border-background shadow-lg">
+            <AvatarImage src={profileUrl || undefined} />
+            <AvatarFallback className="text-2xl font-semibold bg-primary/10 text-primary">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <h2 className="mt-3 text-xl font-bold" data-testid="text-interviewer-name">
+            {metrics?.name || user?.firstName || "Entrevistador"}
+          </h2>
+          <p className="text-sm text-muted-foreground">Entrevistador</p>
+        </div>
+
         <div className="space-y-2">
-          <label className="text-sm font-medium text-muted-foreground">Filtrar por pesquisa</label>
           <Select value={selectedSurvey} onValueChange={setSelectedSurvey}>
-            <SelectTrigger className="w-full" data-testid="select-survey-filter">
-              <SelectValue placeholder="Selecione uma pesquisa" />
+            <SelectTrigger className="w-full bg-card border" data-testid="select-survey-filter">
+              <SelectValue placeholder="Filtrar por pesquisa" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as pesquisas</SelectItem>
               {currentSurvey && (
                 <SelectItem value="current">
-                  Pesquisa atual - {currentSurvey.title}
+                  Atual: {currentSurvey.title}
                 </SelectItem>
               )}
               {surveyOptions.filter(s => s.status !== "active").map(survey => (
@@ -125,95 +137,93 @@ export default function MyPerformance() {
               ))}
             </SelectContent>
           </Select>
+          {selectedSurveyData && (
+            <p className="text-xs text-muted-foreground text-center">
+              Periodo: {formatDate(selectedSurveyData.startDate)} a {formatDate(selectedSurveyData.endDate)}
+            </p>
+          )}
         </div>
 
-        {selectedSurveyData && (
-          <div className="text-sm text-muted-foreground text-center py-2">
-            Dados de: {formatDate(selectedSurveyData.startDate)} a {formatDate(selectedSurveyData.endDate)}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 gap-4">
-          <Card data-testid="card-surveys-completed">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/30">
-                  <ClipboardList className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">Pesquisas Finalizadas</p>
-                  <p className="text-3xl font-bold" data-testid="value-surveys-completed">
-                    {metrics?.surveysCompleted || 0}
-                  </p>
-                </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Card className="overflow-visible" data-testid="card-surveys-completed">
+            <CardContent className="p-4 text-center">
+              <div className="mx-auto w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-2">
+                <ClipboardList className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
+              <p className="text-2xl font-bold" data-testid="value-surveys-completed">
+                {metrics?.surveysCompleted || 0}
+              </p>
+              <p className="text-xs text-muted-foreground">Pesquisas</p>
             </CardContent>
           </Card>
 
-          <Card data-testid="card-interviews">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-full bg-green-100 dark:bg-green-900/30">
-                  <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">Pessoas Entrevistadas</p>
-                  <p className="text-3xl font-bold" data-testid="value-interviews">
-                    {metrics?.totalInterviews || 0}
-                  </p>
-                </div>
+          <Card className="overflow-visible" data-testid="card-interviews">
+            <CardContent className="p-4 text-center">
+              <div className="mx-auto w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-2">
+                <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
               </div>
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-time">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900/30">
-                  <Clock className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">Tempo em Entrevistas</p>
-                  <p className="text-3xl font-bold" data-testid="value-time">
-                    {formatTime(metrics?.totalTimeMinutes || 0)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-distance">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-full bg-orange-100 dark:bg-orange-900/30">
-                  <MapPin className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">Distancia Percorrida</p>
-                  <p className="text-3xl font-bold" data-testid="value-distance">
-                    {distance.value} <span className="text-lg font-normal text-muted-foreground">{distance.unit}</span>
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-calories">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-full bg-red-100 dark:bg-red-900/30">
-                  <Flame className="h-6 w-6 text-red-600 dark:text-red-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">Calorias Gastas</p>
-                  <p className="text-3xl font-bold" data-testid="value-calories">
-                    {metrics?.caloriesBurned || 0} <span className="text-lg font-normal text-muted-foreground">kcal</span>
-                  </p>
-                </div>
-              </div>
+              <p className="text-2xl font-bold" data-testid="value-interviews">
+                {metrics?.totalInterviews || 0}
+              </p>
+              <p className="text-xs text-muted-foreground">Entrevistas</p>
             </CardContent>
           </Card>
         </div>
+
+        <Card className="overflow-visible" data-testid="card-time">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0">
+                <Clock className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-muted-foreground mb-1">Tempo Trabalhado</p>
+                <div className="flex items-baseline gap-1" data-testid="value-time">
+                  <span className="text-3xl font-bold">{time.hours}</span>
+                  <span className="text-lg text-muted-foreground">h</span>
+                  <span className="text-3xl font-bold ml-1">{time.mins}</span>
+                  <span className="text-lg text-muted-foreground">min</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-visible" data-testid="card-distance">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
+                <MapPin className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-muted-foreground mb-1">Distancia Percorrida</p>
+                <div className="flex items-baseline gap-1" data-testid="value-distance">
+                  <span className="text-3xl font-bold">{distance.value}</span>
+                  <span className="text-lg text-muted-foreground">{distance.unit}</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-visible" data-testid="card-calories">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                <Flame className="h-6 w-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-muted-foreground mb-1">Calorias Gastas</p>
+                <div className="flex items-baseline gap-1" data-testid="value-calories">
+                  <span className="text-3xl font-bold">{metrics?.caloriesBurned || 0}</span>
+                  <span className="text-lg text-muted-foreground">kcal</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="pb-6"></div>
       </main>
     </div>
   );
