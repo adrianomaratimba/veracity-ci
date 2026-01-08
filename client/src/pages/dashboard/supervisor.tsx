@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
-import { RefreshCw, Users, ClipboardList, MapPin, Clock, Activity, Route, Eye, EyeOff, Trophy, Timer, Flame } from "lucide-react";
+import { RefreshCw, Users, ClipboardList, MapPin, Clock, Activity, Route, Eye, EyeOff, Trophy, Timer, Flame, Radar } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistanceToNow, format } from "date-fns";
@@ -370,6 +370,10 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
               <MapPin className="w-4 h-4 mr-2" />
               Tempo Real
             </TabsTrigger>
+            <TabsTrigger value="monitoring" data-testid="tab-monitoring">
+              <Radar className="w-4 h-4 mr-2" />
+              Monitoramento
+            </TabsTrigger>
             <TabsTrigger value="performance" data-testid="tab-performance">
               <Trophy className="w-4 h-4 mr-2" />
               Desempenho
@@ -560,6 +564,165 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                       )}
                     </div>
                   </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="monitoring" className="space-y-4">
+            <div className="flex flex-col lg:flex-row gap-4">
+              <Card className="lg:w-80 shrink-0">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                  <CardTitle className="text-lg">Filtrar Entrevistadores</CardTitle>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" onClick={selectAll} data-testid="button-monitoring-select-all">
+                      Todos
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={deselectAll} data-testid="button-monitoring-deselect-all">
+                      Nenhum
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-2">
+                  <ScrollArea className="h-[300px] lg:h-[calc(70vh-100px)]">
+                    <div className="space-y-1">
+                      {realtimeData?.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-8">
+                          Nenhum entrevistador cadastrado
+                        </p>
+                      ) : (
+                        realtimeData
+                          ?.sort((a, b) => {
+                            if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+                            return a.name.localeCompare(b.name);
+                          })
+                          .map(interviewer => {
+                            const initials = interviewer.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                            const isSelected = selectedInterviewers.size === 0 || selectedInterviewers.has(interviewer.userId);
+                            return (
+                              <div 
+                                key={interviewer.userId}
+                                className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover-elevate ${isSelected ? 'bg-primary/10 border border-primary/30' : ''}`}
+                                onClick={() => toggleInterviewer(interviewer.userId)}
+                                data-testid={`monitoring-interviewer-${interviewer.userId}`}
+                              >
+                                <Checkbox 
+                                  checked={isSelected} 
+                                  onClick={(e) => e.stopPropagation()}
+                                  onCheckedChange={() => toggleInterviewer(interviewer.userId)}
+                                />
+                                <div className="relative">
+                                  <Avatar className="h-8 w-8">
+                                    <AvatarImage src={interviewer.profileImageUrl || undefined} />
+                                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                                  </Avatar>
+                                  <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${getStatusColor(interviewer.isOnline)}`} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <span className="font-medium text-sm truncate block">{interviewer.name}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {interviewer.isOnline ? 'Online' : 'Offline'}
+                                    {interviewer.lastLocation && ` - ${formatDistanceToNow(new Date(interviewer.lastLocation.time), { addSuffix: true, locale: ptBR })}`}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })
+                      )}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              <Card className="flex-1 overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Radar className="w-5 h-5" />
+                    Mapa de Monitoramento
+                  </CardTitle>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span>
+                      {interviewersWithLocation.length} de {realtimeData?.length ?? 0} com localização
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 rounded-full bg-green-500" />
+                        <span>Online</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 rounded-full bg-gray-400" />
+                        <span>Offline</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="h-[70vh]">
+                    <MapContainer
+                      center={defaultCenter}
+                      zoom={interviewersWithLocation.length > 0 ? 12 : 4}
+                      style={{ height: '100%', width: '100%' }}
+                      scrollWheelZoom={true}
+                    >
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      {interviewersWithLocation.map((interviewer) => {
+                        const initials = interviewer.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                        return (
+                          <Marker
+                            key={interviewer.userId}
+                            position={[interviewer.lastLocation!.lat, interviewer.lastLocation!.lng]}
+                            icon={createMarkerIcon(interviewer.isOnline)}
+                          >
+                            <Popup>
+                              <div className="flex flex-col items-center gap-2 p-1 min-w-[150px]">
+                                <div className="relative">
+                                  {interviewer.profileImageUrl ? (
+                                    <img 
+                                      src={interviewer.profileImageUrl} 
+                                      alt={interviewer.name}
+                                      className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md"
+                                    />
+                                  ) : (
+                                    <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center border-2 border-white shadow-md">
+                                      <span className="text-lg font-semibold text-primary">{initials}</span>
+                                    </div>
+                                  )}
+                                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(interviewer.isOnline)}`} />
+                                </div>
+                                <div className="text-center">
+                                  <strong className="block text-sm">{interviewer.name}</strong>
+                                  <span className={`text-xs font-medium ${interviewer.isOnline ? 'text-green-600' : 'text-gray-500'}`}>
+                                    {interviewer.isOnline ? 'Online' : 'Offline'}
+                                  </span>
+                                </div>
+                                {interviewer.currentSurvey && (
+                                  <div className="text-xs text-muted-foreground text-center border-t pt-2 w-full">
+                                    <MapPin className="w-3 h-3 inline mr-1" />
+                                    {interviewer.currentSurvey.title}
+                                  </div>
+                                )}
+                                {interviewer.distanceToday > 0 && (
+                                  <div className="text-xs text-muted-foreground">
+                                    <Route className="w-3 h-3 inline mr-1" />
+                                    {formatDistance(interviewer.distanceToday)} hoje
+                                  </div>
+                                )}
+                                {interviewer.lastLocation && (
+                                  <div className="text-xs text-muted-foreground border-t pt-2 w-full text-center">
+                                    <Clock className="w-3 h-3 inline mr-1" />
+                                    {format(new Date(interviewer.lastLocation.time), "dd/MM HH:mm:ss", { locale: ptBR })}
+                                  </div>
+                                )}
+                              </div>
+                            </Popup>
+                          </Marker>
+                        );
+                      })}
+                    </MapContainer>
+                  </div>
                 </CardContent>
               </Card>
             </div>
