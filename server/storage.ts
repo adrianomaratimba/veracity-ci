@@ -10,6 +10,7 @@ import {
   surveyAssignments, SurveyAssignment, InsertSurveyAssignment,
   surveyCoordinators, SurveyCoordinator, InsertSurveyCoordinator,
   surveyViewers, SurveyViewer, InsertSurveyViewer,
+  surveyViewerSettings, SurveyViewerSettings, InsertSurveyViewerSettings,
   memberPermissionOverrides, MemberPermissionOverride, InsertMemberPermissionOverride,
   accessAuditLog, AccessAuditLog, InsertAccessAuditLog,
   questionModules, QuestionModule, InsertQuestionModule,
@@ -166,6 +167,10 @@ export interface IStorage {
   assignViewer(data: InsertSurveyViewer): Promise<SurveyViewer>;
   unassignViewer(surveyId: number, viewerId: string): Promise<void>;
   isViewerAssigned(surveyId: number, viewerId: string): Promise<boolean>;
+
+  // Survey Viewer Settings
+  getSurveyViewerSettings(surveyId: number): Promise<SurveyViewerSettings | undefined>;
+  upsertSurveyViewerSettings(surveyId: number, data: Partial<InsertSurveyViewerSettings>, updatedBy?: string): Promise<SurveyViewerSettings>;
 
   // Permission Overrides
   getMemberPermissionOverrides(memberId: number): Promise<MemberPermissionOverride[]>;
@@ -776,6 +781,36 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return !!assignment;
+  }
+
+  // --- SURVEY VIEWER SETTINGS ---
+  async getSurveyViewerSettings(surveyId: number): Promise<SurveyViewerSettings | undefined> {
+    const [settings] = await db.select()
+      .from(surveyViewerSettings)
+      .where(eq(surveyViewerSettings.surveyId, surveyId))
+      .limit(1);
+    return settings;
+  }
+
+  async upsertSurveyViewerSettings(
+    surveyId: number, 
+    data: Partial<InsertSurveyViewerSettings>, 
+    updatedBy?: string
+  ): Promise<SurveyViewerSettings> {
+    const existing = await this.getSurveyViewerSettings(surveyId);
+    
+    if (existing) {
+      const [updated] = await db.update(surveyViewerSettings)
+        .set({ ...data, updatedAt: new Date(), updatedBy })
+        .where(eq(surveyViewerSettings.surveyId, surveyId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(surveyViewerSettings)
+        .values({ ...data, surveyId, updatedBy })
+        .returning();
+      return created;
+    }
   }
 
   // --- INTERVIEWER COMPARISON (Audit) ---

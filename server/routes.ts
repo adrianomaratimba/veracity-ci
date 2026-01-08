@@ -1216,6 +1216,74 @@ export async function registerRoutes(
     }
   });
 
+  // ============= SURVEY VIEWER SETTINGS =============
+  
+  // Get viewer settings for a survey
+  app.get("/api/surveys/:surveyId/viewer-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const settings = await storage.getSurveyViewerSettings(surveyId);
+      
+      // Return default settings if none exist
+      if (!settings) {
+        return res.json({
+          surveyId,
+          showFilters: false,
+          filterAgeGroup: false,
+          filterGender: false,
+          filterNeighborhood: false,
+          filterInterviewer: false,
+          showIntentionTab: true,
+          showEvolutionTab: false,
+          showCrossingsTab: false,
+          showProfileTab: false,
+          showReportTab: false,
+          showMainResult: true,
+          showDemographicBreakdowns: false,
+          showGenderBreakdown: false,
+          showAgeBreakdown: false,
+          showNeighborhoodBreakdown: false,
+          showInterviewerStats: false,
+          allowExcelExport: false,
+          allowPdfExport: false,
+        });
+      }
+      
+      res.json(settings);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao buscar configurações" });
+    }
+  });
+
+  // Update viewer settings for a survey
+  app.put("/api/surveys/:surveyId/viewer-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para editar configurações" });
+      }
+      
+      const settings = await storage.upsertSurveyViewerSettings(surveyId, req.body, userId);
+      res.json(settings);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao salvar configurações" });
+    }
+  });
+
   // 5. Responses (Collection) - CRITICAL: GPS & Audio Validation - SECURED
   app.post(api.responses.submit.path, isAuthenticated, async (req, res) => {
     try {
