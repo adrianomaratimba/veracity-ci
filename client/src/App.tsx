@@ -61,6 +61,7 @@ import ViewerPortal from "@/pages/dashboard/viewer-portal";
 import AccessControlPage from "@/pages/dashboard/access-control";
 import InterviewSession from "@/pages/collection/interview-session";
 import PendingInterviews from "@/pages/collection/pending-interviews";
+import MyPerformance from "@/pages/collection/my-performance";
 import VerifyEmailPage from "@/pages/verify-email";
 import ResetPasswordPage from "@/pages/reset-password";
 import ContactPage from "@/pages/contact";
@@ -119,6 +120,7 @@ function AuthenticatedRoutes() {
       
       {/* PWA / Mobile Collection Routes */}
       <Route path="/collect/pending" component={PendingInterviews} />
+      <Route path="/collect/my-performance" component={MyPerformance} />
       <Route path="/collect/:surveyId" component={InterviewSession} />
       
       {/* Fallback */}
