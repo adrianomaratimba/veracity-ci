@@ -2461,12 +2461,17 @@ export async function registerRoutes(
         sessionId: z.string().optional()
       }).parse(req.body);
 
+      const MAX_ACCURACY_THRESHOLD = 100;
+      if (input.accuracy != null && input.accuracy > MAX_ACCURACY_THRESHOLD) {
+        return res.json({ success: true, skipped: true, reason: 'low_accuracy' });
+      }
+
       await db.insert(interviewerLocations).values({
         organizationId: orgId,
         userId,
         latitude: input.latitude,
         longitude: input.longitude,
-        accuracy: input.accuracy,
+        accuracy: input.accuracy ?? 10,
         speed: input.speed,
         heading: input.heading,
         surveyId: input.surveyId,

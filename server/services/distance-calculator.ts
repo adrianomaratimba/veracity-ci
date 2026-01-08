@@ -32,19 +32,39 @@ export function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(2)} km`;
 }
 
+const MAX_ACCURACY_METERS = 50;
+const MIN_MOVEMENT_METERS = 10;
+
 export async function calculateTotalDistanceFromLocations(
-  locations: Array<{ latitude: number; longitude: number }>
+  locations: Array<{ latitude: number; longitude: number; accuracy?: number | null }>
 ): Promise<number> {
   if (locations.length < 2) return 0;
   
+  const validLocations = locations.filter(loc => {
+    if (loc.accuracy != null && loc.accuracy > MAX_ACCURACY_METERS) {
+      return false;
+    }
+    return true;
+  });
+  
+  if (validLocations.length < 2) return 0;
+  
   let totalDistance = 0;
-  for (let i = 1; i < locations.length; i++) {
-    totalDistance += calculateHaversineDistance(
-      locations[i - 1].latitude,
-      locations[i - 1].longitude,
-      locations[i].latitude,
-      locations[i].longitude
+  for (let i = 1; i < validLocations.length; i++) {
+    const distance = calculateHaversineDistance(
+      validLocations[i - 1].latitude,
+      validLocations[i - 1].longitude,
+      validLocations[i].latitude,
+      validLocations[i].longitude
     );
+    
+    const accuracy1 = validLocations[i - 1].accuracy ?? 10;
+    const accuracy2 = validLocations[i].accuracy ?? 10;
+    const combinedAccuracy = Math.max(accuracy1, accuracy2, MIN_MOVEMENT_METERS);
+    
+    if (distance > combinedAccuracy) {
+      totalDistance += distance;
+    }
   }
   
   return totalDistance;
@@ -65,6 +85,7 @@ export async function updateDailyDistanceSummary(
   const locations = await db.select({
     latitude: interviewerLocations.latitude,
     longitude: interviewerLocations.longitude,
+    accuracy: interviewerLocations.accuracy,
     recordedAt: interviewerLocations.recordedAt
   })
   .from(interviewerLocations)
