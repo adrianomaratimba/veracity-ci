@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -524,6 +525,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     showInterviewerStats: false,
     allowExcelExport: false,
     allowPdfExport: false,
+    visibleQuestionIds: null as number[] | null,
   });
 
   useEffect(() => {
@@ -547,6 +549,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         showInterviewerStats: viewerSettings.showInterviewerStats ?? false,
         allowExcelExport: viewerSettings.allowExcelExport ?? false,
         allowPdfExport: viewerSettings.allowPdfExport ?? false,
+        visibleQuestionIds: viewerSettings.visibleQuestionIds ?? null,
       });
     }
   }, [viewerSettings]);
@@ -1608,6 +1611,66 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                             data-testid="switch-card-interviewer-stats"
                           />
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-base border-b pb-2">Perguntas Visíveis</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Selecione quais perguntas os visualizadores podem ver nos resultados. Se nenhuma for selecionada, todas serão visíveis.
+                      </p>
+                      <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-3">
+                        {questions.length === 0 ? (
+                          <p className="text-sm text-muted-foreground italic">Nenhuma pergunta cadastrada nesta pesquisa.</p>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2 pb-2 border-b mb-2">
+                              <Checkbox
+                                id="select-all-questions"
+                                checked={viewerSettingsForm.visibleQuestionIds === null || viewerSettingsForm.visibleQuestionIds?.length === questions.length}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setViewerSettingsForm({...viewerSettingsForm, visibleQuestionIds: null});
+                                  } else {
+                                    setViewerSettingsForm({...viewerSettingsForm, visibleQuestionIds: []});
+                                  }
+                                }}
+                                data-testid="checkbox-select-all-questions"
+                              />
+                              <label htmlFor="select-all-questions" className="text-sm font-medium cursor-pointer">
+                                Todas as perguntas
+                              </label>
+                            </div>
+                            {questions.map((q, idx) => {
+                              const questionId = q.id || idx;
+                              const isVisible = viewerSettingsForm.visibleQuestionIds === null || 
+                                viewerSettingsForm.visibleQuestionIds.includes(questionId);
+                              return (
+                                <div key={idx} className="flex items-start gap-2 p-2 hover-elevate rounded">
+                                  <Checkbox
+                                    id={`question-visible-${idx}`}
+                                    checked={isVisible}
+                                    onCheckedChange={(checked) => {
+                                      let newIds: number[];
+                                      if (viewerSettingsForm.visibleQuestionIds === null) {
+                                        newIds = questions.map((_, i) => questions[i].id || i).filter(id => id !== questionId);
+                                      } else if (checked) {
+                                        newIds = [...viewerSettingsForm.visibleQuestionIds, questionId];
+                                      } else {
+                                        newIds = viewerSettingsForm.visibleQuestionIds.filter(id => id !== questionId);
+                                      }
+                                      setViewerSettingsForm({...viewerSettingsForm, visibleQuestionIds: newIds.length === questions.length ? null : newIds});
+                                    }}
+                                    data-testid={`checkbox-question-visible-${idx}`}
+                                  />
+                                  <label htmlFor={`question-visible-${idx}`} className="text-sm cursor-pointer flex-1">
+                                    <span className="font-medium">{idx + 1}.</span> {q.text || 'Pergunta sem texto'}
+                                  </label>
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
                       </div>
                     </div>
 
