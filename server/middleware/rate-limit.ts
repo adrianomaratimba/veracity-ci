@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -10,12 +10,10 @@ export const authRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    // Use IP + email for more granular limiting
     const email = req.body?.email?.toLowerCase() || '';
-    return `${req.ip}-${email}`;
+    return `${ipKeyGenerator(req.ip || '')}-${email}`;
   },
   skip: (req) => {
-    // Skip rate limiting for successful requests
     return false;
   },
   handler: (req, res) => {
@@ -37,7 +35,7 @@ export const passwordResetRateLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const email = req.body?.email?.toLowerCase() || '';
-    return `${req.ip}-${email}`;
+    return `${ipKeyGenerator(req.ip || '')}-${email}`;
   },
   handler: (req, res) => {
     res.status(429).json({
@@ -74,7 +72,6 @@ export const apiRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    // Skip rate limiting for static assets
     return req.path.startsWith('/assets') || req.path.startsWith('/static');
   }
 });
