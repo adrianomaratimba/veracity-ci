@@ -701,7 +701,6 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     showInterviewerStats: boolean;
     allowExcelExport: boolean;
     allowPdfExport: boolean;
-    visibleQuestionIds: number[] | null;
   }
 
   const { data: viewerSettings } = useQuery<ViewerSettings>({
@@ -729,7 +728,6 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
           showInterviewerStats: false,
           allowExcelExport: false,
           allowPdfExport: false,
-          visibleQuestionIds: null,
         };
       }
       return res.json();
@@ -759,24 +757,16 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     return !isViewer && hasPermission(userRole, 'analytics:view');
   }, [isViewer, userRole]);
 
-  // Pre-filter question results for viewers - must be done before any derived calculations
-  const filteredQuestionResults = useMemo(() => {
-    if (!aggregatedData?.questionResults) return [];
-    const visQIds = isViewer ? (viewerSettings?.visibleQuestionIds ?? null) : null;
-    if (visQIds === null) return aggregatedData.questionResults;
-    return aggregatedData.questionResults.filter(qr => visQIds.includes(qr.questionId));
-  }, [aggregatedData, isViewer, viewerSettings]);
-
   const voteIntentionQuestion = useMemo(() => {
-    if (filteredQuestionResults.length === 0) return null;
-    return filteredQuestionResults.find(q => 
+    if (!aggregatedData?.questionResults) return null;
+    return aggregatedData.questionResults.find(q => 
       q.questionText.toLowerCase().includes('voto') || 
       q.questionText.toLowerCase().includes('candidato') ||
       q.questionText.toLowerCase().includes('prefeito') ||
       q.questionText.toLowerCase().includes('governador') ||
       q.questionText.toLowerCase().includes('presidente')
-    ) || filteredQuestionResults[0];
-  }, [filteredQuestionResults]);
+    ) || aggregatedData.questionResults[0];
+  }, [aggregatedData]);
 
   const allCandidates = useMemo(() => {
     if (!voteIntentionQuestion) return [];
@@ -917,7 +907,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
         yPos = (doc as any).lastAutoTable.finalY + 15;
       }
 
-      const otherQuestions = filteredQuestionResults.filter(q => 
+      const otherQuestions = aggregatedData.questionResults.filter(q => 
         q.questionId !== voteIntentionQuestion?.questionId
       );
 
@@ -1178,11 +1168,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     );
   }
 
-  const { survey, totalResponses, validResponses, collectionPeriod } = aggregatedData;
-  
-  // Use pre-filtered question results for all viewer-facing displays
-  const questionResults = filteredQuestionResults;
-  
+  const { survey, totalResponses, validResponses, questionResults, collectionPeriod } = aggregatedData;
   const completionRate = survey.targetSample ? Math.min(100, Math.round((totalResponses / survey.targetSample) * 100)) : 100;
 
   const getStatusLabel = (status: string) => {

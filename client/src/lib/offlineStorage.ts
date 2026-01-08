@@ -4,7 +4,6 @@ const DB_VERSION = 1;
 export interface PendingInterview {
   id: string;
   surveyId: number;
-  clientId: string;
   createdAt: Date;
   status: 'pending' | 'syncing' | 'failed';
   retryCount: number;
@@ -154,8 +153,4 @@ export async function getPendingCount(): Promise<number> {
 
 export function generateInterviewId(): string {
   return `interview-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-export function generateClientId(): string {
-  return `client-${Date.now()}-${Math.random().toString(36).substr(2, 12)}-${crypto.randomUUID().slice(0, 8)}`;
 }

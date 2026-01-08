@@ -4,10 +4,10 @@ import {
   deletePendingInterview,
   type PendingInterview 
 } from './offlineStorage';
+import { apiRequest } from './queryClient';
 
 const MAX_RETRIES = 5;
 const BASE_DELAY = 1000;
-const AUTO_SYNC_INTERVAL = 120000; // 2 minutes
 
 let isSyncing = false;
 let syncListeners: Array<(status: SyncStatus) => void> = [];
@@ -97,18 +97,6 @@ function isNetworkError(error: unknown): boolean {
   return false;
 }
 
-function isAuthError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    return msg.includes('401') || 
-           msg.includes('not authenticated') || 
-           msg.includes('unauthorized') ||
-           msg.includes('403') ||
-           msg.includes('forbidden');
-  }
-  return false;
-}
-
 async function syncInterview(interview: PendingInterview): Promise<boolean> {
   console.log('[SyncQueue] Sincronizando entrevista:', interview.id);
   
@@ -121,74 +109,45 @@ async function syncInterview(interview: PendingInterview): Promise<boolean> {
   try {
     await updateInterviewStatus(interview.id, 'syncing');
     
-    // Check if audio is present (non-empty buffer)
-    const hasAudio = interview.data.response.audioBlob && 
-                     interview.data.response.audioBlob.byteLength > 0 &&
-                     !interview.data.response.audioFileName.includes('no-audio');
+    console.log('[SyncQueue] Fazendo upload do áudio...');
+    const uploadRes = await uploadAudioBlob(
+      interview.data.response.audioBlob,
+      interview.data.response.audioMimeType,
+      interview.data.response.audioFileName
+    );
     
-    let audioUrl = '';
-    let audioHash = 'no-audio';
-    
-    if (hasAudio) {
-      console.log('[SyncQueue] Fazendo upload do áudio...');
-      const uploadRes = await uploadAudioBlob(
-        interview.data.response.audioBlob,
-        interview.data.response.audioMimeType,
-        interview.data.response.audioFileName
-      );
-      
-      if (!uploadRes) {
-        throw new Error('Falha ao enviar áudio');
-      }
-      console.log('[SyncQueue] Áudio enviado:', uploadRes.objectPath);
-      audioUrl = uploadRes.objectPath;
-      audioHash = 'synced-offline';
-    } else {
-      console.log('[SyncQueue] Entrevista sem áudio, pulando upload');
+    if (!uploadRes) {
+      throw new Error('Falha ao enviar áudio');
     }
+    console.log('[SyncQueue] Áudio enviado:', uploadRes.objectPath);
     
-    console.log('[SyncQueue] Enviando dados da entrevista ao servidor com clientId:', interview.clientId);
-    
-    // Use fetch directly to have more control over error handling
-    const saveResponse = await fetch(`/api/surveys/${interview.surveyId}/responses`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        clientId: interview.clientId,
-        response: {
-          latitude: interview.data.response.latitude,
-          longitude: interview.data.response.longitude,
-          accuracy: interview.data.response.accuracy,
-          gpsTimestamp: interview.data.response.gpsTimestamp,
-          audioUrl,
-          audioHash,
-          audioDuration: 0,
-          deviceInfo: interview.data.response.deviceInfo,
-          startTime: interview.data.response.startTime,
-          endTime: interview.data.response.endTime,
-          duration: interview.data.response.duration
-        },
-        answers: interview.data.answers
-      })
+    console.log('[SyncQueue] Enviando dados da entrevista ao servidor...');
+    const saveResponse = await apiRequest('POST', `/api/surveys/${interview.surveyId}/responses`, {
+      response: {
+        latitude: interview.data.response.latitude,
+        longitude: interview.data.response.longitude,
+        accuracy: interview.data.response.accuracy,
+        gpsTimestamp: interview.data.response.gpsTimestamp,
+        audioUrl: uploadRes.objectPath,
+        audioHash: 'synced-offline',
+        audioDuration: 0,
+        deviceInfo: interview.data.response.deviceInfo,
+        startTime: interview.data.response.startTime,
+        endTime: interview.data.response.endTime,
+        duration: interview.data.response.duration
+      },
+      answers: interview.data.answers
     });
     
     if (!saveResponse.ok) {
       const errorData = await saveResponse.json().catch(() => ({}));
       console.error('[SyncQueue] Servidor rejeitou:', saveResponse.status, errorData);
-      
-      // Handle specific error codes
-      if (saveResponse.status === 401 || saveResponse.status === 403) {
-        throw new Error(`Erro de autenticação: ${saveResponse.status}. Por favor, faça login novamente.`);
-      }
-      
-      throw new Error(`Servidor retornou erro ${saveResponse.status}: ${JSON.stringify(errorData)}`);
+      throw new Error(`Servidor retornou erro ${saveResponse.status}`);
     }
     
     const savedData = await saveResponse.json();
-    console.log('[SyncQueue] Confirmação do servidor recebida:', savedData.id || 'OK', savedData.deduplicated ? '(duplicata ignorada)' : '');
+    console.log('[SyncQueue] Confirmação do servidor recebida:', savedData.id || 'OK');
     
-    // Only delete after confirmed success
     console.log('[SyncQueue] Entrevista confirmada no banco, deletando local:', interview.id);
     await deletePendingInterview(interview.id);
     return true;
@@ -196,13 +155,9 @@ async function syncInterview(interview: PendingInterview): Promise<boolean> {
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     console.error('[SyncQueue] Erro ao sincronizar:', interview.id, errorMessage);
     
-    // Always keep interview, but mark appropriately
     if (isNetworkError(error) || !navigator.onLine) {
       console.log('[SyncQueue] Erro de rede detectado, mantendo para retry:', interview.id);
       await updateInterviewStatus(interview.id, 'pending');
-    } else if (isAuthError(error)) {
-      console.log('[SyncQueue] Erro de autenticação detectado, mantendo para retry após login:', interview.id);
-      await updateInterviewStatus(interview.id, 'failed', 'Erro de autenticação. Faça login e tente novamente.');
     } else {
       await updateInterviewStatus(interview.id, 'failed', errorMessage);
     }
@@ -317,18 +272,13 @@ export function setupAutoSync() {
     }
   });
   
-  // Periodic sync every 2 minutes when there are pending interviews
   pollInterval = setInterval(async () => {
     if (navigator.onLine) {
-      console.log('[SyncQueue] Verificação periódica de entrevistas pendentes...');
       await attemptSync();
     }
-  }, AUTO_SYNC_INTERVAL);
+  }, 15000);
   
-  // Initial sync after 3 seconds
   if (navigator.onLine) {
     setTimeout(attemptSync, 3000);
   }
-  
-  console.log(`[SyncQueue] Auto-sync configurado: verificação a cada ${AUTO_SYNC_INTERVAL / 1000} segundos`);
 }

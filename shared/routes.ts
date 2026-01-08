@@ -351,7 +351,6 @@ export const api = {
       method: 'POST' as const,
       path: '/api/surveys/:surveyId/responses',
       input: z.object({
-        clientId: z.string().optional(),
         response: z.object({
           latitude: z.number(),
           longitude: z.number(),

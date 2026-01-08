@@ -18,18 +18,8 @@ import {
   surveyCoordinators,
   surveyViewers, 
   responses, 
-  surveys,
-  interviewerLocations,
-  dailyDistanceSummary,
-  insertInterviewerLocationSchema
+  surveys
 } from "@shared/schema";
-import { 
-  calculateHaversineDistance, 
-  updateDailyDistanceSummary, 
-  getTotalSurveyDistance,
-  getRouteForDay,
-  formatDistance
-} from "./services/distance-calculator";
 import { verificationTokens } from "@shared/models/auth";
 
 export async function registerRoutes(
@@ -1325,20 +1315,7 @@ export async function registerRoutes(
         }
       }
       
-      const { clientId, response: responseMeta, answers } = api.responses.submit.input.parse(req.body);
-
-      // DEDUPLICATION: Check if response with this clientId already exists
-      if (clientId) {
-        const existingResponse = await storage.getResponseByClientId(clientId);
-        if (existingResponse) {
-          console.log(`[Dedup] Response with clientId ${clientId} already exists (id: ${existingResponse.id}), returning existing`);
-          return res.status(200).json({ 
-            id: existingResponse.id, 
-            status: existingResponse.status,
-            deduplicated: true 
-          });
-        }
-      }
+      const { response: responseMeta, answers } = api.responses.submit.input.parse(req.body);
 
       // Backend Validation Logic for Fraud Detection
       let status = "valid";
@@ -1362,7 +1339,6 @@ export async function registerRoutes(
       const newResponse = await storage.createResponse(
         { 
           ...responseMeta, 
-          clientId,
           surveyId: Number(req.params.surveyId),
           interviewerId,
           status,
@@ -2438,122 +2414,6 @@ export async function registerRoutes(
     } catch (err) {
       console.error('[supervisor/overview] error:', err);
       res.status(500).json({ message: "Erro ao carregar visão geral do supervisor" });
-    }
-  });
-
-  // ==========================================
-  // REAL-TIME INTERVIEWER TRACKING
-  // ==========================================
-
-  // Report location (interviewer sends this periodically)
-  app.post("/api/organizations/:id/tracking/location", isAuthenticated, requireOrgAccess("id", "responses:submit"), async (req, res) => {
-    try {
-      const orgId = parseInt(req.params.id);
-      const userId = await getResolvedUserId(req);
-      
-      const input = z.object({
-        latitude: z.number(),
-        longitude: z.number(),
-        accuracy: z.number().optional(),
-        speed: z.number().optional(),
-        heading: z.number().optional(),
-        surveyId: z.number().optional(),
-        sessionId: z.string().optional()
-      }).parse(req.body);
-
-      await db.insert(interviewerLocations).values({
-        organizationId: orgId,
-        userId,
-        latitude: input.latitude,
-        longitude: input.longitude,
-        accuracy: input.accuracy,
-        speed: input.speed,
-        heading: input.heading,
-        surveyId: input.surveyId,
-        sessionId: input.sessionId,
-        isOnline: true
-      });
-
-      // Update daily distance in background
-      updateDailyDistanceSummary(orgId, userId, input.surveyId || null, new Date()).catch(console.error);
-
-      res.json({ success: true });
-    } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
-      console.error('[tracking/location] error:', err);
-      res.status(500).json({ message: "Erro ao registrar localização" });
-    }
-  });
-
-  // Get interviewer's route for a specific day
-  app.get("/api/organizations/:id/tracking/route/:userId", isAuthenticated, requireOrgAccess("id", "analytics:view"), async (req, res) => {
-    try {
-      const orgId = parseInt(req.params.id);
-      const targetUserId = req.params.userId;
-      const dateParam = req.query.date as string;
-      const surveyId = req.query.surveyId ? parseInt(req.query.surveyId as string) : undefined;
-      
-      const date = dateParam ? new Date(dateParam) : new Date();
-      
-      const route = await getRouteForDay(orgId, targetUserId, date, surveyId);
-      res.json(route);
-    } catch (err) {
-      console.error('[tracking/route] error:', err);
-      res.status(500).json({ message: "Erro ao carregar rota" });
-    }
-  });
-
-  // Get interviewer's distance statistics
-  app.get("/api/organizations/:id/tracking/distance/:userId", isAuthenticated, requireOrgAccess("id", "analytics:view"), async (req, res) => {
-    try {
-      const orgId = parseInt(req.params.id);
-      const targetUserId = req.params.userId;
-      const surveyId = req.query.surveyId ? parseInt(req.query.surveyId as string) : undefined;
-      
-      const stats = await getTotalSurveyDistance(orgId, targetUserId, surveyId);
-      
-      res.json({
-        totalMeters: stats.totalMeters,
-        totalFormatted: formatDistance(stats.totalMeters),
-        byDay: stats.byDay.map(d => ({
-          date: d.date,
-          meters: d.meters,
-          formatted: formatDistance(d.meters)
-        }))
-      });
-    } catch (err) {
-      console.error('[tracking/distance] error:', err);
-      res.status(500).json({ message: "Erro ao carregar estatísticas de distância" });
-    }
-  });
-
-  // Get all interviewers with real-time locations
-  app.get("/api/organizations/:id/tracking/interviewers", isAuthenticated, requireOrgAccess("id", "analytics:view"), async (req, res) => {
-    try {
-      const orgId = parseInt(req.params.id);
-      const interviewersData = await storage.getInterviewersWithRealtimeLocation(orgId);
-      res.json(interviewersData);
-    } catch (err) {
-      console.error('[tracking/interviewers] error:', err);
-      res.status(500).json({ message: "Erro ao carregar entrevistadores" });
-    }
-  });
-
-  // Set interviewer offline (when they close the app)
-  app.post("/api/organizations/:id/tracking/offline", isAuthenticated, requireOrgAccess("id", "responses:submit"), async (req, res) => {
-    try {
-      const orgId = parseInt(req.params.id);
-      const userId = await getResolvedUserId(req);
-      
-      // Mark last location as offline
-      await db.update(interviewerLocations)
-        .set({ isOnline: false })
-        .where(eq(interviewerLocations.userId, userId));
-      
-      res.json({ success: true });
-    } catch (err) {
-      console.error('[tracking/offline] error:', err);
-      res.status(500).json({ message: "Erro ao atualizar status" });
     }
   });
 

@@ -16,8 +16,7 @@ import {
   questionModules, QuestionModule, InsertQuestionModule,
   organizationDomains, OrganizationDomain, InsertOrganizationDomain,
   subscriptionPlans, SubscriptionPlan,
-  landingPageConfig, LandingPageConfig, InsertLandingPageConfig,
-  interviewerLocations, InterviewerLocation, dailyDistanceSummary
+  landingPageConfig, LandingPageConfig, InsertLandingPageConfig
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -75,7 +74,6 @@ export interface IStorage {
   createResponse(response: InsertResponse, answers: Omit<InsertAnswer, 'responseId'>[]): Promise<Response>;
   getResponses(surveyId: number): Promise<Response[]>;
   getResponse(id: number): Promise<(Response & { answers: Answer[] }) | undefined>;
-  getResponseByClientId(clientId: string): Promise<Response | undefined>;
   getResponsesWithAnswers(surveyId: number): Promise<(Response & { answers: Answer[] })[]>;
   
   // Analytics
@@ -544,13 +542,6 @@ export class DatabaseStorage implements IStorage {
     return response;
   }
 
-  async getResponseByClientId(clientId: string): Promise<Response | undefined> {
-    const [response] = await db.select().from(responses)
-      .where(eq(responses.clientId, clientId))
-      .limit(1);
-    return response;
-  }
-
   async getResponsesWithAnswers(surveyId: number): Promise<(Response & { answers: Answer[] })[]> {
     const result = await db.query.responses.findMany({
       where: eq(responses.surveyId, surveyId),
@@ -880,7 +871,19 @@ export class DatabaseStorage implements IStorage {
       allResponses = allResponses.filter(r => filters.interviewerIds!.includes(r.interviewerId));
     }
 
-    // Get questions for these surveys FIRST (needed for dropdown even without responses)
+    // Get unique interviewer IDs
+    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId)));
+    if (interviewerIds.length === 0) {
+      return { interviewers: [], questions: [], comparison: [] };
+    }
+
+    // Get interviewer details
+    const interviewerUsers = await db.select().from(users).where(
+      sql`${users.id} IN (${sql.join(interviewerIds.map(id => sql`${id}`), sql`, `)})`
+    );
+    const interviewerMap = new Map(interviewerUsers.map(u => [u.id, u]));
+
+    // Get questions for these surveys
     let surveyQuestions = await db.select().from(questions).where(
       sql`${questions.surveyId} IN (${sql.join(targetSurveyIds.map(id => sql`${id}`), sql`, `)})`
     );
@@ -890,30 +893,10 @@ export class DatabaseStorage implements IStorage {
       surveyQuestions = surveyQuestions.filter(q => q.id === filters.questionId);
     }
 
-    // Format questions for the dropdown (always return these)
-    const formattedQuestions = surveyQuestions.map(q => {
-      const rawOptions = q.options as any[] || [];
-      const options = rawOptions.map(opt => typeof opt === 'string' ? opt : opt?.text || '');
-      return { id: q.id, text: q.text, options };
-    });
-
-    // Get unique interviewer IDs
-    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId)));
-    if (interviewerIds.length === 0) {
-      // Return questions for dropdown even when no responses
-      return { interviewers: [], questions: formattedQuestions, comparison: [] };
-    }
-
-    // Get interviewer details
-    const interviewerUsers = await db.select().from(users).where(
-      sql`${users.id} IN (${sql.join(interviewerIds.map(id => sql`${id}`), sql`, `)})`
-    );
-    const interviewerMap = new Map(interviewerUsers.map(u => [u.id, u]));
-
     // Get all answers for responses
     const responseIds = allResponses.map(r => r.id);
     if (responseIds.length === 0) {
-      return { interviewers: [], questions: formattedQuestions, comparison: [] };
+      return { interviewers: [], questions: [], comparison: [] };
     }
 
     const allAnswers = await db.select().from(answers).where(
@@ -1603,82 +1586,6 @@ export class DatabaseStorage implements IStorage {
       ).length,
       activeInterviewers: interviewerData.filter(i => i.status === 'active').length
     };
-  }
-
-  // --- REAL-TIME TRACKING ---
-  async getInterviewersWithRealtimeLocation(orgId: number): Promise<Array<{
-    userId: string;
-    name: string;
-    email: string | null;
-    profileImageUrl: string | null;
-    isOnline: boolean;
-    lastLocation: { lat: number; lng: number; time: Date } | null;
-    currentSurvey: { id: number; title: string } | null;
-    distanceToday: number;
-  }>> {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const onlineThreshold = 5 * 60 * 1000; // 5 minutes
-
-    // Get all interviewers in the organization
-    const members = await db.select({
-      userId: organizationMembers.userId,
-      user: users
-    })
-      .from(organizationMembers)
-      .innerJoin(users, eq(organizationMembers.userId, users.id))
-      .where(and(
-        eq(organizationMembers.organizationId, orgId),
-        eq(organizationMembers.role, 'interviewer')
-      ));
-
-    // Get all org surveys
-    const orgSurveys = await db.select().from(surveys).where(eq(surveys.organizationId, orgId));
-    const surveyMap = new Map(orgSurveys.map(s => [s.id, { id: s.id, title: s.title }]));
-
-    const result = await Promise.all(members.map(async (m) => {
-      // Get latest location
-      const [lastLoc] = await db.select()
-        .from(interviewerLocations)
-        .where(and(
-          eq(interviewerLocations.userId, m.userId),
-          eq(interviewerLocations.organizationId, orgId)
-        ))
-        .orderBy(desc(interviewerLocations.recordedAt))
-        .limit(1);
-
-      // Get today's distance
-      const [distanceData] = await db.select({
-        distance: dailyDistanceSummary.distanceMeters
-      })
-        .from(dailyDistanceSummary)
-        .where(and(
-          eq(dailyDistanceSummary.userId, m.userId),
-          eq(dailyDistanceSummary.organizationId, orgId),
-          sql`${dailyDistanceSummary.date} >= ${todayStart}`
-        ))
-        .limit(1);
-
-      const isOnline = lastLoc && lastLoc.isOnline && 
-        (now.getTime() - new Date(lastLoc.recordedAt).getTime()) < onlineThreshold;
-
-      return {
-        userId: m.userId,
-        name: `${m.user.firstName || ''} ${m.user.lastName || ''}`.trim() || m.user.email || 'Sem nome',
-        email: m.user.email,
-        profileImageUrl: m.user.profileImageUrl,
-        isOnline: !!isOnline,
-        lastLocation: lastLoc ? {
-          lat: lastLoc.latitude,
-          lng: lastLoc.longitude,
-          time: lastLoc.recordedAt
-        } : null,
-        currentSurvey: lastLoc?.surveyId ? surveyMap.get(lastLoc.surveyId) || null : null,
-        distanceToday: distanceData?.distance || 0
-      };
-    }));
-
-    return result;
   }
 
   // --- PLATFORM ADMIN - GLOBAL OPERATIONS ---
