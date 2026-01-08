@@ -1041,58 +1041,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     });
   }, []);
 
-  if (memberLoading || resultsLoading) {
-    return <LoadingScreen message="Carregando resultados..." />;
-  }
-
-  if (!canViewResults) {
-    return (
-      <DashboardLayout orgId={params.orgId}>
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="text-6xl mb-4 text-muted-foreground">
-            <BarChart3 className="w-16 h-16" />
-          </div>
-          <h2 className="text-xl font-semibold mb-2">Acesso Restrito</h2>
-          <p className="text-muted-foreground text-center max-w-md">
-            Você não tem permissão para visualizar os resultados desta pesquisa.
-          </p>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (error || !aggregatedData) {
-    return (
-      <DashboardLayout orgId={params.orgId}>
-        <div className="flex flex-col items-center justify-center py-16">
-          <h2 className="text-xl font-semibold mb-2">Erro ao carregar resultados</h2>
-          <p className="text-muted-foreground">Não foi possível carregar os dados da pesquisa.</p>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  const { survey, totalResponses, validResponses, questionResults, collectionPeriod } = aggregatedData;
-  const completionRate = survey.targetSample ? Math.min(100, Math.round((totalResponses / survey.targetSample) * 100)) : 100;
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      'draft': 'Rascunho',
-      'active': 'Em Campo',
-      'paused': 'Pausada',
-      'completed': 'Concluída',
-      'archived': 'Arquivada'
-    };
-    return labels[status] || status;
-  };
-
-  const getStatusVariant = (status: string): "default" | "secondary" | "outline" | "destructive" => {
-    if (status === 'active') return 'default';
-    if (status === 'completed') return 'secondary';
-    return 'outline';
-  };
-
-  // Filter facets based on viewer settings
+  // Filter facets based on viewer settings (must be before early returns)
   const allowedFilterKeys = useMemo(() => {
     if (!isViewer) return ['neighborhood', 'ageRange', 'gender', 'education']; // All for admins
     if (!viewerSettings || !viewerSettings.showFilters) return [];
@@ -1187,6 +1136,57 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     if (showReportTab) count++;
     return count;
   }, [showIntentionTab, showEvolutionTab, showCrossingsTab, showProfileTab, showReportTab, canViewInterviewerDetails]);
+
+  if (memberLoading || resultsLoading) {
+    return <LoadingScreen message="Carregando resultados..." />;
+  }
+
+  if (!canViewResults) {
+    return (
+      <DashboardLayout orgId={params.orgId}>
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="text-6xl mb-4 text-muted-foreground">
+            <BarChart3 className="w-16 h-16" />
+          </div>
+          <h2 className="text-xl font-semibold mb-2">Acesso Restrito</h2>
+          <p className="text-muted-foreground text-center max-w-md">
+            Você não tem permissão para visualizar os resultados desta pesquisa.
+          </p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error || !aggregatedData) {
+    return (
+      <DashboardLayout orgId={params.orgId}>
+        <div className="flex flex-col items-center justify-center py-16">
+          <h2 className="text-xl font-semibold mb-2">Erro ao carregar resultados</h2>
+          <p className="text-muted-foreground">Não foi possível carregar os dados da pesquisa.</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const { survey, totalResponses, validResponses, questionResults, collectionPeriod } = aggregatedData;
+  const completionRate = survey.targetSample ? Math.min(100, Math.round((totalResponses / survey.targetSample) * 100)) : 100;
+
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      'draft': 'Rascunho',
+      'active': 'Em Campo',
+      'paused': 'Pausada',
+      'completed': 'Concluída',
+      'archived': 'Arquivada'
+    };
+    return labels[status] || status;
+  };
+
+  const getStatusVariant = (status: string): "default" | "secondary" | "outline" | "destructive" => {
+    if (status === 'active') return 'default';
+    if (status === 'completed') return 'secondary';
+    return 'outline';
+  };
 
   return (
     <DashboardLayout orgId={params.orgId}>
