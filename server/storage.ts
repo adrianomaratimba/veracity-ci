@@ -16,8 +16,7 @@ import {
   questionModules, QuestionModule, InsertQuestionModule,
   organizationDomains, OrganizationDomain, InsertOrganizationDomain,
   subscriptionPlans, SubscriptionPlan,
-  landingPageConfig, LandingPageConfig, InsertLandingPageConfig,
-  interviewerLocations, InterviewerLocation, dailyDistanceSummary
+  landingPageConfig, LandingPageConfig, InsertLandingPageConfig
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -1603,82 +1602,6 @@ export class DatabaseStorage implements IStorage {
       ).length,
       activeInterviewers: interviewerData.filter(i => i.status === 'active').length
     };
-  }
-
-  // --- REAL-TIME TRACKING ---
-  async getInterviewersWithRealtimeLocation(orgId: number): Promise<Array<{
-    userId: string;
-    name: string;
-    email: string | null;
-    profileImageUrl: string | null;
-    isOnline: boolean;
-    lastLocation: { lat: number; lng: number; time: Date } | null;
-    currentSurvey: { id: number; title: string } | null;
-    distanceToday: number;
-  }>> {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const onlineThreshold = 5 * 60 * 1000; // 5 minutes
-
-    // Get all interviewers in the organization
-    const members = await db.select({
-      userId: organizationMembers.userId,
-      user: users
-    })
-      .from(organizationMembers)
-      .innerJoin(users, eq(organizationMembers.userId, users.id))
-      .where(and(
-        eq(organizationMembers.organizationId, orgId),
-        eq(organizationMembers.role, 'interviewer')
-      ));
-
-    // Get all org surveys
-    const orgSurveys = await db.select().from(surveys).where(eq(surveys.organizationId, orgId));
-    const surveyMap = new Map(orgSurveys.map(s => [s.id, { id: s.id, title: s.title }]));
-
-    const result = await Promise.all(members.map(async (m) => {
-      // Get latest location
-      const [lastLoc] = await db.select()
-        .from(interviewerLocations)
-        .where(and(
-          eq(interviewerLocations.userId, m.userId),
-          eq(interviewerLocations.organizationId, orgId)
-        ))
-        .orderBy(desc(interviewerLocations.recordedAt))
-        .limit(1);
-
-      // Get today's distance
-      const [distanceData] = await db.select({
-        distance: dailyDistanceSummary.distanceMeters
-      })
-        .from(dailyDistanceSummary)
-        .where(and(
-          eq(dailyDistanceSummary.userId, m.userId),
-          eq(dailyDistanceSummary.organizationId, orgId),
-          sql`${dailyDistanceSummary.date} >= ${todayStart}`
-        ))
-        .limit(1);
-
-      const isOnline = lastLoc && lastLoc.isOnline && 
-        (now.getTime() - new Date(lastLoc.recordedAt).getTime()) < onlineThreshold;
-
-      return {
-        userId: m.userId,
-        name: `${m.user.firstName || ''} ${m.user.lastName || ''}`.trim() || m.user.email || 'Sem nome',
-        email: m.user.email,
-        profileImageUrl: m.user.profileImageUrl,
-        isOnline: !!isOnline,
-        lastLocation: lastLoc ? {
-          lat: lastLoc.latitude,
-          lng: lastLoc.longitude,
-          time: lastLoc.recordedAt
-        } : null,
-        currentSurvey: lastLoc?.surveyId ? surveyMap.get(lastLoc.surveyId) || null : null,
-        distanceToday: distanceData?.distance || 0
-      };
-    }));
-
-    return result;
   }
 
   // --- PLATFORM ADMIN - GLOBAL OPERATIONS ---
