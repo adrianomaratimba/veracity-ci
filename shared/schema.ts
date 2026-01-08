@@ -233,6 +233,9 @@ export const surveyViewerSettings = pgTable("survey_viewer_settings", {
   allowExcelExport: boolean("allow_excel_export").default(false),
   allowPdfExport: boolean("allow_pdf_export").default(false),
   
+  // Question-level visibility (null = all questions visible)
+  visibleQuestionIds: integer("visible_question_ids").array(),
+  
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: varchar("updated_by").references(() => users.id),
 });
