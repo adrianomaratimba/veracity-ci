@@ -19,6 +19,7 @@ import { canManageSurveys, canViewAnalytics, isInterviewerRole, type UserRole } 
 import type { Survey } from "@shared/schema";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useLocationTracking } from "@/hooks/use-location-tracking";
 
 export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
@@ -57,6 +58,12 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const isInterviewer = isInterviewerRole(userRole);
   const isViewer = userRole === 'viewer';
   const canAccessCollection = !isViewer && (isInterviewer || userRole === 'admin' || userRole === 'owner' || userRole === 'coordinator');
+  
+  useLocationTracking({
+    orgId,
+    intervalMs: 60000,
+    enabled: isInterviewer && !isNaN(orgId) && orgId > 0
+  });
   const [newSurvey, setNewSurvey] = useState({
     title: "",
     description: "",
