@@ -13,8 +13,7 @@ import {
   CheckCircle,
   AlertTriangle,
   Loader2,
-  WifiOff,
-  BarChart3
+  WifiOff
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -194,11 +193,6 @@ export default function PendingInterviews() {
               <WifiOff className="w-3 h-3 mr-1" /> Offline
             </Badge>
           )}
-          <Link href="/collect/my-performance">
-            <Button size="icon" variant="ghost" className="text-primary-foreground" data-testid="button-my-performance">
-              <BarChart3 className="w-5 h-5" />
-            </Button>
-          </Link>
         </div>
       </header>
 

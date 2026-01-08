@@ -7,9 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
-import { RefreshCw, Users, ClipboardList, MapPin, Clock, Activity, Route, Eye, EyeOff, Trophy, Timer, Flame } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RefreshCw, Users, ClipboardList, MapPin, Clock, Activity, Route, Eye, EyeOff } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useState, useEffect, useMemo } from "react";
@@ -53,30 +51,6 @@ interface RoutePoint {
   time: string;
 }
 
-interface InterviewerMetrics {
-  interviewerId: string;
-  interviewerName: string;
-  surveysParticipated: number;
-  totalInterviews: number;
-  totalTimeMinutes: number;
-  totalDistanceMeters: number;
-  caloriesBurned: number;
-  avgInterviewDuration: number;
-  efficiency: number;
-  validRate: number;
-}
-
-interface PerformanceDashboard {
-  summary: {
-    totalInterviewers: number;
-    totalInterviews: number;
-    totalTimeHours: number;
-    totalDistanceKm: number;
-    avgInterviewsPerPerson: number;
-  };
-  interviewers: InterviewerMetrics[];
-}
-
 function useSupervisorOverview(orgId: number, refetchInterval: number = 30000) {
   return useQuery<SupervisorOverview>({
     queryKey: ['/api/organizations', orgId, 'supervisor', 'overview'],
@@ -117,41 +91,6 @@ function useInterviewerRoute(orgId: number, userId: string | null, date?: Date) 
     enabled: !!orgId && !!userId,
     staleTime: 30000,
   });
-}
-
-function usePerformanceMetrics(orgId: number) {
-  const isValidOrgId = !isNaN(orgId) && orgId > 0;
-  const query = useQuery<PerformanceDashboard>({
-    queryKey: ['/api/organizations', orgId, 'analytics', 'interviewers'],
-    queryFn: async () => {
-      const res = await fetch(`/api/organizations/${orgId}/analytics/interviewers`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch performance metrics");
-      return res.json();
-    },
-    staleTime: 60000,
-    enabled: isValidOrgId,
-    retry: 1,
-  });
-  
-  // Status will be 'pending' when enabled=false OR when first loading
-  // fetchStatus will be 'fetching' when actually making a request
-  // fetchStatus will be 'idle' when query is disabled
-  const isQueryDisabled = !isValidOrgId;
-  const isActuallyLoading = query.status === 'pending' && query.fetchStatus === 'fetching';
-  
-  return {
-    ...query,
-    isActuallyLoading,
-    isValidOrgId,
-    isQueryDisabled,
-  };
-}
-
-function formatTimeFromMinutes(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
 }
 
 function getStatusColor(isOnline: boolean) {
@@ -260,13 +199,11 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [selectedInterviewers, setSelectedInterviewers] = useState<Set<string>>(new Set());
   const [routesVisible, setRoutesVisible] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState("realtime");
   
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
-  const { data: performanceData, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError, isActuallyLoading: performanceLoading, isValidOrgId, isQueryDisabled: performanceQueryDisabled } = usePerformanceMetrics(orgId);
 
-  const isFetching = isFetchingOverview || isFetchingRealtime || isFetchingPerformance;
+  const isFetching = isFetchingOverview || isFetchingRealtime;
   const isLoading = overviewLoading || realtimeLoading;
 
   useEffect(() => {
@@ -275,16 +212,9 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
     }
   }, [isFetching]);
 
-  useEffect(() => {
-    if (activeTab === "performance" && !performanceData && isValidOrgId) {
-      refetchPerformance();
-    }
-  }, [activeTab, performanceData, isValidOrgId, refetchPerformance]);
-
   const handleManualRefresh = () => {
     refetchOverview();
     refetchRealtime();
-    refetchPerformance();
   };
 
   const toggleInterviewer = (userId: string) => {
@@ -376,376 +306,192 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="realtime" data-testid="tab-realtime">
-              <MapPin className="w-4 h-4 mr-2" />
-              Tempo Real
-            </TabsTrigger>
-            <TabsTrigger value="performance" data-testid="tab-performance">
-              <Trophy className="w-4 h-4 mr-2" />
-              Desempenho
-            </TabsTrigger>
-          </TabsList>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Online Agora</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full">
+                  <Users className="w-5 h-5 text-green-600 dark:text-green-400" />
+                </div>
+                <span className="text-2xl font-bold" data-testid="text-online-interviewers">
+                  {onlineCount}
+                </span>
+                <span className="text-muted-foreground text-sm">
+                  / {realtimeData?.length ?? 0}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
 
-          <TabsContent value="realtime" className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Online Agora</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full">
-                      <Users className="w-5 h-5 text-green-600 dark:text-green-400" />
-                    </div>
-                    <span className="text-2xl font-bold" data-testid="text-online-interviewers">
-                      {onlineCount}
-                    </span>
-                    <span className="text-muted-foreground text-sm">
-                      / {realtimeData?.length ?? 0}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Entrevistas Hoje</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                  <ClipboardList className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <span className="text-2xl font-bold" data-testid="text-interviews-today">
+                  {overviewData?.totalInterviewsToday ?? 0}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Entrevistas Hoje</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-                      <ClipboardList className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <span className="text-2xl font-bold" data-testid="text-interviews-today">
-                      {overviewData?.totalInterviewsToday ?? 0}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Com Localização</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-full">
+                  <MapPin className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <span className="text-2xl font-bold" data-testid="text-with-location">
+                  {interviewersWithLocation.length}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Com Localização</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-                      <MapPin className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                    </div>
-                    <span className="text-2xl font-bold" data-testid="text-with-location">
-                      {interviewersWithLocation.length}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Distância Total Hoje</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-full">
+                  <Route className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <span className="text-2xl font-bold" data-testid="text-total-distance">
+                  {formatDistance(totalDistanceToday)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Distância Total Hoje</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-full">
-                      <Route className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                    </div>
-                    <span className="text-2xl font-bold" data-testid="text-total-distance">
-                      {formatDistance(totalDistanceToday)}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <Card className="lg:col-span-2 overflow-hidden">
-                <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                  <CardTitle className="text-lg">Mapa em Tempo Real</CardTitle>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <div className="w-3 h-3 rounded-full bg-green-500" />
-                      <span>Online</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className="w-3 h-3 rounded-full bg-gray-400" />
-                      <span>Offline</span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="h-[500px]">
-                    <MapContainer
-                      center={defaultCenter}
-                      zoom={interviewersWithLocation.length > 0 ? 10 : 4}
-                      style={{ height: '100%', width: '100%' }}
-                      scrollWheelZoom={true}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-lg">Mapa em Tempo Real</CardTitle>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-green-500" />
+                  <span>Online</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-gray-400" />
+                  <span>Offline</span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="h-[500px]">
+                <MapContainer
+                  center={defaultCenter}
+                  zoom={interviewersWithLocation.length > 0 ? 10 : 4}
+                  style={{ height: '100%', width: '100%' }}
+                  scrollWheelZoom={true}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  {interviewersWithLocation.map((interviewer, idx) => (
+                    <Marker
+                      key={interviewer.userId}
+                      position={[interviewer.lastLocation!.lat, interviewer.lastLocation!.lng]}
+                      icon={createMarkerIcon(interviewer.isOnline)}
                     >
-                      <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      />
-                      {interviewersWithLocation.map((interviewer, idx) => (
-                        <Marker
+                      <Popup>
+                        <div className="text-sm">
+                          <strong>{interviewer.name}</strong>
+                          <br />
+                          <Badge variant="outline" className="mt-1 text-xs">
+                            {getStatusLabel(interviewer.isOnline)}
+                          </Badge>
+                          <br />
+                          {interviewer.currentSurvey && (
+                            <>
+                              <span className="text-muted-foreground">
+                                {interviewer.currentSurvey.title}
+                              </span>
+                              <br />
+                            </>
+                          )}
+                          {interviewer.distanceToday > 0 && (
+                            <>
+                              <span className="text-muted-foreground">
+                                {formatDistance(interviewer.distanceToday)} percorridos
+                              </span>
+                              <br />
+                            </>
+                          )}
+                          {interviewer.lastLocation && (
+                            <span className="text-muted-foreground text-xs">
+                              {format(new Date(interviewer.lastLocation.time), "HH:mm:ss", { locale: ptBR })}
+                            </span>
+                          )}
+                        </div>
+                      </Popup>
+                    </Marker>
+                  ))}
+                  <RoutePolylines 
+                    orgId={orgId} 
+                    visibleUserIds={Array.from(routesVisible)} 
+                    colors={routeColors}
+                  />
+                </MapContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-lg">Entrevistadores</CardTitle>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" onClick={selectAll} data-testid="button-select-all">
+                  Todos
+                </Button>
+                <Button variant="ghost" size="sm" onClick={deselectAll} data-testid="button-deselect-all">
+                  Nenhum
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-2">
+              <ScrollArea className="h-[440px]">
+                <div className="space-y-1">
+                  {realtimeData?.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      Nenhum entrevistador cadastrado
+                    </p>
+                  ) : (
+                    realtimeData
+                      ?.sort((a, b) => {
+                        if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+                        return a.name.localeCompare(b.name);
+                      })
+                      .map(interviewer => (
+                        <InterviewerListItem
                           key={interviewer.userId}
-                          position={[interviewer.lastLocation!.lat, interviewer.lastLocation!.lng]}
-                          icon={createMarkerIcon(interviewer.isOnline)}
-                        >
-                          <Popup>
-                            <div className="text-sm">
-                              <strong>{interviewer.name}</strong>
-                              <br />
-                              <Badge variant="outline" className="mt-1 text-xs">
-                                {getStatusLabel(interviewer.isOnline)}
-                              </Badge>
-                              <br />
-                              {interviewer.currentSurvey && (
-                                <>
-                                  <span className="text-muted-foreground">
-                                    {interviewer.currentSurvey.title}
-                                  </span>
-                                  <br />
-                                </>
-                              )}
-                              {interviewer.distanceToday > 0 && (
-                                <>
-                                  <span className="text-muted-foreground">
-                                    {formatDistance(interviewer.distanceToday)} percorridos
-                                  </span>
-                                  <br />
-                                </>
-                              )}
-                              {interviewer.lastLocation && (
-                                <span className="text-muted-foreground text-xs">
-                                  {format(new Date(interviewer.lastLocation.time), "HH:mm:ss", { locale: ptBR })}
-                                </span>
-                              )}
-                            </div>
-                          </Popup>
-                        </Marker>
-                      ))}
-                      <RoutePolylines 
-                        orgId={orgId} 
-                        visibleUserIds={Array.from(routesVisible)} 
-                        colors={routeColors}
-                      />
-                    </MapContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                  <CardTitle className="text-lg">Entrevistadores</CardTitle>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={selectAll} data-testid="button-select-all">
-                      Todos
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={deselectAll} data-testid="button-deselect-all">
-                      Nenhum
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-2">
-                  <ScrollArea className="h-[440px]">
-                    <div className="space-y-1">
-                      {realtimeData?.length === 0 ? (
-                        <p className="text-center text-muted-foreground py-8">
-                          Nenhum entrevistador cadastrado
-                        </p>
-                      ) : (
-                        realtimeData
-                          ?.sort((a, b) => {
-                            if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
-                            return a.name.localeCompare(b.name);
-                          })
-                          .map(interviewer => (
-                            <InterviewerListItem
-                              key={interviewer.userId}
-                              interviewer={interviewer}
-                              isSelected={selectedInterviewers.has(interviewer.userId)}
-                              onToggle={() => toggleInterviewer(interviewer.userId)}
-                              showRoute={routesVisible.has(interviewer.userId)}
-                              onToggleRoute={() => toggleRoute(interviewer.userId)}
-                            />
-                          ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="performance" className="space-y-6">
-            {performanceQueryDisabled ? (
-              <Card>
-                <CardContent className="py-8 text-center">
-                  <p className="text-muted-foreground">Organização inválida</p>
-                </CardContent>
-              </Card>
-            ) : performanceError && !performanceData ? (
-              <Card>
-                <CardContent className="py-8 text-center">
-                  <p className="text-muted-foreground">Erro ao carregar dados de desempenho</p>
-                  <Button variant="outline" size="sm" className="mt-4" onClick={() => refetchPerformance()}>
-                    Tentar novamente
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (performanceLoading || !performanceData) ? (
-              <div className="flex items-center justify-center py-12">
-                <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <>
-            {isFetchingPerformance && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Atualizando...
-              </div>
-            )}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Entrevistadores</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-                      <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <span className="text-2xl font-bold" data-testid="text-total-interviewers">
-                      {performanceData?.summary.totalInterviewers ?? 0}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Entrevistas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full">
-                      <ClipboardList className="w-5 h-5 text-green-600 dark:text-green-400" />
-                    </div>
-                    <span className="text-2xl font-bold" data-testid="text-total-interviews">
-                      {performanceData?.summary.totalInterviews ?? 0}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Tempo Total</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-                      <Timer className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                    </div>
-                    <span className="text-2xl font-bold" data-testid="text-total-time">
-                      {performanceData?.summary.totalTimeHours?.toFixed(1) ?? 0}h
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Distância Total</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-full">
-                      <Route className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                    </div>
-                    <span className="text-2xl font-bold" data-testid="text-total-distance-perf">
-                      {performanceData?.summary.totalDistanceKm?.toFixed(1) ?? 0} km
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-yellow-500" />
-                  Ranking de Desempenho
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <ScrollArea className="max-h-[500px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12 text-center">#</TableHead>
-                        <TableHead>Entrevistador</TableHead>
-                        <TableHead className="text-center">Entrevistas</TableHead>
-                        <TableHead className="text-center">Tempo</TableHead>
-                        <TableHead className="text-center">Distância</TableHead>
-                        <TableHead className="text-center">Calorias</TableHead>
-                        <TableHead className="text-center">Eficiência</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {[...(performanceData?.interviewers ?? [])]
-                        .sort((a, b) => b.totalInterviews - a.totalInterviews)
-                        .map((interviewer, index) => (
-                          <TableRow key={interviewer.interviewerId} data-testid={`row-interviewer-${index}`}>
-                            <TableCell className="text-center font-medium">
-                              {index === 0 && <span className="text-yellow-500">1</span>}
-                              {index === 1 && <span className="text-gray-400">2</span>}
-                              {index === 2 && <span className="text-amber-600">3</span>}
-                              {index > 2 && index + 1}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <div className="font-medium">{interviewer.interviewerName}</div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant="secondary">{interviewer.totalInterviews}</Badge>
-                            </TableCell>
-                            <TableCell className="text-center text-muted-foreground">
-                              {formatTimeFromMinutes(interviewer.totalTimeMinutes)}
-                            </TableCell>
-                            <TableCell className="text-center text-muted-foreground">
-                              {formatDistance(interviewer.totalDistanceMeters)}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <div className="flex items-center justify-center gap-1 text-orange-500">
-                                <Flame className="w-4 h-4" />
-                                {Math.round(interviewer.caloriesBurned)}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant={interviewer.efficiency >= 2 ? "default" : "outline"}>
-                                {interviewer.efficiency?.toFixed(1) ?? 0}/h
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      {(!performanceData?.interviewers?.length) && (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                            Nenhum dado de desempenho disponível
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-            </>
-            )}
-          </TabsContent>
-        </Tabs>
+                          interviewer={interviewer}
+                          isSelected={selectedInterviewers.has(interviewer.userId)}
+                          onToggle={() => toggleInterviewer(interviewer.userId)}
+                          showRoute={routesVisible.has(interviewer.userId)}
+                          onToggleRoute={() => toggleRoute(interviewer.userId)}
+                        />
+                      ))
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </DashboardLayout>
   );
