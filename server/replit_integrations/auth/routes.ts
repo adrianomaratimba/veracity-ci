@@ -4,6 +4,7 @@ import { isAuthenticated } from "./replitAuth";
 import { authService } from "../../auth-service";
 import { registerUserSchema, loginUserSchema } from "@shared/models/auth";
 import { sendPasswordResetEmail } from "../../email-service";
+import { authRateLimiter, passwordResetRateLimiter, registrationRateLimiter } from "../../middleware/rate-limit";
 
 // Register auth-specific routes
 export function registerAuthRoutes(app: Express): void {
@@ -29,8 +30,8 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
-  // Native registration
-  app.post("/api/auth/register", async (req, res) => {
+  // Native registration (rate limited)
+  app.post("/api/auth/register", registrationRateLimiter, async (req, res) => {
     try {
       const parsed = registerUserSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -57,8 +58,8 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
-  // Native login
-  app.post("/api/auth/login", async (req: any, res) => {
+  // Native login (rate limited - 5 attempts per 15 minutes)
+  app.post("/api/auth/login", authRateLimiter, async (req: any, res) => {
     try {
       const parsed = loginUserSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -107,8 +108,8 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
-  // Request password reset
-  app.post("/api/auth/request-password-reset", async (req, res) => {
+  // Request password reset (rate limited - 3 per hour)
+  app.post("/api/auth/request-password-reset", passwordResetRateLimiter, async (req, res) => {
     try {
       const { email } = req.body;
       if (!email) {

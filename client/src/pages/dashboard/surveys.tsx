@@ -284,15 +284,15 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
 
   const renderSurveyCard = (survey: Survey, isTrash: boolean = false) => (
     <Card key={survey.id} className="hover:shadow-md transition-shadow" data-testid={`card-survey-${survey.id}`}>
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4 flex-1 min-w-0">
-            <div className={`p-3 rounded-lg shrink-0 ${isTrash ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
-              <FileText className="w-6 h-6" />
+      <CardContent className="p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+          <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+            <div className={`p-2 sm:p-3 rounded-lg shrink-0 ${isTrash ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
+              <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-3 flex-wrap mb-1">
-                <h3 className="text-lg font-semibold truncate">{survey.title}</h3>
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <h3 className="text-base sm:text-lg font-semibold truncate max-w-[200px] sm:max-w-none">{survey.title}</h3>
                 {!isTrash && getStatusBadge(survey.status)}
                 <Badge variant="outline" className="text-xs">{getTypeLabel(survey.type)}</Badge>
                 {isTrash && <Badge variant="destructive" className="text-xs">Na Lixeira</Badge>}
@@ -300,7 +300,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
               {survey.description && (
                 <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{survey.description}</p>
               )}
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 sm:gap-4 text-xs text-muted-foreground flex-wrap">
                 {survey.location && <span>{survey.location}</span>}
                 <span>Amostra: {survey.targetSample || 0}</span>
                 {isTrash && survey.deletedAt ? (
@@ -311,7 +311,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap sm:shrink-0 mt-2 sm:mt-0">
             {isTrash ? (
               <>
                 <Button 
