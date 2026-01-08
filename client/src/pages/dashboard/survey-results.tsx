@@ -53,7 +53,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { hasPermission, isInterviewerRole, isViewerRole, type UserRole } from "@shared/rbac";
+import { hasPermission, isInterviewerRole, type UserRole } from "@shared/rbac";
 import { useToast } from "@/hooks/use-toast";
 
 const CHART_COLORS = [
@@ -679,83 +679,12 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   });
 
   const userRole = (currentMember?.role as UserRole) || 'viewer';
-  const isViewer = isViewerRole(userRole);
-
-  // Viewer settings - controls what viewers can see
-  interface ViewerSettings {
-    showFilters: boolean;
-    filterAgeGroup: boolean;
-    filterGender: boolean;
-    filterNeighborhood: boolean;
-    filterInterviewer: boolean;
-    showIntentionTab: boolean;
-    showEvolutionTab: boolean;
-    showCrossingsTab: boolean;
-    showProfileTab: boolean;
-    showReportTab: boolean;
-    showMainResult: boolean;
-    showDemographicBreakdowns: boolean;
-    showGenderBreakdown: boolean;
-    showAgeBreakdown: boolean;
-    showNeighborhoodBreakdown: boolean;
-    showInterviewerStats: boolean;
-    allowExcelExport: boolean;
-    allowPdfExport: boolean;
-  }
-
-  const { data: viewerSettings } = useQuery<ViewerSettings>({
-    queryKey: ['/api/surveys', surveyId, 'viewer-settings'],
-    queryFn: async () => {
-      const res = await fetch(`/api/surveys/${surveyId}/viewer-settings`, { credentials: 'include' });
-      if (!res.ok) {
-        // Return default restrictive settings if not found
-        return {
-          showFilters: false,
-          filterAgeGroup: false,
-          filterGender: false,
-          filterNeighborhood: false,
-          filterInterviewer: false,
-          showIntentionTab: true,
-          showEvolutionTab: false,
-          showCrossingsTab: false,
-          showProfileTab: false,
-          showReportTab: false,
-          showMainResult: true,
-          showDemographicBreakdowns: false,
-          showGenderBreakdown: false,
-          showAgeBreakdown: false,
-          showNeighborhoodBreakdown: false,
-          showInterviewerStats: false,
-          allowExcelExport: false,
-          allowPdfExport: false,
-        };
-      }
-      return res.json();
-    },
-    enabled: !!surveyId && isViewer,
-  });
-
-  // Determine if filters panel should be shown for viewers
-  const shouldShowFiltersPanel = useMemo(() => {
-    if (!isViewer) return true; // Admins/coordinators always see filters
-    if (!viewerSettings) return false; // Default: no filters for viewers
-    if (!viewerSettings.showFilters) return false;
-    // Check if at least one filter is enabled
-    return viewerSettings.filterAgeGroup || 
-           viewerSettings.filterGender || 
-           viewerSettings.filterNeighborhood || 
-           viewerSettings.filterInterviewer;
-  }, [isViewer, viewerSettings]);
   
   const canViewResults = useMemo(() => {
     if (!currentMember) return false;
     if (isInterviewerRole(userRole)) return false;
     return hasPermission(userRole, 'analytics:view') || hasPermission(userRole, 'analytics:view_aggregate');
   }, [currentMember, userRole]);
-  
-  const canViewInterviewerDetails = useMemo(() => {
-    return !isViewer && hasPermission(userRole, 'analytics:view');
-  }, [isViewer, userRole]);
 
   const voteIntentionQuestion = useMemo(() => {
     if (!aggregatedData?.questionResults) return null;
@@ -824,12 +753,6 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   }, [timelineData, voteIntentionQuestion]);
 
   const exportToPDF = useCallback(() => {
-    // Guard: check permission for viewers
-    if (isViewer && (!viewerSettings || !viewerSettings.allowPdfExport)) {
-      toast({ title: "Sem permissão", description: "Você não tem permissão para exportar PDF", variant: "destructive" });
-      return;
-    }
-    
     if (!aggregatedData) {
       toast({ title: "Sem dados", description: "Não há dados para exportar", variant: "destructive" });
       return;
@@ -984,15 +907,9 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       console.error('Erro ao gerar PDF:', error);
       toast({ title: "Erro", description: "Falha ao gerar o PDF", variant: "destructive" });
     }
-  }, [aggregatedData, voteIntentionQuestion, toast, isViewer, viewerSettings]);
+  }, [aggregatedData, voteIntentionQuestion, toast]);
 
   const exportToExcel = useCallback(() => {
-    // Guard: check permission for viewers
-    if (isViewer && (!viewerSettings || !viewerSettings.allowExcelExport)) {
-      toast({ title: "Sem permissão", description: "Você não tem permissão para exportar Excel", variant: "destructive" });
-      return;
-    }
-    
     if (!aggregatedData || !voteIntentionQuestion) {
       toast({ title: "Sem dados", description: "Não há dados para exportar", variant: "destructive" });
       return;
@@ -1027,7 +944,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     URL.revokeObjectURL(url);
 
     toast({ title: "Exportado!", description: "Dados exportados para Excel/CSV" });
-  }, [aggregatedData, voteIntentionQuestion, toast, isViewer, viewerSettings]);
+  }, [aggregatedData, voteIntentionQuestion, toast]);
 
   const resetFilters = useCallback(() => {
     setFilters({
@@ -1040,102 +957,6 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       dateTo: ""
     });
   }, []);
-
-  // Filter facets based on viewer settings (must be before early returns)
-  const allowedFilterKeys = useMemo(() => {
-    if (!isViewer) return ['neighborhood', 'ageRange', 'gender', 'education']; // All for admins
-    if (!viewerSettings || !viewerSettings.showFilters) return [];
-    const allowed: string[] = [];
-    if (viewerSettings.filterNeighborhood) allowed.push('neighborhood');
-    if (viewerSettings.filterAgeGroup) allowed.push('ageRange');
-    if (viewerSettings.filterGender) allowed.push('gender');
-    return allowed;
-  }, [isViewer, viewerSettings]);
-
-  const showInterviewerFilter = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showFilters && viewerSettings?.filterInterviewer;
-  }, [isViewer, viewerSettings]);
-
-  // Check export permissions for viewers
-  const canExportExcel = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.allowExcelExport ?? false;
-  }, [isViewer, viewerSettings]);
-
-  const canExportPdf = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.allowPdfExport ?? false;
-  }, [isViewer, viewerSettings]);
-
-  // Tab visibility for viewers
-  const showIntentionTab = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showIntentionTab ?? true; // Default visible for viewers
-  }, [isViewer, viewerSettings]);
-
-  const showEvolutionTab = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showEvolutionTab ?? false;
-  }, [isViewer, viewerSettings]);
-
-  const showCrossingsTab = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showCrossingsTab ?? false;
-  }, [isViewer, viewerSettings]);
-
-  const showProfileTab = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showProfileTab ?? false;
-  }, [isViewer, viewerSettings]);
-
-  const showReportTab = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showReportTab ?? false;
-  }, [isViewer, viewerSettings]);
-
-  // Card visibility for viewers
-  const showMainResult = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showMainResult ?? true; // Default visible
-  }, [isViewer, viewerSettings]);
-
-  const showDemographicBreakdowns = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showDemographicBreakdowns ?? false;
-  }, [isViewer, viewerSettings]);
-
-  const showGenderBreakdown = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showGenderBreakdown ?? false;
-  }, [isViewer, viewerSettings]);
-
-  const showAgeBreakdown = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showAgeBreakdown ?? false;
-  }, [isViewer, viewerSettings]);
-
-  const showNeighborhoodBreakdown = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showNeighborhoodBreakdown ?? false;
-  }, [isViewer, viewerSettings]);
-
-  const showInterviewerStats = useMemo(() => {
-    if (!isViewer) return true;
-    return viewerSettings?.showInterviewerStats ?? false;
-  }, [isViewer, viewerSettings]);
-
-  // Calculate visible tabs count for grid layout
-  const visibleTabsCount = useMemo(() => {
-    let count = 2; // overview is always visible, plus 1 base
-    if (showIntentionTab) count++;
-    if (showEvolutionTab) count++;
-    if (showCrossingsTab) count++;
-    if (showProfileTab) count++;
-    if (canViewInterviewerDetails) count++;
-    if (showReportTab) count++;
-    return count;
-  }, [showIntentionTab, showEvolutionTab, showCrossingsTab, showProfileTab, showReportTab, canViewInterviewerDetails]);
 
   if (memberLoading || resultsLoading) {
     return <LoadingScreen message="Carregando resultados..." />;
@@ -1191,85 +1012,83 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   return (
     <DashboardLayout orgId={params.orgId}>
       <div className="flex flex-col lg:flex-row gap-6">
-        {shouldShowFiltersPanel && (
-          <div className="hidden lg:block w-64 shrink-0">
-            <Card className="sticky top-4">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Filter className="w-4 h-4" />
-                  Filtros
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {(aggregatedData.filterFacets && aggregatedData.filterFacets.length > 0) || (interviewersList && interviewersList.length > 0) ? (
-                  <>
-                    {aggregatedData.filterFacets?.filter(facet => allowedFilterKeys.includes(facet.filterKey)).map((facet) => {
-                      const filterLabels: Record<string, string> = {
-                        neighborhood: 'Bairro / Zona',
-                        ageRange: 'Faixa Etária',
-                        gender: 'Sexo',
-                        education: 'Escolaridade'
-                      };
-                      const filterKey = facet.filterKey as keyof FilterState;
-                      return (
-                        <div key={facet.questionId} className="space-y-2">
-                          <Label className="text-xs">{filterLabels[facet.filterKey] || facet.questionText}</Label>
-                          <Select 
-                            value={filters[filterKey] || "all"} 
-                            onValueChange={(v) => setFilters(f => ({ ...f, [filterKey]: v }))}
-                          >
-                            <SelectTrigger data-testid={`select-${facet.filterKey}`}>
-                              <SelectValue placeholder="Todos" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">Todos</SelectItem>
-                              {facet.options.map((opt) => (
-                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      );
-                    })}
-                    {showInterviewerFilter && interviewersList && interviewersList.length > 0 && (
-                      <div className="space-y-2">
-                        <Label className="text-xs">Entrevistador</Label>
+        <div className="hidden lg:block w-64 shrink-0">
+          <Card className="sticky top-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Filter className="w-4 h-4" />
+                Filtros
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(aggregatedData.filterFacets && aggregatedData.filterFacets.length > 0) || (interviewersList && interviewersList.length > 0) ? (
+                <>
+                  {aggregatedData.filterFacets?.map((facet) => {
+                    const filterLabels: Record<string, string> = {
+                      neighborhood: 'Bairro / Zona',
+                      ageRange: 'Faixa Etária',
+                      gender: 'Sexo',
+                      education: 'Escolaridade'
+                    };
+                    const filterKey = facet.filterKey as keyof FilterState;
+                    return (
+                      <div key={facet.questionId} className="space-y-2">
+                        <Label className="text-xs">{filterLabels[facet.filterKey] || facet.questionText}</Label>
                         <Select 
-                          value={filters.interviewer} 
-                          onValueChange={(v) => setFilters(f => ({ ...f, interviewer: v }))}
+                          value={filters[filterKey] || "all"} 
+                          onValueChange={(v) => setFilters(f => ({ ...f, [filterKey]: v }))}
                         >
-                          <SelectTrigger data-testid="select-interviewer">
+                          <SelectTrigger data-testid={`select-${facet.filterKey}`}>
                             <SelectValue placeholder="Todos" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">Todos</SelectItem>
-                            {interviewersList.map((interviewer) => (
-                              <SelectItem key={interviewer.id} value={interviewer.id}>{interviewer.name}</SelectItem>
+                            {facet.options.map((opt) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
-                    )}
-                    <Separator />
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full"
-                      onClick={resetFilters}
-                      data-testid="button-reset-filters"
-                    >
-                      Limpar Filtros
-                    </Button>
-                  </>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center py-4">
-                    Nenhum filtro disponível para esta pesquisa
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
+                    );
+                  })}
+                  {interviewersList && interviewersList.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs">Entrevistador</Label>
+                      <Select 
+                        value={filters.interviewer} 
+                        onValueChange={(v) => setFilters(f => ({ ...f, interviewer: v }))}
+                      >
+                        <SelectTrigger data-testid="select-interviewer">
+                          <SelectValue placeholder="Todos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos</SelectItem>
+                          {interviewersList.map((interviewer) => (
+                            <SelectItem key={interviewer.id} value={interviewer.id}>{interviewer.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <Separator />
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={resetFilters}
+                    data-testid="button-reset-filters"
+                  >
+                    Limpar Filtros
+                  </Button>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  Nenhum filtro disponível para esta pesquisa
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="flex-1 space-y-6 min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1297,63 +1116,47 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {canExportExcel && (
-                <Button variant="outline" onClick={exportToExcel} data-testid="button-download-excel">
-                  <FileSpreadsheet className="w-4 h-4 mr-2" />
-                  Excel
-                </Button>
-              )}
-              {canExportPdf && (
-                <Button onClick={exportToPDF} data-testid="button-download-pdf">
-                  <Download className="w-4 h-4 mr-2" />
-                  PDF
-                </Button>
-              )}
+              <Button variant="outline" onClick={exportToExcel} data-testid="button-download-excel">
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                Excel
+              </Button>
+              <Button onClick={exportToPDF} data-testid="button-download-pdf">
+                <Download className="w-4 h-4 mr-2" />
+                PDF
+              </Button>
             </div>
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="flex w-full gap-1 flex-wrap">
+            <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 gap-1">
               <TabsTrigger value="overview" data-testid="tab-overview" className="text-xs sm:text-sm">
                 <Eye className="w-4 h-4 mr-1 hidden sm:inline" />
                 Visão Geral
               </TabsTrigger>
-              {showIntentionTab && (
-                <TabsTrigger value="vote-intention" data-testid="tab-vote-intention" className="text-xs sm:text-sm">
-                  <BarChart3 className="w-4 h-4 mr-1 hidden sm:inline" />
-                  Intenção
-                </TabsTrigger>
-              )}
-              {showEvolutionTab && (
-                <TabsTrigger value="timeline" data-testid="tab-timeline" className="text-xs sm:text-sm">
-                  <TrendingUp className="w-4 h-4 mr-1 hidden sm:inline" />
-                  Evolução
-                </TabsTrigger>
-              )}
-              {showCrossingsTab && (
-                <TabsTrigger value="cross-tabs" data-testid="tab-cross-tabs" className="text-xs sm:text-sm">
-                  <Layers className="w-4 h-4 mr-1 hidden sm:inline" />
-                  Cruzamentos
-                </TabsTrigger>
-              )}
-              {showProfileTab && (
-                <TabsTrigger value="distribution" data-testid="tab-distribution" className="text-xs sm:text-sm">
-                  <PieChartIcon className="w-4 h-4 mr-1 hidden sm:inline" />
-                  Perfil
-                </TabsTrigger>
-              )}
-              {canViewInterviewerDetails && (
-                <TabsTrigger value="interviewers" data-testid="tab-interviewers" className="text-xs sm:text-sm">
-                  <Users className="w-4 h-4 mr-1 hidden sm:inline" />
-                  Entrevistadores
-                </TabsTrigger>
-              )}
-              {showReportTab && (
-                <TabsTrigger value="report" data-testid="tab-report" className="text-xs sm:text-sm">
-                  <FileText className="w-4 h-4 mr-1 hidden sm:inline" />
-                  Relatório
-                </TabsTrigger>
-              )}
+              <TabsTrigger value="vote-intention" data-testid="tab-vote-intention" className="text-xs sm:text-sm">
+                <BarChart3 className="w-4 h-4 mr-1 hidden sm:inline" />
+                Intenção
+              </TabsTrigger>
+              <TabsTrigger value="timeline" data-testid="tab-timeline" className="text-xs sm:text-sm">
+                <TrendingUp className="w-4 h-4 mr-1 hidden sm:inline" />
+                Evolução
+              </TabsTrigger>
+              <TabsTrigger value="cross-tabs" data-testid="tab-cross-tabs" className="text-xs sm:text-sm">
+                <Layers className="w-4 h-4 mr-1 hidden sm:inline" />
+                Cruzamentos
+              </TabsTrigger>
+              <TabsTrigger value="distribution" data-testid="tab-distribution" className="text-xs sm:text-sm">
+                <PieChartIcon className="w-4 h-4 mr-1 hidden sm:inline" />
+                Perfil
+              </TabsTrigger>
+              <TabsTrigger value="interviewers" data-testid="tab-interviewers" className="text-xs sm:text-sm">
+                <Users className="w-4 h-4 mr-1 hidden sm:inline" />
+                Entrevistadores
+              </TabsTrigger>
+              <TabsTrigger value="report" data-testid="tab-report" className="text-xs sm:text-sm">
+                <FileText className="w-4 h-4 mr-1 hidden sm:inline" />
+                Relatório
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="mt-6">
@@ -1796,7 +1599,6 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               </div>
             </TabsContent>
 
-            {canViewInterviewerDetails && (
             <TabsContent value="interviewers" className="mt-6">
               <Card>
                 <CardHeader>
@@ -1908,7 +1710,6 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 </CardContent>
               </Card>
             </TabsContent>
-            )}
 
             <TabsContent value="report" className="mt-6">
               <Card>
@@ -1923,45 +1724,33 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid sm:grid-cols-2 gap-4">
-                    {canExportPdf && (
-                      <Card className="border-2 border-dashed">
-                        <CardContent className="flex flex-col items-center justify-center py-8">
-                          <Download className="w-12 h-12 text-red-600 mb-4" />
-                          <h3 className="font-semibold mb-2">Relatório em PDF</h3>
-                          <p className="text-sm text-muted-foreground text-center mb-4">
-                            Documento formatado para impressão e apresentação
-                          </p>
-                          <Button onClick={exportToPDF} data-testid="button-export-pdf-full">
-                            <Download className="w-4 h-4 mr-2" />
-                            Baixar PDF
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    )}
+                    <Card className="border-2 border-dashed">
+                      <CardContent className="flex flex-col items-center justify-center py-8">
+                        <Download className="w-12 h-12 text-red-600 mb-4" />
+                        <h3 className="font-semibold mb-2">Relatório em PDF</h3>
+                        <p className="text-sm text-muted-foreground text-center mb-4">
+                          Documento formatado para impressão e apresentação
+                        </p>
+                        <Button onClick={exportToPDF} data-testid="button-export-pdf-full">
+                          <Download className="w-4 h-4 mr-2" />
+                          Baixar PDF
+                        </Button>
+                      </CardContent>
+                    </Card>
 
-                    {canExportExcel && (
-                      <Card className="border-2 border-dashed">
-                        <CardContent className="flex flex-col items-center justify-center py-8">
-                          <FileSpreadsheet className="w-12 h-12 text-green-600 mb-4" />
-                          <h3 className="font-semibold mb-2">Dados em Excel</h3>
-                          <p className="text-sm text-muted-foreground text-center mb-4">
-                            Planilha com todos os dados para análises adicionais
-                          </p>
-                          <Button variant="outline" onClick={exportToExcel} data-testid="button-export-excel-full">
-                            <FileSpreadsheet className="w-4 h-4 mr-2" />
-                            Baixar Excel
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {!canExportPdf && !canExportExcel && (
-                      <Card className="border-2 border-dashed col-span-2">
-                        <CardContent className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                          <p>Exportação não disponível para seu perfil.</p>
-                        </CardContent>
-                      </Card>
-                    )}
+                    <Card className="border-2 border-dashed">
+                      <CardContent className="flex flex-col items-center justify-center py-8">
+                        <FileSpreadsheet className="w-12 h-12 text-green-600 mb-4" />
+                        <h3 className="font-semibold mb-2">Dados em Excel</h3>
+                        <p className="text-sm text-muted-foreground text-center mb-4">
+                          Planilha com todos os dados para análises adicionais
+                        </p>
+                        <Button variant="outline" onClick={exportToExcel} data-testid="button-export-excel-full">
+                          <FileSpreadsheet className="w-4 h-4 mr-2" />
+                          Baixar Excel
+                        </Button>
+                      </CardContent>
+                    </Card>
                   </div>
 
                   <Separator />

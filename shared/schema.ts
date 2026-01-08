@@ -193,53 +193,6 @@ export const surveyCoordinators = pgTable("survey_coordinators", {
   assignedAt: timestamp("assigned_at").defaultNow(),
 });
 
-// Survey Viewer assignments - which viewers can see this survey's results
-export const surveyViewers = pgTable("survey_viewers", {
-  id: serial("id").primaryKey(),
-  surveyId: integer("survey_id").references(() => surveys.id).notNull(),
-  viewerId: varchar("viewer_id").references(() => users.id).notNull(),
-  assignedBy: varchar("assigned_by").references(() => users.id).notNull(),
-  assignedAt: timestamp("assigned_at").defaultNow(),
-});
-
-// Survey Viewer Settings - controls what viewers can see in survey results
-export const surveyViewerSettings = pgTable("survey_viewer_settings", {
-  id: serial("id").primaryKey(),
-  surveyId: integer("survey_id").references(() => surveys.id).notNull().unique(),
-  
-  // Filters visibility (all disabled by default for viewers)
-  showFilters: boolean("show_filters").default(false),
-  filterAgeGroup: boolean("filter_age_group").default(false),
-  filterGender: boolean("filter_gender").default(false),
-  filterNeighborhood: boolean("filter_neighborhood").default(false),
-  filterInterviewer: boolean("filter_interviewer").default(false),
-  
-  // Tabs visibility
-  showIntentionTab: boolean("show_intention_tab").default(true),
-  showEvolutionTab: boolean("show_evolution_tab").default(false),
-  showCrossingsTab: boolean("show_crossings_tab").default(false),
-  showProfileTab: boolean("show_profile_tab").default(false),
-  showReportTab: boolean("show_report_tab").default(false),
-  
-  // Cards visibility (beyond the fixed ones)
-  showMainResult: boolean("show_main_result").default(true),
-  showDemographicBreakdowns: boolean("show_demographic_breakdowns").default(false),
-  showGenderBreakdown: boolean("show_gender_breakdown").default(false),
-  showAgeBreakdown: boolean("show_age_breakdown").default(false),
-  showNeighborhoodBreakdown: boolean("show_neighborhood_breakdown").default(false),
-  showInterviewerStats: boolean("show_interviewer_stats").default(false),
-  
-  // Export options
-  allowExcelExport: boolean("allow_excel_export").default(false),
-  allowPdfExport: boolean("allow_pdf_export").default(false),
-  
-  // Question-level visibility (null = all questions visible)
-  visibleQuestionIds: integer("visible_question_ids").array(),
-  
-  updatedAt: timestamp("updated_at").defaultNow(),
-  updatedBy: varchar("updated_by").references(() => users.id),
-});
-
 // === QUESTION MODULES (Reusable question templates) ===
 
 export const questionModules = pgTable("question_modules", {
@@ -340,37 +293,6 @@ export const surveyCoordinatorsRelations = relations(surveyCoordinators, ({ one 
   }),
 }));
 
-export const surveyViewersRelations = relations(surveyViewers, ({ one }) => ({
-  survey: one(surveys, {
-    fields: [surveyViewers.surveyId],
-    references: [surveys.id],
-  }),
-  viewer: one(users, {
-    fields: [surveyViewers.viewerId],
-    references: [users.id],
-  }),
-  assigner: one(users, {
-    fields: [surveyViewers.assignedBy],
-    references: [users.id],
-  }),
-}));
-
-export const surveyViewerSettingsRelations = relations(surveyViewerSettings, ({ one }) => ({
-  survey: one(surveys, {
-    fields: [surveyViewerSettings.surveyId],
-    references: [surveys.id],
-  }),
-  updater: one(users, {
-    fields: [surveyViewerSettings.updatedBy],
-    references: [users.id],
-  }),
-}));
-
-// Insert/Select schemas for surveyViewerSettings
-export const insertSurveyViewerSettingsSchema = createInsertSchema(surveyViewerSettings).omit({ id: true, updatedAt: true });
-export type InsertSurveyViewerSettings = z.infer<typeof insertSurveyViewerSettingsSchema>;
-export type SurveyViewerSettings = typeof surveyViewerSettings.$inferSelect;
-
 export const questionsRelations = relations(questions, ({ one }) => ({
   survey: one(surveys, {
     fields: [questions.surveyId],
@@ -461,7 +383,6 @@ export const insertMemberSchema = createInsertSchema(organizationMembers).omit({
 export const insertPendingInvitationSchema = createInsertSchema(pendingInvitations).omit({ id: true, invitedAt: true, respondedAt: true, status: true });
 export const insertSurveyAssignmentSchema = createInsertSchema(surveyAssignments).omit({ id: true, assignedAt: true });
 export const insertSurveyCoordinatorSchema = createInsertSchema(surveyCoordinators).omit({ id: true, assignedAt: true });
-export const insertSurveyViewerSchema = createInsertSchema(surveyViewers).omit({ id: true, assignedAt: true });
 export const insertMemberPermissionOverrideSchema = createInsertSchema(memberPermissionOverrides).omit({ id: true, createdAt: true });
 export const insertAccessAuditLogSchema = createInsertSchema(accessAuditLog).omit({ id: true, createdAt: true });
 export const insertQuestionModuleSchema = createInsertSchema(questionModules).omit({ id: true, createdAt: true, updatedAt: true });
@@ -497,9 +418,6 @@ export type InsertSurveyAssignment = z.infer<typeof insertSurveyAssignmentSchema
 
 export type SurveyCoordinator = typeof surveyCoordinators.$inferSelect;
 export type InsertSurveyCoordinator = z.infer<typeof insertSurveyCoordinatorSchema>;
-
-export type SurveyViewer = typeof surveyViewers.$inferSelect;
-export type InsertSurveyViewer = z.infer<typeof insertSurveyViewerSchema>;
 
 export type MemberPermissionOverride = typeof memberPermissionOverrides.$inferSelect;
 export type InsertMemberPermissionOverride = z.infer<typeof insertMemberPermissionOverrideSchema>;
@@ -572,107 +490,3 @@ export const questionLogicSchema = z.object({
   rules: z.array(skipLogicRuleSchema).default([]),
 });
 export type QuestionLogic = z.infer<typeof questionLogicSchema>;
-
-// === LANDING PAGE CMS ===
-
-export const landingPageConfig = pgTable("landing_page_config", {
-  id: text("id").primaryKey().default("default"),
-  
-  // SEO Configuration
-  seoTitle: text("seo_title").default("Veracity - Plataforma de Pesquisas Eleitorais"),
-  seoDescription: text("seo_description").default("Sistema profissional para gestão de pesquisas eleitorais com GPS, gravação de áudio e detecção de fraudes em tempo real."),
-  seoKeywords: text("seo_keywords").default("pesquisa eleitoral, coleta de dados, GPS, anti-fraude, LGPD"),
-  ogImage: text("og_image"),
-  
-  // Hero Section
-  heroHeadline: text("hero_headline").default("Pesquisas Eleitorais com Credibilidade Total"),
-  heroSubheadline: text("hero_subheadline").default("Sistema profissional de coleta de dados com GPS, gravação de áudio e detecção de fraudes em tempo real. Utilizado pelos principais institutos de pesquisa do Brasil."),
-  heroCta: text("hero_cta").default("Começar Agora"),
-  heroCtaSecondary: text("hero_cta_secondary").default("Ver Demonstração"),
-  heroImage: text("hero_image"),
-  
-  // Stats Section (JSON array)
-  statsEnabled: boolean("stats_enabled").default(true),
-  stats: jsonb("stats").default([
-    { value: "+500K", label: "Entrevistas Realizadas" },
-    { value: "99.8%", label: "Precisão GPS" },
-    { value: "24/7", label: "Monitoramento" },
-    { value: "<1%", label: "Taxa de Fraude" }
-  ]),
-  
-  // Features Section
-  featuresTitle: text("features_title").default("Por que escolher o Veracity?"),
-  featuresSubtitle: text("features_subtitle").default("Tecnologia de ponta para pesquisas confiáveis"),
-  features: jsonb("features").default([]),
-  
-  // Testimonials Section
-  testimonialsTitle: text("testimonials_title").default("O que nossos clientes dizem"),
-  testimonials: jsonb("testimonials").default([]),
-  testimonialsEnabled: boolean("testimonials_enabled").default(true),
-  
-  // FAQ Section
-  faqTitle: text("faq_title").default("Perguntas Frequentes"),
-  faqs: jsonb("faqs").default([]),
-  faqEnabled: boolean("faq_enabled").default(true),
-  
-  // CTA Section
-  ctaTitle: text("cta_title").default("Pronto para revolucionar suas pesquisas?"),
-  ctaSubtitle: text("cta_subtitle").default("Comece gratuitamente e descubra como o Veracity pode transformar sua operação de campo."),
-  ctaButton: text("cta_button").default("Criar conta grátis"),
-  
-  // Theme Colors (override defaults)
-  primaryColor: text("primary_color"),
-  secondaryColor: text("secondary_color"),
-  accentColor: text("accent_color"),
-  
-  // Footer
-  footerText: text("footer_text").default("Desenvolvido no Brasil para institutos de pesquisa exigentes."),
-  footerLinks: jsonb("footer_links").default([]),
-  
-  // Analytics & Scripts
-  googleAnalyticsId: text("google_analytics_id"),
-  customHeadScripts: text("custom_head_scripts"),
-  customBodyScripts: text("custom_body_scripts"),
-  
-  updatedAt: timestamp("updated_at").defaultNow(),
-  updatedBy: varchar("updated_by").references(() => users.id),
-});
-
-export const insertLandingPageConfigSchema = createInsertSchema(landingPageConfig);
-export type InsertLandingPageConfig = z.infer<typeof insertLandingPageConfigSchema>;
-export type LandingPageConfig = typeof landingPageConfig.$inferSelect;
-
-// Zod schemas for structured JSON fields
-export const landingStatSchema = z.object({
-  value: z.string(),
-  label: z.string(),
-});
-export type LandingStat = z.infer<typeof landingStatSchema>;
-
-export const landingFeatureSchema = z.object({
-  icon: z.string(),
-  title: z.string(),
-  description: z.string(),
-});
-export type LandingFeature = z.infer<typeof landingFeatureSchema>;
-
-export const landingTestimonialSchema = z.object({
-  quote: z.string(),
-  author: z.string(),
-  role: z.string(),
-  company: z.string(),
-  avatar: z.string().optional(),
-});
-export type LandingTestimonial = z.infer<typeof landingTestimonialSchema>;
-
-export const landingFaqSchema = z.object({
-  question: z.string(),
-  answer: z.string(),
-});
-export type LandingFaq = z.infer<typeof landingFaqSchema>;
-
-export const landingFooterLinkSchema = z.object({
-  label: z.string(),
-  url: z.string(),
-});
-export type LandingFooterLink = z.infer<typeof landingFooterLinkSchema>;

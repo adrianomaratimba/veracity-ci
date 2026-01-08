@@ -9,14 +9,11 @@ import {
   answers, Answer, InsertAnswer,
   surveyAssignments, SurveyAssignment, InsertSurveyAssignment,
   surveyCoordinators, SurveyCoordinator, InsertSurveyCoordinator,
-  surveyViewers, SurveyViewer, InsertSurveyViewer,
-  surveyViewerSettings, SurveyViewerSettings, InsertSurveyViewerSettings,
   memberPermissionOverrides, MemberPermissionOverride, InsertMemberPermissionOverride,
   accessAuditLog, AccessAuditLog, InsertAccessAuditLog,
   questionModules, QuestionModule, InsertQuestionModule,
   organizationDomains, OrganizationDomain, InsertOrganizationDomain,
-  subscriptionPlans, SubscriptionPlan,
-  landingPageConfig, LandingPageConfig, InsertLandingPageConfig
+  subscriptionPlans, SubscriptionPlan
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -161,17 +158,6 @@ export interface IStorage {
   unassignCoordinator(surveyId: number, coordinatorId: string): Promise<void>;
   isCoordinatorAssigned(surveyId: number, coordinatorId: string): Promise<boolean>;
 
-  // Survey Viewers
-  getSurveyViewers(surveyId: number): Promise<(SurveyViewer & { viewer: User })[]>;
-  getViewerAssignedSurveys(viewerId: string, orgId: number): Promise<Survey[]>;
-  assignViewer(data: InsertSurveyViewer): Promise<SurveyViewer>;
-  unassignViewer(surveyId: number, viewerId: string): Promise<void>;
-  isViewerAssigned(surveyId: number, viewerId: string): Promise<boolean>;
-
-  // Survey Viewer Settings
-  getSurveyViewerSettings(surveyId: number): Promise<SurveyViewerSettings | undefined>;
-  upsertSurveyViewerSettings(surveyId: number, data: Partial<InsertSurveyViewerSettings>, updatedBy?: string): Promise<SurveyViewerSettings>;
-
   // Permission Overrides
   getMemberPermissionOverrides(memberId: number): Promise<MemberPermissionOverride[]>;
   getOrgPermissionOverrides(orgId: number): Promise<(MemberPermissionOverride & { member: Member & { user: User } })[]>;
@@ -202,10 +188,6 @@ export interface IStorage {
   listAllUsersWithMemberships(): Promise<(User & { 
     memberships: { organizationId: number; organizationName: string; role: string }[] 
   })[]>;
-
-  // Landing Page CMS
-  getLandingPageConfig(): Promise<LandingPageConfig | undefined>;
-  upsertLandingPageConfig(data: Partial<InsertLandingPageConfig>, updatedBy?: string): Promise<LandingPageConfig>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -733,84 +715,6 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return !!assignment;
-  }
-
-  // --- SURVEY VIEWERS ---
-  async getSurveyViewers(surveyId: number): Promise<(SurveyViewer & { viewer: User })[]> {
-    const result = await db.select({
-      assignment: surveyViewers,
-      viewer: users
-    })
-      .from(surveyViewers)
-      .innerJoin(users, eq(surveyViewers.viewerId, users.id))
-      .where(eq(surveyViewers.surveyId, surveyId));
-    
-    return result.map(r => ({ ...r.assignment, viewer: r.viewer }));
-  }
-
-  async getViewerAssignedSurveys(viewerId: string, orgId: number): Promise<Survey[]> {
-    const result = await db.select({ survey: surveys })
-      .from(surveyViewers)
-      .innerJoin(surveys, eq(surveyViewers.surveyId, surveys.id))
-      .where(and(
-        eq(surveyViewers.viewerId, viewerId),
-        eq(surveys.organizationId, orgId)
-      ));
-    
-    return result.map(r => r.survey);
-  }
-
-  async assignViewer(data: InsertSurveyViewer): Promise<SurveyViewer> {
-    const [assignment] = await db.insert(surveyViewers).values(data).returning();
-    return assignment;
-  }
-
-  async unassignViewer(surveyId: number, viewerId: string): Promise<void> {
-    await db.delete(surveyViewers).where(and(
-      eq(surveyViewers.surveyId, surveyId),
-      eq(surveyViewers.viewerId, viewerId)
-    ));
-  }
-
-  async isViewerAssigned(surveyId: number, viewerId: string): Promise<boolean> {
-    const [assignment] = await db.select()
-      .from(surveyViewers)
-      .where(and(
-        eq(surveyViewers.surveyId, surveyId),
-        eq(surveyViewers.viewerId, viewerId)
-      ))
-      .limit(1);
-    return !!assignment;
-  }
-
-  // --- SURVEY VIEWER SETTINGS ---
-  async getSurveyViewerSettings(surveyId: number): Promise<SurveyViewerSettings | undefined> {
-    const [settings] = await db.select()
-      .from(surveyViewerSettings)
-      .where(eq(surveyViewerSettings.surveyId, surveyId))
-      .limit(1);
-    return settings;
-  }
-
-  async upsertSurveyViewerSettings(
-    surveyId: number, 
-    data: Partial<InsertSurveyViewerSettings>, 
-    updatedBy?: string
-  ): Promise<SurveyViewerSettings> {
-    const existing = await this.getSurveyViewerSettings(surveyId);
-    
-    if (existing) {
-      const [updated] = await db.update(surveyViewerSettings)
-        .set({ ...data, updatedAt: new Date(), updatedBy })
-        .where(eq(surveyViewerSettings.surveyId, surveyId))
-        .returning();
-      return updated;
-    } else {
-      const [created] = await db.insert(surveyViewerSettings)
-        .values({ ...data, surveyId, updatedBy })
-        .returning();
-      return created;
-    }
   }
 
   // --- INTERVIEWER COMPARISON (Audit) ---
@@ -1694,34 +1598,6 @@ export class DatabaseStorage implements IStorage {
     }));
     
     return result;
-  }
-
-  // --- LANDING PAGE CMS ---
-  async getLandingPageConfig(): Promise<LandingPageConfig | undefined> {
-    const [config] = await db.select().from(landingPageConfig).where(eq(landingPageConfig.id, 'default'));
-    return config;
-  }
-
-  async upsertLandingPageConfig(data: Partial<InsertLandingPageConfig>, updatedBy?: string): Promise<LandingPageConfig> {
-    const existing = await this.getLandingPageConfig();
-    
-    if (existing) {
-      const [updated] = await db.update(landingPageConfig)
-        .set({ ...data, updatedAt: new Date(), updatedBy: updatedBy || null })
-        .where(eq(landingPageConfig.id, 'default'))
-        .returning();
-      return updated;
-    } else {
-      const [created] = await db.insert(landingPageConfig)
-        .values({ 
-          id: 'default', 
-          ...data, 
-          updatedAt: new Date(), 
-          updatedBy: updatedBy || null 
-        })
-        .returning();
-      return created;
-    }
   }
 }
 

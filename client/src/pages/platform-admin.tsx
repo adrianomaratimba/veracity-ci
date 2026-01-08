@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Users, Plus, Trash2, KeyRound, Search, Building, Shield, Crown, UserCog, Eye, ClipboardList, RefreshCw, ArrowLeft, Globe } from "lucide-react";
+import { Building2, Users, Plus, Trash2, KeyRound, Search, Building, Shield, Crown, UserCog, Eye, ClipboardList, RefreshCw, ArrowLeft } from "lucide-react";
 import { useLocation } from "wouter";
 import { roleLabels } from "@shared/i18n/labels";
 import { useForm } from "react-hook-form";
@@ -556,29 +556,18 @@ export default function PlatformAdminPage() {
               Usuários
             </TabsTrigger>
           </TabsList>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLocation("/platform/landing")}
-              data-testid="button-edit-landing"
-            >
-              <Globe className="w-4 h-4 mr-2" />
-              Editar Landing Page
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                queryClient.invalidateQueries({ queryKey: ['/api/platform/organizations'] });
-                queryClient.invalidateQueries({ queryKey: ['/api/platform/users'] });
-              }}
-              data-testid="button-refresh-data"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Atualizar
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ['/api/platform/organizations'] });
+              queryClient.invalidateQueries({ queryKey: ['/api/platform/users'] });
+            }}
+            data-testid="button-refresh-data"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Atualizar
+          </Button>
         </div>
 
         <TabsContent value="organizations">
