@@ -149,6 +149,7 @@ export const questions = pgTable("questions", {
 
 export const responses = pgTable("responses", {
   id: serial("id").primaryKey(),
+  clientId: varchar("client_id", { length: 64 }),
   surveyId: integer("survey_id").references(() => surveys.id).notNull(),
   interviewerId: varchar("interviewer_id").references(() => users.id).notNull(),
   latitude: doublePrecision("latitude").notNull(),
