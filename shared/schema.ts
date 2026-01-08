@@ -193,6 +193,15 @@ export const surveyCoordinators = pgTable("survey_coordinators", {
   assignedAt: timestamp("assigned_at").defaultNow(),
 });
 
+// Survey Viewer assignments - which viewers can see this survey's results
+export const surveyViewers = pgTable("survey_viewers", {
+  id: serial("id").primaryKey(),
+  surveyId: integer("survey_id").references(() => surveys.id).notNull(),
+  viewerId: varchar("viewer_id").references(() => users.id).notNull(),
+  assignedBy: varchar("assigned_by").references(() => users.id).notNull(),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+});
+
 // === QUESTION MODULES (Reusable question templates) ===
 
 export const questionModules = pgTable("question_modules", {
@@ -293,6 +302,21 @@ export const surveyCoordinatorsRelations = relations(surveyCoordinators, ({ one 
   }),
 }));
 
+export const surveyViewersRelations = relations(surveyViewers, ({ one }) => ({
+  survey: one(surveys, {
+    fields: [surveyViewers.surveyId],
+    references: [surveys.id],
+  }),
+  viewer: one(users, {
+    fields: [surveyViewers.viewerId],
+    references: [users.id],
+  }),
+  assigner: one(users, {
+    fields: [surveyViewers.assignedBy],
+    references: [users.id],
+  }),
+}));
+
 export const questionsRelations = relations(questions, ({ one }) => ({
   survey: one(surveys, {
     fields: [questions.surveyId],
@@ -383,6 +407,7 @@ export const insertMemberSchema = createInsertSchema(organizationMembers).omit({
 export const insertPendingInvitationSchema = createInsertSchema(pendingInvitations).omit({ id: true, invitedAt: true, respondedAt: true, status: true });
 export const insertSurveyAssignmentSchema = createInsertSchema(surveyAssignments).omit({ id: true, assignedAt: true });
 export const insertSurveyCoordinatorSchema = createInsertSchema(surveyCoordinators).omit({ id: true, assignedAt: true });
+export const insertSurveyViewerSchema = createInsertSchema(surveyViewers).omit({ id: true, assignedAt: true });
 export const insertMemberPermissionOverrideSchema = createInsertSchema(memberPermissionOverrides).omit({ id: true, createdAt: true });
 export const insertAccessAuditLogSchema = createInsertSchema(accessAuditLog).omit({ id: true, createdAt: true });
 export const insertQuestionModuleSchema = createInsertSchema(questionModules).omit({ id: true, createdAt: true, updatedAt: true });
@@ -418,6 +443,9 @@ export type InsertSurveyAssignment = z.infer<typeof insertSurveyAssignmentSchema
 
 export type SurveyCoordinator = typeof surveyCoordinators.$inferSelect;
 export type InsertSurveyCoordinator = z.infer<typeof insertSurveyCoordinatorSchema>;
+
+export type SurveyViewer = typeof surveyViewers.$inferSelect;
+export type InsertSurveyViewer = z.infer<typeof insertSurveyViewerSchema>;
 
 export type MemberPermissionOverride = typeof memberPermissionOverrides.$inferSelect;
 export type InsertMemberPermissionOverride = z.infer<typeof insertMemberPermissionOverrideSchema>;

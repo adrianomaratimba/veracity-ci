@@ -36,6 +36,13 @@
       "when": 1767822752548,
       "tag": "0004_nervous_sentinels",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1767845790153,
+      "tag": "0005_rare_otto_octavius",
+      "breakpoints": true
     }
   ]
 }
