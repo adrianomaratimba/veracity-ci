@@ -34,7 +34,8 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax', // Must be 'lax' for OIDC redirect flows to work
       maxAge: sessionTtl,
     },
   });
