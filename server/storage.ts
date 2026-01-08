@@ -1801,8 +1801,17 @@ export class DatabaseStorage implements IStorage {
 
   // --- LANDING PAGE CMS ---
   async getLandingPageConfig(): Promise<LandingPageConfig | undefined> {
-    const [config] = await db.select().from(landingPageConfig).where(eq(landingPageConfig.id, 'default'));
-    return config;
+    try {
+      const [config] = await db.select().from(landingPageConfig).where(eq(landingPageConfig.id, 'default'));
+      return config;
+    } catch (error: any) {
+      // Handle missing columns gracefully (e.g., seo_title in production)
+      if (error?.code === '42703') {
+        console.log('[landing-config] Schema mismatch, returning undefined');
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async upsertLandingPageConfig(data: Partial<InsertLandingPageConfig>, updatedBy?: string): Promise<LandingPageConfig> {
