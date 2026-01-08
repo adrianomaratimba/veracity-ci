@@ -1,17 +1,17 @@
-import { useOrganization, useOrganizationMembers, useCurrentMember, useInviteMember, useUpdateMemberRole, useRemoveMember, useSetMemberPassword, useUpdateMemberName, useResetMemberLogin } from "@/hooks/use-organizations";
+import { useOrganization, useOrganizationMembers, useCurrentMember, useInviteMember, useUpdateMemberProfile, useRemoveMember } from "@/hooks/use-organizations";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, Shield, MoreVertical, UserPlus, Trash2, UserCog, KeyRound, Eye, EyeOff, Pencil, RefreshCw } from "lucide-react";
+import { Users, Shield, MoreVertical, UserPlus, Trash2, Eye, EyeOff, Pencil, Camera } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { userRoleEnum } from "@shared/schema";
@@ -24,41 +24,46 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const { data: members, isLoading: membersLoading } = useOrganizationMembers(orgId);
   const { data: currentMember, isLoading: currentMemberLoading } = useCurrentMember(orgId);
   const inviteMember = useInviteMember();
-  const updateMemberRole = useUpdateMemberRole();
+  const updateMemberProfile = useUpdateMemberProfile();
   const removeMember = useRemoveMember();
-  const setMemberPassword = useSetMemberPassword();
-  const updateMemberName = useUpdateMemberName();
-  const resetMemberLogin = useResetMemberLogin();
   const { toast } = useToast();
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     email: "",
+    firstName: "",
+    lastName: "",
     role: "interviewer" as z.infer<typeof userRoleEnum>,
-    password: ""
+    password: "",
+    profileImageUrl: ""
   });
   const [showInvitePassword, setShowInvitePassword] = useState(false);
+  const [isUploadingInvitePhoto, setIsUploadingInvitePhoto] = useState(false);
 
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<{ id: number; role: string; name: string } | null>(null);
-  const [newRole, setNewRole] = useState<z.infer<typeof userRoleEnum>>("viewer");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editMember, setEditMember] = useState<{
+    id: number;
+    firstName: string;
+    lastName: string;
+    role: string;
+    profileImageUrl: string | null;
+  } | null>(null);
+  const [editForm, setEditForm] = useState({
+    firstName: "",
+    lastName: "",
+    role: "" as z.infer<typeof userRoleEnum>,
+    password: "",
+    profileImageUrl: ""
+  });
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [isUploadingEditPhoto, setIsUploadingEditPhoto] = useState(false);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{ id: number; name: string } | null>(null);
   const [setupLinkDialog, setSetupLinkDialog] = useState<{ open: boolean; email: string; link: string | null }>({ open: false, email: "", link: null });
 
-  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [passwordMember, setPasswordMember] = useState<{ id: number; name: string } | null>(null);
-  const [newPassword, setNewPassword] = useState("");
-  const [showNewPassword, setShowNewPassword] = useState(false);
-
-  const [nameDialogOpen, setNameDialogOpen] = useState(false);
-  const [nameMember, setNameMember] = useState<{ id: number; firstName: string; lastName: string } | null>(null);
-  const [editFirstName, setEditFirstName] = useState("");
-  const [editLastName, setEditLastName] = useState("");
-
-  const [resetLoginDialogOpen, setResetLoginDialogOpen] = useState(false);
-  const [resetLoginMember, setResetLoginMember] = useState<{ id: number; name: string } | null>(null);
+  const invitePhotoInputRef = useRef<HTMLInputElement>(null);
+  const editPhotoInputRef = useRef<HTMLInputElement>(null);
 
   if (orgLoading || membersLoading || currentMemberLoading) return <LoadingScreen message="Carregando equipe..." />;
   if (!org) return <div>Organização não encontrada</div>;
@@ -67,14 +72,12 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   const isAdmin = currentMember?.role === 'admin';
   const canManageMembers = isOwner || isAdmin;
 
-  // Determine which roles the current user can manage
   const getManageableRoles = () => {
     if (isOwner) return ['admin', 'coordinator', 'interviewer', 'viewer'];
     if (isAdmin) return ['coordinator', 'interviewer', 'viewer'];
     return [];
   };
 
-  // Check if current user can manage a specific member
   const canManageMember = (memberRole: string) => {
     if (isOwner) return memberRole !== 'owner';
     if (isAdmin) return ['coordinator', 'interviewer', 'viewer'].includes(memberRole);
@@ -82,6 +85,42 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
   };
 
   const manageableRoles = getManageableRoles();
+
+  const handlePhotoUpload = async (file: File, target: 'invite' | 'edit') => {
+    const setUploading = target === 'invite' ? setIsUploadingInvitePhoto : setIsUploadingEditPhoto;
+    setUploading(true);
+    
+    try {
+      const urlRes = await fetch("/api/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        credentials: "include"
+      });
+      
+      if (!urlRes.ok) throw new Error("Falha ao obter URL de upload");
+      
+      const { uploadURL, objectPath } = await urlRes.json();
+      
+      await fetch(uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type }
+      });
+
+      if (target === 'invite') {
+        setInviteForm(prev => ({ ...prev, profileImageUrl: objectPath }));
+      } else {
+        setEditForm(prev => ({ ...prev, profileImageUrl: objectPath }));
+      }
+      
+      toast({ title: "Foto enviada", description: "A foto foi carregada com sucesso" });
+    } catch (error) {
+      toast({ title: "Erro", description: "Falha ao enviar foto", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleInvite = async () => {
     if (!inviteForm.email.trim()) {
@@ -97,16 +136,18 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
         orgId,
         email: inviteForm.email,
         role: inviteForm.role,
-        password: inviteForm.password || undefined
+        password: inviteForm.password || undefined,
+        firstName: inviteForm.firstName || undefined,
+        lastName: inviteForm.lastName || undefined,
+        profileImageUrl: inviteForm.profileImageUrl || undefined
       });
       
       setIsInviteOpen(false);
       const email = inviteForm.email;
       const hadPassword = !!inviteForm.password;
-      setInviteForm({ email: "", role: "interviewer", password: "" });
+      setInviteForm({ email: "", firstName: "", lastName: "", role: "interviewer", password: "", profileImageUrl: "" });
       setShowInvitePassword(false);
       
-      // Show setup link dialog if user needs to set password (only if no password was provided)
       if (result.setupLink && !hadPassword) {
         setSetupLinkDialog({ open: true, email, link: result.setupLink });
       } else if (hadPassword) {
@@ -120,72 +161,53 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
     }
   };
 
-  const handleSetPassword = async () => {
-    if (!passwordMember) return;
-    if (!newPassword || newPassword.length < 6) {
-      toast({ title: "Erro", description: "A senha deve ter pelo menos 6 caracteres", variant: "destructive" });
-      return;
-    }
-    try {
-      await setMemberPassword.mutateAsync({
-        memberId: passwordMember.id,
-        password: newPassword
-      });
-      toast({ title: "Senha definida", description: `A senha de ${passwordMember.name} foi atualizada` });
-      setPasswordDialogOpen(false);
-      setPasswordMember(null);
-      setNewPassword("");
-      setShowNewPassword(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao definir senha";
-      toast({ title: "Erro", description: message, variant: "destructive" });
-    }
+  const openEditDialog = (member: any) => {
+    setEditMember({
+      id: member.id,
+      firstName: member.user?.firstName || '',
+      lastName: member.user?.lastName || '',
+      role: member.role,
+      profileImageUrl: member.user?.profileImageUrl || null
+    });
+    setEditForm({
+      firstName: member.user?.firstName || '',
+      lastName: member.user?.lastName || '',
+      role: member.role,
+      password: '',
+      profileImageUrl: member.user?.profileImageUrl || ''
+    });
+    setShowEditPassword(false);
+    setEditDialogOpen(true);
   };
 
-  const copySetupLink = () => {
-    if (setupLinkDialog.link) {
-      navigator.clipboard.writeText(setupLinkDialog.link);
-      toast({ title: "Link copiado", description: "O link foi copiado para a área de transferência" });
-    }
-  };
-
-  const handleUpdateName = async () => {
-    if (!nameMember) return;
-    if (!editFirstName.trim()) {
+  const handleUpdateMember = async () => {
+    if (!editMember) return;
+    if (!editForm.firstName.trim()) {
       toast({ title: "Erro", description: "O nome é obrigatório", variant: "destructive" });
       return;
     }
-    try {
-      await updateMemberName.mutateAsync({
-        memberId: nameMember.id,
-        firstName: editFirstName.trim(),
-        lastName: editLastName.trim() || undefined,
-        orgId
-      });
-      toast({ title: "Nome atualizado", description: "O nome do membro foi atualizado com sucesso" });
-      setNameDialogOpen(false);
-      setNameMember(null);
-      setEditFirstName("");
-      setEditLastName("");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao atualizar nome";
-      toast({ title: "Erro", description: message, variant: "destructive" });
+    if (editForm.password && editForm.password.length < 6) {
+      toast({ title: "Erro", description: "A senha deve ter pelo menos 6 caracteres", variant: "destructive" });
+      return;
     }
-  };
-
-  const handleUpdateRole = async () => {
-    if (!selectedMember) return;
+    
     try {
-      await updateMemberRole.mutateAsync({
-        memberId: selectedMember.id,
-        role: newRole,
-        orgId
+      await updateMemberProfile.mutateAsync({
+        orgId,
+        memberId: editMember.id,
+        firstName: editForm.firstName.trim(),
+        lastName: editForm.lastName.trim() || undefined,
+        role: editForm.role !== editMember.role ? editForm.role : undefined,
+        password: editForm.password || undefined,
+        profileImageUrl: editForm.profileImageUrl !== editMember.profileImageUrl ? editForm.profileImageUrl : undefined
       });
-      toast({ title: "Função atualizada", description: `${selectedMember.name} agora é ${getRoleLabel(newRole)}` });
-      setRoleDialogOpen(false);
-      setSelectedMember(null);
+      
+      toast({ title: "Membro atualizado", description: "Os dados foram salvos com sucesso" });
+      setEditDialogOpen(false);
+      setEditMember(null);
     } catch (error) {
-      toast({ title: "Erro", description: "Falha ao atualizar função", variant: "destructive" });
+      const message = error instanceof Error ? error.message : "Falha ao atualizar membro";
+      toast({ title: "Erro", description: message, variant: "destructive" });
     }
   };
 
@@ -204,22 +226,10 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
     }
   };
 
-  const handleResetLogin = async () => {
-    if (!resetLoginMember) return;
-    try {
-      await resetMemberLogin.mutateAsync({
-        memberId: resetLoginMember.id,
-        orgId
-      });
-      toast({ 
-        title: "Login resetado", 
-        description: `O login de ${resetLoginMember.name} foi resetado. A pessoa pode agora usar "Esqueci minha senha" para configurar uma nova senha.`
-      });
-      setResetLoginDialogOpen(false);
-      setResetLoginMember(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao resetar login";
-      toast({ title: "Erro", description: message, variant: "destructive" });
+  const copySetupLink = () => {
+    if (setupLinkDialog.link) {
+      navigator.clipboard.writeText(setupLinkDialog.link);
+      toast({ title: "Link copiado", description: "O link foi copiado para a área de transferência" });
     }
   };
 
@@ -229,7 +239,6 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
     return 'outline';
   };
 
-  // Role options for inviting - filter based on current user's permissions
   const inviteRoleOptions = roleOptions.filter(r => manageableRoles.includes(r.value));
 
   return (
@@ -247,69 +256,117 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
                   <UserPlus className="w-4 h-4" /> Adicionar Membro
                 </Button>
               </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Adicionar Novo Membro</DialogTitle>
-                <DialogDescription>Adicione um novo membro diretamente à equipe. Se o email não estiver cadastrado, uma conta será criada automaticamente.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="email@exemplo.com"
-                    value={inviteForm.email}
-                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                    data-testid="input-invite-email"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="role">Função</Label>
-                  <Select value={inviteForm.role} onValueChange={(v) => setInviteForm({ ...inviteForm, role: v as z.infer<typeof userRoleEnum> })}>
-                    <SelectTrigger data-testid="select-invite-role">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {inviteRoleOptions.map(r => (
-                        <SelectItem key={r.value} value={r.value}>
-                          {r.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Senha (opcional)</Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showInvitePassword ? "text" : "password"}
-                      placeholder="Deixe vazio para gerar link de configuração"
-                      value={inviteForm.password}
-                      onChange={(e) => setInviteForm({ ...inviteForm, password: e.target.value })}
-                      data-testid="input-invite-password"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0"
-                      onClick={() => setShowInvitePassword(!showInvitePassword)}
-                    >
-                      {showInvitePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </Button>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Adicionar Novo Membro</DialogTitle>
+                  <DialogDescription>Preencha os dados do novo membro da equipe.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="flex justify-center">
+                    <div className="relative">
+                      <Avatar className="w-20 h-20">
+                        <AvatarImage src={inviteForm.profileImageUrl ? inviteForm.profileImageUrl : undefined} />
+                        <AvatarFallback className="text-lg">
+                          {inviteForm.firstName?.[0]}{inviteForm.lastName?.[0] || ''}
+                        </AvatarFallback>
+                      </Avatar>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="secondary"
+                        className="absolute -bottom-1 -right-1 rounded-full w-8 h-8"
+                        onClick={() => invitePhotoInputRef.current?.click()}
+                        disabled={isUploadingInvitePhoto}
+                      >
+                        <Camera className="w-4 h-4" />
+                      </Button>
+                      <input
+                        ref={invitePhotoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => e.target.files?.[0] && handlePhotoUpload(e.target.files[0], 'invite')}
+                      />
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Defina uma senha para o usuário ou deixe vazio para gerar um link de configuração.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">Nome</Label>
+                      <Input
+                        id="firstName"
+                        placeholder="Nome"
+                        value={inviteForm.firstName}
+                        onChange={(e) => setInviteForm({ ...inviteForm, firstName: e.target.value })}
+                        data-testid="input-invite-first-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Sobrenome</Label>
+                      <Input
+                        id="lastName"
+                        placeholder="Sobrenome"
+                        value={inviteForm.lastName}
+                        onChange={(e) => setInviteForm({ ...inviteForm, lastName: e.target.value })}
+                        data-testid="input-invite-last-name"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="email@exemplo.com"
+                      value={inviteForm.email}
+                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                      data-testid="input-invite-email"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Função</Label>
+                    <Select value={inviteForm.role} onValueChange={(v) => setInviteForm({ ...inviteForm, role: v as z.infer<typeof userRoleEnum> })}>
+                      <SelectTrigger data-testid="select-invite-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {inviteRoleOptions.map(r => (
+                          <SelectItem key={r.value} value={r.value}>
+                            {r.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Senha (opcional)</Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showInvitePassword ? "text" : "password"}
+                        placeholder="Deixe vazio para gerar link"
+                        value={inviteForm.password}
+                        onChange={(e) => setInviteForm({ ...inviteForm, password: e.target.value })}
+                        data-testid="input-invite-password"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0"
+                        onClick={() => setShowInvitePassword(!showInvitePassword)}
+                      >
+                        {showInvitePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsInviteOpen(false)}>Cancelar</Button>
-                <Button onClick={handleInvite} disabled={inviteMember.isPending} data-testid="button-send-invite">
-                  {inviteMember.isPending ? "Adicionando..." : "Adicionar"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsInviteOpen(false)}>Cancelar</Button>
+                  <Button onClick={handleInvite} disabled={inviteMember.isPending} data-testid="button-send-invite">
+                    {inviteMember.isPending ? "Adicionando..." : "Adicionar"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
             </Dialog>
           )}
         </div>
@@ -403,44 +460,9 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => {
-                              setNameMember({ 
-                                id: member.id, 
-                                firstName: member.user?.firstName || '', 
-                                lastName: member.user?.lastName || '' 
-                              });
-                              setEditFirstName(member.user?.firstName || '');
-                              setEditLastName(member.user?.lastName || '');
-                              setNameDialogOpen(true);
-                            }}>
+                            <DropdownMenuItem onClick={() => openEditDialog(member)}>
                               <Pencil className="w-4 h-4 mr-2" />
-                              Editar Nome
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => {
-                              const name = `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim();
-                              setSelectedMember({ id: member.id, role: member.role, name });
-                              setNewRole(member.role as z.infer<typeof userRoleEnum>);
-                              setRoleDialogOpen(true);
-                            }}>
-                              <UserCog className="w-4 h-4 mr-2" />
-                              Alterar Função
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => {
-                              const name = `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim();
-                              setPasswordMember({ id: member.id, name });
-                              setNewPassword("");
-                              setPasswordDialogOpen(true);
-                            }}>
-                              <KeyRound className="w-4 h-4 mr-2" />
-                              Definir Senha
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => {
-                              const name = `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim();
-                              setResetLoginMember({ id: member.id, name });
-                              setResetLoginDialogOpen(true);
-                            }}>
-                              <RefreshCw className="w-4 h-4 mr-2" />
-                              Resetar Login
+                              Editar
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
@@ -473,33 +495,104 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
 
       </div>
 
-      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-        <DialogContent>
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Alterar Função</DialogTitle>
-            <DialogDescription>
-              Altere a função de {selectedMember?.name} na organização
-            </DialogDescription>
+            <DialogTitle>Editar Membro</DialogTitle>
+            <DialogDescription>Altere os dados do membro da equipe.</DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="newRole">Nova Função</Label>
-            <Select value={newRole} onValueChange={(v) => setNewRole(v as z.infer<typeof userRoleEnum>)}>
-              <SelectTrigger className="mt-2" data-testid="select-new-role">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {inviteRoleOptions.map(r => (
-                  <SelectItem key={r.value} value={r.value}>
-                    {r.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-4 py-4">
+            <div className="flex justify-center">
+              <div className="relative">
+                <Avatar className="w-20 h-20">
+                  <AvatarImage src={editForm.profileImageUrl || undefined} />
+                  <AvatarFallback className="text-lg">
+                    {editForm.firstName?.[0]}{editForm.lastName?.[0] || ''}
+                  </AvatarFallback>
+                </Avatar>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  className="absolute -bottom-1 -right-1 rounded-full w-8 h-8"
+                  onClick={() => editPhotoInputRef.current?.click()}
+                  disabled={isUploadingEditPhoto}
+                >
+                  <Camera className="w-4 h-4" />
+                </Button>
+                <input
+                  ref={editPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handlePhotoUpload(e.target.files[0], 'edit')}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="editFirstName">Nome</Label>
+                <Input
+                  id="editFirstName"
+                  placeholder="Nome"
+                  value={editForm.firstName}
+                  onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                  data-testid="input-edit-first-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editLastName">Sobrenome</Label>
+                <Input
+                  id="editLastName"
+                  placeholder="Sobrenome"
+                  value={editForm.lastName}
+                  onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                  data-testid="input-edit-last-name"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editRole">Função</Label>
+              <Select value={editForm.role} onValueChange={(v) => setEditForm({ ...editForm, role: v as z.infer<typeof userRoleEnum> })}>
+                <SelectTrigger data-testid="select-edit-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {inviteRoleOptions.map(r => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editPassword">Nova Senha (opcional)</Label>
+              <div className="relative">
+                <Input
+                  id="editPassword"
+                  type={showEditPassword ? "text" : "password"}
+                  placeholder="Deixe vazio para manter a atual"
+                  value={editForm.password}
+                  onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                  data-testid="input-edit-password"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0"
+                  onClick={() => setShowEditPassword(!showEditPassword)}
+                >
+                  {showEditPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </Button>
+              </div>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleUpdateRole} disabled={updateMemberRole.isPending} data-testid="button-confirm-role">
-              {updateMemberRole.isPending ? "Salvando..." : "Salvar"}
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleUpdateMember} disabled={updateMemberProfile.isPending} data-testid="button-save-edit">
+              {updateMemberProfile.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -550,106 +643,6 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Definir Senha</DialogTitle>
-            <DialogDescription>
-              Defina uma nova senha para {passwordMember?.name}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">Nova Senha</Label>
-              <div className="relative">
-                <Input
-                  id="newPassword"
-                  type={showNewPassword ? "text" : "password"}
-                  placeholder="Mínimo 6 caracteres"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  data-testid="input-new-member-password"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                >
-                  {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </Button>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSetPassword} disabled={setMemberPassword.isPending} data-testid="button-confirm-password">
-              {setMemberPassword.isPending ? "Salvando..." : "Salvar Senha"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={nameDialogOpen} onOpenChange={setNameDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Nome</DialogTitle>
-            <DialogDescription>
-              Altere o nome e sobrenome do membro
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="editFirstName">Nome</Label>
-              <Input
-                id="editFirstName"
-                placeholder="Nome"
-                value={editFirstName}
-                onChange={(e) => setEditFirstName(e.target.value)}
-                data-testid="input-edit-first-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editLastName">Sobrenome</Label>
-              <Input
-                id="editLastName"
-                placeholder="Sobrenome (opcional)"
-                value={editLastName}
-                onChange={(e) => setEditLastName(e.target.value)}
-                data-testid="input-edit-last-name"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNameDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleUpdateName} disabled={updateMemberName.isPending} data-testid="button-confirm-name">
-              {updateMemberName.isPending ? "Salvando..." : "Salvar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={resetLoginDialogOpen} onOpenChange={setResetLoginDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Resetar Login</AlertDialogTitle>
-            <AlertDialogDescription>
-              Isso vai resetar o método de login de {resetLoginMember?.name}. O membro poderá então usar "Esqueci minha senha" na tela de login para configurar uma nova senha.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleResetLogin}
-              data-testid="button-confirm-reset-login"
-            >
-              {resetMemberLogin.isPending ? "Resetando..." : "Confirmar Reset"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
     </DashboardLayout>
   );

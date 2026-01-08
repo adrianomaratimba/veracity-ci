@@ -166,6 +166,9 @@ export const api = {
           email: z.string().email(),
           role: userRoleEnum,
           password: z.string().min(6).optional(),
+          firstName: z.string().optional(),
+          lastName: z.string().optional(),
+          profileImageUrl: z.string().optional(),
         }),
         responses: {
           201: z.custom<typeof organizationMembers.$inferSelect>(),

@@ -281,6 +281,16 @@ export class DatabaseStorage implements IStorage {
     }).where(eq(users.id, userId));
   }
 
+  async updateUserProfile(userId: string, data: { firstName?: string; lastName?: string | null; profileImageUrl?: string | null }): Promise<void> {
+    const updateData: any = {};
+    if (data.firstName !== undefined) updateData.firstName = data.firstName;
+    if (data.lastName !== undefined) updateData.lastName = data.lastName;
+    if (data.profileImageUrl !== undefined) updateData.profileImageUrl = data.profileImageUrl;
+    if (Object.keys(updateData).length > 0) {
+      await db.update(users).set(updateData).where(eq(users.id, userId));
+    }
+  }
+
   // --- MEMBERS ---
   async getOrganizationMembers(orgId: number): Promise<(Member & { user: User })[]> {
     // Join with users table from auth schema

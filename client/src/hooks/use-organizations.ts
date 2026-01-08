@@ -92,10 +92,21 @@ export function useCurrentMember(orgId: number) {
 export function useInviteMember() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ orgId, email, role, password }: { orgId: number; email: string; role: z.infer<typeof userRoleEnum>; password?: string }) => {
+    mutationFn: async ({ orgId, email, role, password, firstName, lastName, profileImageUrl }: { 
+      orgId: number; 
+      email: string; 
+      role: z.infer<typeof userRoleEnum>; 
+      password?: string;
+      firstName?: string;
+      lastName?: string;
+      profileImageUrl?: string;
+    }) => {
       const url = buildUrl(api.organizations.members.invite.path, { id: orgId });
-      const body: { email: string; role: z.infer<typeof userRoleEnum>; password?: string } = { email, role };
+      const body: Record<string, any> = { email, role };
       if (password) body.password = password;
+      if (firstName) body.firstName = firstName;
+      if (lastName) body.lastName = lastName;
+      if (profileImageUrl) body.profileImageUrl = profileImageUrl;
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -111,6 +122,37 @@ export function useInviteMember() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.organizations.members.list.path, variables.orgId] });
       queryClient.invalidateQueries({ queryKey: [api.organizations.invitations.list.path, variables.orgId] });
+    },
+  });
+}
+
+// Update Member Profile (unified)
+export function useUpdateMemberProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ orgId, memberId, firstName, lastName, role, password, profileImageUrl }: { 
+      orgId: number;
+      memberId: number; 
+      firstName?: string;
+      lastName?: string;
+      role?: string;
+      password?: string;
+      profileImageUrl?: string;
+    }) => {
+      const res = await fetch(`/api/organizations/${orgId}/members/${memberId}/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firstName, lastName, role, password, profileImageUrl }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to update member");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.organizations.members.list.path, variables.orgId] });
     },
   });
 }

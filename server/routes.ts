@@ -168,8 +168,17 @@ export async function registerRoutes(
       let isNewUser = false;
       
       if (!user) {
-        user = await storage.createUserByEmail(input.email.toLowerCase());
+        user = await storage.createUserByEmail(input.email.toLowerCase(), input.firstName, input.lastName);
         isNewUser = true;
+      }
+      
+      // Update user profile with name and photo if provided
+      if (input.firstName || input.lastName || input.profileImageUrl) {
+        await storage.updateUserProfile(user.id, {
+          firstName: input.firstName || user.firstName || undefined,
+          lastName: input.lastName || user.lastName || undefined,
+          profileImageUrl: input.profileImageUrl,
+        });
       }
 
       const existingMember = await storage.getMemberByUserId(user.id, orgId);
@@ -512,6 +521,76 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Erro ao resetar login:", err);
       res.status(500).json({ message: "Erro ao resetar login" });
+    }
+  });
+
+  // Update member profile (unified: name, role, password, photo)
+  app.patch("/api/organizations/:id/members/:memberId/profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const memberId = Number(req.params.memberId);
+      const orgId = Number(req.params.id);
+      
+      const input = z.object({
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        role: z.string().optional(),
+        password: z.string().min(6).optional(),
+        profileImageUrl: z.string().optional(),
+      }).parse(req.body);
+      
+      const targetMember = await storage.getMemberById(memberId);
+      if (!targetMember || targetMember.organizationId !== orgId) {
+        return res.status(404).json({ message: "Membro não encontrado" });
+      }
+      
+      const currentMember = await storage.getMemberByUserId(userId, orgId);
+      if (!currentMember || !hasPermission(currentMember.role as UserRole, "members:invite")) {
+        return res.status(403).json({ message: "Você não tem permissão para editar membros" });
+      }
+      
+      const callerRole = currentMember.role as UserRole;
+      
+      if (targetMember.role === 'owner' && currentMember.id !== targetMember.id) {
+        return res.status(403).json({ message: "Não é possível alterar dados do proprietário" });
+      }
+      
+      if (targetMember.role === 'admin' && callerRole !== 'owner' && currentMember.id !== targetMember.id) {
+        return res.status(403).json({ message: "Apenas proprietários podem editar administradores" });
+      }
+      
+      if (!canManageRole(callerRole, targetMember.role as UserRole) && currentMember.id !== targetMember.id) {
+        return res.status(403).json({ message: "Você não tem permissão para editar este membro" });
+      }
+      
+      // Update user profile (name, photo)
+      if (input.firstName || input.lastName !== undefined || input.profileImageUrl !== undefined) {
+        await storage.updateUserProfile(targetMember.userId, {
+          firstName: input.firstName,
+          lastName: input.lastName,
+          profileImageUrl: input.profileImageUrl,
+        });
+      }
+      
+      // Update role if provided
+      if (input.role && input.role !== targetMember.role) {
+        if (!canManageRole(callerRole, input.role as UserRole)) {
+          return res.status(403).json({ message: "Você não pode atribuir esta função" });
+        }
+        await storage.updateMemberRole(memberId, input.role);
+      }
+      
+      // Update password if provided
+      if (input.password) {
+        const { authService } = await import("./auth-service");
+        await authService.setUserPasswordByAdmin(targetMember.userId, input.password);
+      }
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Erro ao atualizar membro:", err);
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      res.status(500).json({ message: "Erro ao atualizar membro" });
     }
   });
 
