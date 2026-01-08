@@ -15,10 +15,21 @@ import {
   organizationMembers, 
   pendingInvitations, 
   surveyAssignments, 
-  surveyCoordinators, 
+  surveyCoordinators,
+  surveyViewers, 
   responses, 
-  surveys
+  surveys,
+  interviewerLocations,
+  dailyDistanceSummary,
+  insertInterviewerLocationSchema
 } from "@shared/schema";
+import { 
+  calculateHaversineDistance, 
+  updateDailyDistanceSummary, 
+  getTotalSurveyDistance,
+  getRouteForDay,
+  formatDistance
+} from "./services/distance-calculator";
 import { verificationTokens } from "@shared/models/auth";
 
 export async function registerRoutes(
@@ -608,7 +619,14 @@ export async function registerRoutes(
         return res.json(assignedSurveys);
       }
       
-      // Outros usuários com permissão surveys:view veem todas
+      // Viewers só veem pesquisas designadas a eles
+      if (role === 'viewer') {
+        const assignedSurveys = await storage.getViewerAssignedSurveys(userId, orgId);
+        console.log('[surveys/list] Viewer assigned surveys:', { userId, count: assignedSurveys.length, surveyIds: assignedSurveys.map(s => s.id) });
+        return res.json(assignedSurveys);
+      }
+      
+      // Outros usuários com permissão surveys:view veem todas (admin, owner)
       if (!hasPermission(role, "surveys:view")) {
         return res.status(403).json({ message: "Você não tem permissão para visualizar pesquisas" });
       }
@@ -1100,6 +1118,182 @@ export async function registerRoutes(
     }
   });
 
+  // ============= SURVEY VIEWERS =============
+  
+  // List viewers for a survey
+  app.get("/api/surveys/:surveyId/viewers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const viewers = await storage.getSurveyViewers(surveyId);
+      res.json(viewers);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao listar visualizadores" });
+    }
+  });
+
+  // Assign viewer to survey
+  app.post("/api/surveys/:surveyId/viewers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para designar visualizadores" });
+      }
+      
+      const { viewerId } = req.body;
+      if (!viewerId) {
+        return res.status(400).json({ message: "ID do visualizador é obrigatório" });
+      }
+      
+      // Check if viewer is a member of the organization with viewer role
+      const viewerMember = await storage.getMemberByUserId(viewerId, survey.organizationId);
+      if (!viewerMember) {
+        return res.status(400).json({ message: "O usuário não é membro desta organização" });
+      }
+      
+      if (viewerMember.role !== 'viewer') {
+        return res.status(400).json({ message: "O usuário não tem a função de visualizador" });
+      }
+      
+      // Check if already assigned
+      const isAssigned = await storage.isViewerAssigned(surveyId, viewerId);
+      if (isAssigned) {
+        return res.status(400).json({ message: "Visualizador já está designado para esta pesquisa" });
+      }
+      
+      const assignment = await storage.assignViewer({
+        surveyId,
+        viewerId,
+        assignedBy: userId
+      });
+      
+      res.status(201).json(assignment);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao designar visualizador" });
+    }
+  });
+
+  // Remove viewer from survey
+  app.delete("/api/surveys/:surveyId/viewers/:viewerId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      const viewerId = req.params.viewerId;
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para remover designações" });
+      }
+      
+      await storage.unassignViewer(surveyId, viewerId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao remover visualizador" });
+    }
+  });
+  
+  // Get viewers available for assignment (members with viewer role)
+  app.get("/api/organizations/:id/viewers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.id);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const members = await storage.getOrganizationMembers(orgId);
+      // Filter to only viewers
+      const viewers = members.filter(m => m.role === 'viewer');
+      res.json(viewers);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao listar visualizadores" });
+    }
+  });
+
+  // ============= SURVEY VIEWER SETTINGS =============
+  
+  // Get viewer settings for a survey
+  app.get("/api/surveys/:surveyId/viewer-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const settings = await storage.getSurveyViewerSettings(surveyId);
+      
+      // Return default settings if none exist
+      if (!settings) {
+        return res.json({
+          surveyId,
+          showFilters: false,
+          filterAgeGroup: false,
+          filterGender: false,
+          filterNeighborhood: false,
+          filterInterviewer: false,
+          showIntentionTab: true,
+          showEvolutionTab: false,
+          showCrossingsTab: false,
+          showProfileTab: false,
+          showReportTab: false,
+          showMainResult: true,
+          showDemographicBreakdowns: false,
+          showGenderBreakdown: false,
+          showAgeBreakdown: false,
+          showNeighborhoodBreakdown: false,
+          showInterviewerStats: false,
+          allowExcelExport: false,
+          allowPdfExport: false,
+        });
+      }
+      
+      res.json(settings);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao buscar configurações" });
+    }
+  });
+
+  // Update viewer settings for a survey
+  app.put("/api/surveys/:surveyId/viewer-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para editar configurações" });
+      }
+      
+      const settings = await storage.upsertSurveyViewerSettings(surveyId, req.body, userId);
+      res.json(settings);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao salvar configurações" });
+    }
+  });
+
   // 5. Responses (Collection) - CRITICAL: GPS & Audio Validation - SECURED
   app.post(api.responses.submit.path, isAuthenticated, async (req, res) => {
     try {
@@ -1131,7 +1325,20 @@ export async function registerRoutes(
         }
       }
       
-      const { response: responseMeta, answers } = api.responses.submit.input.parse(req.body);
+      const { clientId, response: responseMeta, answers } = api.responses.submit.input.parse(req.body);
+
+      // DEDUPLICATION: Check if response with this clientId already exists
+      if (clientId) {
+        const existingResponse = await storage.getResponseByClientId(clientId);
+        if (existingResponse) {
+          console.log(`[Dedup] Response with clientId ${clientId} already exists (id: ${existingResponse.id}), returning existing`);
+          return res.status(200).json({ 
+            id: existingResponse.id, 
+            status: existingResponse.status,
+            deduplicated: true 
+          });
+        }
+      }
 
       // Backend Validation Logic for Fraud Detection
       let status = "valid";
@@ -1155,6 +1362,7 @@ export async function registerRoutes(
       const newResponse = await storage.createResponse(
         { 
           ...responseMeta, 
+          clientId,
           surveyId: Number(req.params.surveyId),
           interviewerId,
           status,
@@ -1353,6 +1561,14 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Você não tem permissão para ver resultados" });
       }
       
+      // Viewers só podem ver resultados de pesquisas atribuídas
+      if (role === 'viewer') {
+        const isAssigned = await storage.isViewerAssigned(surveyId, userId);
+        if (!isAssigned) {
+          return res.status(403).json({ message: "Você não está atribuído a esta pesquisa" });
+        }
+      }
+      
       // Build filters from query params
       const filters: {
         interviewerId?: string;
@@ -1389,6 +1605,16 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Acesso negado" });
       }
       
+      const role = member.role as UserRole;
+      
+      // Viewers só podem acessar dados de pesquisas atribuídas
+      if (role === 'viewer') {
+        const isAssigned = await storage.isViewerAssigned(surveyId, userId);
+        if (!isAssigned) {
+          return res.status(403).json({ message: "Você não está atribuído a esta pesquisa" });
+        }
+      }
+      
       const interviewers = await storage.getSurveyInterviewers(surveyId);
       res.json(interviewers);
     } catch (error) {
@@ -1418,6 +1644,14 @@ export async function registerRoutes(
       
       if (!hasPermission(role, "analytics:view") && !hasPermission(role, "analytics:view_aggregate")) {
         return res.status(403).json({ message: "Você não tem permissão para ver resultados" });
+      }
+      
+      // Viewers só podem ver resultados de pesquisas atribuídas
+      if (role === 'viewer') {
+        const isAssigned = await storage.isViewerAssigned(surveyId, userId);
+        if (!isAssigned) {
+          return res.status(403).json({ message: "Você não está atribuído a esta pesquisa" });
+        }
       }
       
       const timeline = await storage.getSurveyTimeline(surveyId);
@@ -1517,6 +1751,147 @@ export async function registerRoutes(
     }
   });
 
+  // === SURVEY TEMPLATE IMPORT/EXPORT (for migration between environments) ===
+  
+  // Export survey structure as JSON template (admin/owner only)
+  app.get("/api/surveys/:surveyId/export-template", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const role = member.role as UserRole;
+      // Only owner and admin can export templates
+      if (role !== 'owner' && role !== 'admin') {
+        return res.status(403).json({ message: "Apenas administradores e proprietários podem exportar templates" });
+      }
+      
+      // Questions are included with the survey from getSurvey
+      const questions = survey.questions || [];
+      
+      // Build template object (excluding IDs and organization-specific data)
+      const template = {
+        _veracityTemplate: true,
+        _version: "1.0",
+        _exportedAt: new Date().toISOString(),
+        survey: {
+          title: survey.title,
+          description: survey.description,
+          type: survey.type,
+          location: survey.location,
+          targetSample: survey.targetSample,
+          marginOfError: survey.marginOfError,
+          quotas: survey.quotas,
+          shuffleQuestions: survey.shuffleQuestions,
+          requireGps: survey.requireGps,
+          requireAudio: survey.requireAudio,
+        },
+        questions: questions.map((q: any, index: number) => ({
+          text: q.text,
+          type: q.type,
+          options: q.options,
+          order: q.order ?? index,
+          required: q.required,
+          logic: q.logic,
+          shuffleOptions: q.shuffleOptions,
+          showOptionImages: q.showOptionImages,
+        })),
+      };
+      
+      const filename = `${survey.title.replace(/[^a-zA-Z0-9]/g, '_')}_template_${new Date().toISOString().split('T')[0]}.json`;
+      
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.json(template);
+    } catch (err) {
+      console.error("Erro ao exportar template:", err);
+      res.status(500).json({ message: "Erro ao exportar template" });
+    }
+  });
+
+  // Import survey from JSON template (admin/owner only)
+  app.post("/api/organizations/:orgId/surveys/import-template", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.orgId);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const role = member.role as UserRole;
+      // Only owner and admin can import templates
+      if (role !== 'owner' && role !== 'admin') {
+        return res.status(403).json({ message: "Apenas administradores e proprietários podem importar templates" });
+      }
+      
+      const template = req.body;
+      
+      // Validate template structure
+      if (!template._veracityTemplate) {
+        return res.status(400).json({ message: "Arquivo inválido. Este não parece ser um template de pesquisa Veracity." });
+      }
+      
+      if (!template.survey || !template.survey.title) {
+        return res.status(400).json({ message: "Template inválido: pesquisa não encontrada no arquivo." });
+      }
+      
+      // Create the survey (always as draft)
+      const surveyData = {
+        organizationId: orgId,
+        title: template.survey.title + " (Importado)",
+        description: template.survey.description || null,
+        type: template.survey.type || "electoral",
+        status: "draft", // Always start as draft
+        location: template.survey.location || null,
+        targetSample: template.survey.targetSample || null,
+        marginOfError: template.survey.marginOfError || null,
+        quotas: template.survey.quotas || null,
+        shuffleQuestions: template.survey.shuffleQuestions || false,
+        requireGps: template.survey.requireGps !== false,
+        requireAudio: template.survey.requireAudio !== false,
+        startDate: null, // Reset dates
+        endDate: null,
+      };
+      
+      const newSurvey = await storage.createSurvey(surveyData);
+      
+      // Create questions if present
+      if (template.questions && Array.isArray(template.questions)) {
+        for (const [index, q] of template.questions.entries()) {
+          await storage.createQuestion({
+            surveyId: newSurvey.id,
+            text: q.text || "Pergunta sem texto",
+            type: q.type || "single_choice",
+            options: q.options || null,
+            order: q.order ?? index,
+            required: q.required !== false,
+            logic: q.logic || null,
+            shuffleOptions: q.shuffleOptions || false,
+            showOptionImages: q.showOptionImages || false,
+          });
+        }
+      }
+      
+      res.status(201).json({
+        message: "Pesquisa importada com sucesso",
+        survey: newSurvey,
+        questionsImported: template.questions?.length || 0,
+      });
+    } catch (err) {
+      console.error("Erro ao importar template:", err);
+      res.status(500).json({ message: "Erro ao importar template" });
+    }
+  });
+
   // === ACCESS CONTROL & PERMISSIONS ===
   
   // Get role matrix (permissions for each role)
@@ -1611,7 +1986,7 @@ export async function registerRoutes(
     }
   });
 
-  // Get viewable surveys for current user (for viewer portal)
+  // Get viewable surveys for current user (for viewer portal) - with progress data
   app.get("/api/organizations/:id/viewable-surveys", isAuthenticated, async (req, res) => {
     try {
       const userId = await getResolvedUserId(req);
@@ -1630,13 +2005,25 @@ export async function registerRoutes(
         return res.json(assignedSurveys.filter(s => s.status === 'active'));
       }
       
-      // Viewers and others with surveys:view can see all active/completed surveys
+      // Viewers and others with surveys:view can see all active/completed surveys with progress
       if (hasPermission(role, "surveys:view")) {
         const allSurveys = await storage.getSurveys(orgId);
         const viewableSurveys = allSurveys.filter(s => 
           s.status === 'active' || s.status === 'completed' || s.status === 'paused'
         );
-        return res.json(viewableSurveys);
+        
+        // Add response counts for each survey
+        const surveysWithProgress = await Promise.all(viewableSurveys.map(async (survey) => {
+          const analytics = await storage.getSurveyAnalytics(survey.id);
+          return {
+            ...survey,
+            totalResponses: analytics.totalResponses,
+            validResponses: analytics.validResponses,
+            progress: survey.targetSample ? Math.min(100, Math.round((analytics.validResponses / survey.targetSample) * 100)) : 0
+          };
+        }));
+        
+        return res.json(surveysWithProgress);
       }
       
       res.json([]);
@@ -2055,6 +2442,122 @@ export async function registerRoutes(
   });
 
   // ==========================================
+  // REAL-TIME INTERVIEWER TRACKING
+  // ==========================================
+
+  // Report location (interviewer sends this periodically)
+  app.post("/api/organizations/:id/tracking/location", isAuthenticated, requireOrgAccess("id", "responses:submit"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id);
+      const userId = await getResolvedUserId(req);
+      
+      const input = z.object({
+        latitude: z.number(),
+        longitude: z.number(),
+        accuracy: z.number().optional(),
+        speed: z.number().optional(),
+        heading: z.number().optional(),
+        surveyId: z.number().optional(),
+        sessionId: z.string().optional()
+      }).parse(req.body);
+
+      await db.insert(interviewerLocations).values({
+        organizationId: orgId,
+        userId,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        accuracy: input.accuracy,
+        speed: input.speed,
+        heading: input.heading,
+        surveyId: input.surveyId,
+        sessionId: input.sessionId,
+        isOnline: true
+      });
+
+      // Update daily distance in background
+      updateDailyDistanceSummary(orgId, userId, input.surveyId || null, new Date()).catch(console.error);
+
+      res.json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      console.error('[tracking/location] error:', err);
+      res.status(500).json({ message: "Erro ao registrar localização" });
+    }
+  });
+
+  // Get interviewer's route for a specific day
+  app.get("/api/organizations/:id/tracking/route/:userId", isAuthenticated, requireOrgAccess("id", "analytics:view"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id);
+      const targetUserId = req.params.userId;
+      const dateParam = req.query.date as string;
+      const surveyId = req.query.surveyId ? parseInt(req.query.surveyId as string) : undefined;
+      
+      const date = dateParam ? new Date(dateParam) : new Date();
+      
+      const route = await getRouteForDay(orgId, targetUserId, date, surveyId);
+      res.json(route);
+    } catch (err) {
+      console.error('[tracking/route] error:', err);
+      res.status(500).json({ message: "Erro ao carregar rota" });
+    }
+  });
+
+  // Get interviewer's distance statistics
+  app.get("/api/organizations/:id/tracking/distance/:userId", isAuthenticated, requireOrgAccess("id", "analytics:view"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id);
+      const targetUserId = req.params.userId;
+      const surveyId = req.query.surveyId ? parseInt(req.query.surveyId as string) : undefined;
+      
+      const stats = await getTotalSurveyDistance(orgId, targetUserId, surveyId);
+      
+      res.json({
+        totalMeters: stats.totalMeters,
+        totalFormatted: formatDistance(stats.totalMeters),
+        byDay: stats.byDay.map(d => ({
+          date: d.date,
+          meters: d.meters,
+          formatted: formatDistance(d.meters)
+        }))
+      });
+    } catch (err) {
+      console.error('[tracking/distance] error:', err);
+      res.status(500).json({ message: "Erro ao carregar estatísticas de distância" });
+    }
+  });
+
+  // Get all interviewers with real-time locations
+  app.get("/api/organizations/:id/tracking/interviewers", isAuthenticated, requireOrgAccess("id", "analytics:view"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id);
+      const interviewersData = await storage.getInterviewersWithRealtimeLocation(orgId);
+      res.json(interviewersData);
+    } catch (err) {
+      console.error('[tracking/interviewers] error:', err);
+      res.status(500).json({ message: "Erro ao carregar entrevistadores" });
+    }
+  });
+
+  // Set interviewer offline (when they close the app)
+  app.post("/api/organizations/:id/tracking/offline", isAuthenticated, requireOrgAccess("id", "responses:submit"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id);
+      const userId = await getResolvedUserId(req);
+      
+      // Mark last location as offline
+      await db.update(interviewerLocations)
+        .set({ isOnline: false })
+        .where(eq(interviewerLocations.userId, userId));
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[tracking/offline] error:', err);
+      res.status(500).json({ message: "Erro ao atualizar status" });
+    }
+  });
+
+  // ==========================================
   // PLATFORM ADMIN - SUPER ADMIN PANEL
   // ==========================================
 
@@ -2178,6 +2681,10 @@ export async function registerRoutes(
       await db.delete(surveyCoordinators).where(eq(surveyCoordinators.coordinatorId, targetUserId));
       await db.delete(surveyCoordinators).where(eq(surveyCoordinators.assignedBy, targetUserId));
       
+      // 4b. Remove viewer assignments
+      await db.delete(surveyViewers).where(eq(surveyViewers.viewerId, targetUserId));
+      await db.delete(surveyViewers).where(eq(surveyViewers.assignedBy, targetUserId));
+      
       // 5. Set NULL for responses (preserve data for audit)
       await db.update(responses).set({ interviewerId: null as any }).where(eq(responses.interviewerId, targetUserId));
       
@@ -2237,6 +2744,31 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) return res.status(400).json(err.errors);
       console.error('[platform/organizations/members/add] error:', err);
       res.status(500).json({ message: "Erro ao adicionar membro" });
+    }
+  });
+
+  // === LANDING PAGE CMS ===
+  
+  // Get landing page config (public, for landing page)
+  app.get("/api/landing-config", async (req, res) => {
+    try {
+      const config = await storage.getLandingPageConfig();
+      res.json(config || {});
+    } catch (err) {
+      console.error('[landing-config/get] error:', err);
+      res.status(500).json({ message: "Erro ao buscar configurações" });
+    }
+  });
+
+  // Update landing page config (platform admin only)
+  app.put("/api/landing-config", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const updated = await storage.upsertLandingPageConfig(req.body, userId);
+      res.json(updated);
+    } catch (err) {
+      console.error('[landing-config/update] error:', err);
+      res.status(500).json({ message: "Erro ao salvar configurações" });
     }
   });
 

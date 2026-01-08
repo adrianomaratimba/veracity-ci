@@ -65,6 +65,7 @@ import VerifyEmailPage from "@/pages/verify-email";
 import ResetPasswordPage from "@/pages/reset-password";
 import ContactPage from "@/pages/contact";
 import PlatformAdminPage from "@/pages/platform-admin";
+import LandingEditorPage from "@/pages/platform/landing-editor";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
 import { setupAutoSync } from "@/lib/syncQueue";
 
@@ -114,6 +115,7 @@ function AuthenticatedRoutes() {
       
       {/* Platform Admin (Super Admin) */}
       <Route path="/platform" component={PlatformAdminPage} />
+      <Route path="/platform/landing" component={LandingEditorPage} />
       
       {/* PWA / Mobile Collection Routes */}
       <Route path="/collect/pending" component={PendingInterviews} />

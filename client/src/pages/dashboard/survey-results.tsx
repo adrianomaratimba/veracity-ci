@@ -13,6 +13,8 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
+import { Printer, Camera } from "lucide-react";
 import { 
   BarChart, 
   Bar, 
@@ -49,9 +51,9 @@ import {
   Activity,
   Layers
 } from "lucide-react";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { hasPermission, isInterviewerRole, type UserRole } from "@shared/rbac";
+import { hasPermission, isInterviewerRole, isViewerRole, type UserRole } from "@shared/rbac";
 import { useToast } from "@/hooks/use-toast";
 
 const CHART_COLORS = [
@@ -73,25 +75,125 @@ const DEMOGRAPHIC_COLORS = {
   education: ['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8']
 };
 
-// Custom Y-Axis tick component to show candidate photos
+// Helper to truncate long labels
+const truncateLabel = (label: string, maxLength: number = 20): string => {
+  if (label.length <= maxLength) return label;
+  return label.substring(0, maxLength - 3) + '...';
+};
+
+// Helper to consolidate options into top N + "Outros"
+const consolidateOptions = <T extends { option: string; count: number; percentage: number; imageUrl?: string }>(
+  data: T[],
+  maxOptions: number = 8
+): T[] => {
+  if (data.length <= maxOptions) return data;
+  
+  const sorted = [...data].sort((a, b) => b.percentage - a.percentage);
+  const topN = sorted.slice(0, maxOptions - 1);
+  const others = sorted.slice(maxOptions - 1);
+  
+  if (others.length === 0) return topN;
+  
+  const othersSum = others.reduce((sum, item) => sum + item.count, 0);
+  const othersPercentage = others.reduce((sum, item) => sum + item.percentage, 0);
+  
+  return [
+    ...topN,
+    {
+      option: `Outros (${others.length})`,
+      count: othersSum,
+      percentage: Math.round(othersPercentage * 10) / 10,
+      imageUrl: undefined
+    } as T
+  ];
+};
+
+// Export card as high-quality image
+const exportCardAsImage = async (element: HTMLElement, filename: string) => {
+  const canvas = await html2canvas(element, {
+    scale: 3,
+    backgroundColor: '#ffffff',
+    logging: false,
+    useCORS: true
+  });
+  
+  const link = document.createElement('a');
+  link.download = `${filename}.png`;
+  link.href = canvas.toDataURL('image/png', 1.0);
+  link.click();
+};
+
+// Export card as PDF
+const exportCardAsPDF = async (element: HTMLElement, filename: string, title: string) => {
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    backgroundColor: '#ffffff',
+    logging: false,
+    useCORS: true
+  });
+  
+  const imgData = canvas.toDataURL('image/png', 1.0);
+  const pdf = new jsPDF('landscape', 'mm', 'a4');
+  
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 15;
+  
+  // Add title
+  pdf.setFontSize(18);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text(title, margin, margin + 5);
+  
+  // Add timestamp
+  pdf.setFontSize(10);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(128, 128, 128);
+  const date = new Date().toLocaleDateString('pt-BR', { 
+    day: '2-digit', 
+    month: 'long', 
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  pdf.text(`Gerado em: ${date}`, margin, margin + 12);
+  
+  // Calculate image dimensions to fit page
+  const imgWidth = pageWidth - (margin * 2);
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  const maxImgHeight = pageHeight - margin - 25;
+  
+  const finalHeight = Math.min(imgHeight, maxImgHeight);
+  const finalWidth = (finalHeight === maxImgHeight) 
+    ? (canvas.width * finalHeight) / canvas.height 
+    : imgWidth;
+  
+  const xPos = (pageWidth - finalWidth) / 2;
+  
+  pdf.addImage(imgData, 'PNG', xPos, margin + 20, finalWidth, finalHeight);
+  pdf.save(`${filename}.pdf`);
+};
+
+// Custom Y-Axis tick component - cleaner version with truncation
 interface CustomYAxisTickProps {
   x?: number;
   y?: number;
   payload?: { value: string };
   resultsData?: Array<{ option: string; imageUrl?: string }>;
   showImages?: boolean;
+  maxLabelLength?: number;
 }
 
-const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages }: CustomYAxisTickProps) => {
+const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages, maxLabelLength = 25 }: CustomYAxisTickProps) => {
   const imageUrl = resultsData?.find(r => r.option === payload?.value)?.imageUrl;
   const hasImage = showImages && imageUrl;
+  const displayLabel = truncateLabel(payload?.value || '', maxLabelLength);
   
   return (
     <g transform={`translate(${x},${y})`}>
       {hasImage && (
         <image 
           href={imageUrl} 
-          x={-190} 
+          x={-40} 
           y={-16} 
           width={32} 
           height={32} 
@@ -100,17 +202,322 @@ const CustomYAxisTick = ({ x = 0, y = 0, payload, resultsData, showImages }: Cus
         />
       )}
       <text 
-        x={hasImage ? -150 : -10}
+        x={hasImage ? -48 : -8}
         y={0} 
         dy={4} 
-        textAnchor="start" 
+        textAnchor="end" 
         fill="currentColor"
-        fontSize={13}
+        fontSize={12}
         fontWeight={500}
       >
-        {payload?.value}
+        {displayLabel}
       </text>
     </g>
+  );
+};
+
+// Question result item type
+interface QuestionResultItem {
+  option: string;
+  count: number;
+  percentage: number;
+  imageUrl?: string;
+}
+
+// Question result type
+interface QuestionResultData {
+  questionId: number;
+  questionText: string;
+  questionType: string;
+  showOptionImages?: boolean;
+  results: QuestionResultItem[];
+}
+
+// Dedicated chart component for question results - properly contains useRef hook
+interface QuestionChartCardProps {
+  questionResult: QuestionResultData;
+  validResponses: number;
+  marginOfError: number;
+}
+
+const QuestionChartCard = ({ questionResult: qr, validResponses, marginOfError }: QuestionChartCardProps) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const sortedResults = [...qr.results].sort((a, b) => b.percentage - a.percentage);
+  const displayResults = consolidateOptions(sortedResults, 10);
+  const chartHeight = Math.max(300, displayResults.length * 45);
+  const hasImages = qr.showOptionImages;
+  const yAxisWidth = hasImages ? 220 : 180;
+  
+  const handleExportPDF = () => {
+    if (chartRef.current) {
+      exportCardAsPDF(chartRef.current, `resultado-${qr.questionId}`, qr.questionText);
+    }
+  };
+  
+  const handleExportImage = () => {
+    if (chartRef.current) {
+      exportCardAsImage(chartRef.current, `resultado-${qr.questionId}`);
+    }
+  };
+  
+  return (
+    <div ref={chartRef} className="bg-background">
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <CardTitle className="text-lg leading-tight">{qr.questionText}</CardTitle>
+              <CardDescription className="mt-1">
+                Base: {validResponses} entrevistas válidas | Margem de erro: ±{marginOfError}%
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={handleExportImage}
+                title="Exportar como imagem"
+                data-testid={`button-export-image-${qr.questionId}`}
+              >
+                <Camera className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={handleExportPDF}
+                title="Exportar como PDF"
+                data-testid={`button-export-pdf-${qr.questionId}`}
+              >
+                <Printer className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div style={{ height: chartHeight }} className="mb-6">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={displayResults} 
+                layout="vertical"
+                margin={{ top: 10, right: 50, left: 10, bottom: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.5} />
+                <XAxis 
+                  type="number" 
+                  domain={[0, 100]} 
+                  tickFormatter={(v) => `${v}%`}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="option" 
+                  width={yAxisWidth}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={(props) => (
+                    <CustomYAxisTick 
+                      {...props} 
+                      resultsData={displayResults}
+                      showImages={hasImages}
+                      maxLabelLength={hasImages ? 20 : 25}
+                    />
+                  )}
+                />
+                <Tooltip 
+                  formatter={(value: number) => [`${value}%`, 'Percentual']}
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--background))', 
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                />
+                <Bar 
+                  dataKey="percentage" 
+                  radius={[0, 6, 6, 0]}
+                  barSize={28}
+                >
+                  {displayResults.map((entry, i) => (
+                    <Cell key={`cell-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
+                  <LabelList 
+                    dataKey="percentage" 
+                    position="right" 
+                    formatter={(v: number) => `${v}%`}
+                    style={{ fontSize: 13, fontWeight: 600, fill: 'currentColor' }}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 font-medium">Candidato / Opção</th>
+                  <th className="text-right py-2 font-medium">Votos</th>
+                  <th className="text-right py-2 font-medium">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedResults.map((r, i) => (
+                  <tr key={r.option} className="border-b border-muted">
+                    <td className="py-2">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-3 h-3 rounded-full shrink-0" 
+                          style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                        />
+                        {qr.showOptionImages && r.imageUrl && (
+                          <img 
+                            src={r.imageUrl} 
+                            alt={r.option}
+                            className="w-10 h-10 rounded-full object-cover border-2 border-border shrink-0"
+                          />
+                        )}
+                        <span>{r.option}</span>
+                      </div>
+                    </td>
+                    <td className="text-right py-2 text-muted-foreground">{r.count}</td>
+                    <td className="text-right py-2 font-semibold">{r.percentage}%</td>
+                  </tr>
+                ))}
+                <tr className="font-medium">
+                  <td className="py-2">Total</td>
+                  <td className="text-right py-2">{qr.results.reduce((sum, r) => sum + r.count, 0)}</td>
+                  <td className="text-right py-2">100%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// Main result chart component for overview tab
+interface MainResultChartProps {
+  questionData: {
+    questionText: string;
+    showOptionImages?: boolean;
+    results: QuestionResultItem[];
+  };
+}
+
+const MainResultChart = ({ questionData }: MainResultChartProps) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const sortedResults = [...questionData.results].sort((a, b) => b.percentage - a.percentage);
+  const chartHeight = Math.max(300, sortedResults.length * 50);
+  const hasImages = questionData.showOptionImages;
+  const yAxisWidth = hasImages ? 220 : 180;
+  
+  const handleExportPDF = () => {
+    if (chartRef.current) {
+      exportCardAsPDF(chartRef.current, 'resultado-principal', questionData.questionText);
+    }
+  };
+  
+  const handleExportImage = () => {
+    if (chartRef.current) {
+      exportCardAsImage(chartRef.current, 'resultado-principal');
+    }
+  };
+  
+  return (
+    <div ref={chartRef} className="mt-6 bg-background">
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <CardTitle className="text-lg leading-tight">Resultado Principal</CardTitle>
+              <CardDescription className="mt-1">{questionData.questionText}</CardDescription>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={handleExportImage}
+                title="Exportar como imagem"
+                data-testid="button-export-image-main"
+              >
+                <Camera className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={handleExportPDF}
+                title="Exportar como PDF"
+                data-testid="button-export-pdf-main"
+              >
+                <Printer className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div style={{ height: chartHeight }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={sortedResults} 
+                layout="vertical"
+                margin={{ top: 10, right: 50, left: 10, bottom: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.5} />
+                <XAxis 
+                  type="number" 
+                  domain={[0, 100]} 
+                  tickFormatter={(v) => `${v}%`}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="option" 
+                  width={yAxisWidth}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={(props) => (
+                    <CustomYAxisTick 
+                      {...props} 
+                      resultsData={sortedResults}
+                      showImages={hasImages}
+                      maxLabelLength={hasImages ? 20 : 25}
+                    />
+                  )}
+                />
+                <Tooltip 
+                  formatter={(value: number) => [`${value}%`, 'Percentual']}
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--background))', 
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                />
+                <Bar 
+                  dataKey="percentage" 
+                  radius={[0, 6, 6, 0]}
+                  barSize={32}
+                >
+                  {sortedResults.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                  <LabelList 
+                    dataKey="percentage" 
+                    position="right" 
+                    formatter={(v: number) => `${v}%`}
+                    style={{ fontSize: 14, fontWeight: 700, fill: 'currentColor' }}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
@@ -272,23 +679,104 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   });
 
   const userRole = (currentMember?.role as UserRole) || 'viewer';
+  const isViewer = isViewerRole(userRole);
+
+  // Viewer settings - controls what viewers can see
+  interface ViewerSettings {
+    showFilters: boolean;
+    filterAgeGroup: boolean;
+    filterGender: boolean;
+    filterNeighborhood: boolean;
+    filterInterviewer: boolean;
+    showIntentionTab: boolean;
+    showEvolutionTab: boolean;
+    showCrossingsTab: boolean;
+    showProfileTab: boolean;
+    showReportTab: boolean;
+    showMainResult: boolean;
+    showDemographicBreakdowns: boolean;
+    showGenderBreakdown: boolean;
+    showAgeBreakdown: boolean;
+    showNeighborhoodBreakdown: boolean;
+    showInterviewerStats: boolean;
+    allowExcelExport: boolean;
+    allowPdfExport: boolean;
+    visibleQuestionIds: number[] | null;
+  }
+
+  const { data: viewerSettings } = useQuery<ViewerSettings>({
+    queryKey: ['/api/surveys', surveyId, 'viewer-settings'],
+    queryFn: async () => {
+      const res = await fetch(`/api/surveys/${surveyId}/viewer-settings`, { credentials: 'include' });
+      if (!res.ok) {
+        // Return default restrictive settings if not found
+        return {
+          showFilters: false,
+          filterAgeGroup: false,
+          filterGender: false,
+          filterNeighborhood: false,
+          filterInterviewer: false,
+          showIntentionTab: true,
+          showEvolutionTab: false,
+          showCrossingsTab: false,
+          showProfileTab: false,
+          showReportTab: false,
+          showMainResult: true,
+          showDemographicBreakdowns: false,
+          showGenderBreakdown: false,
+          showAgeBreakdown: false,
+          showNeighborhoodBreakdown: false,
+          showInterviewerStats: false,
+          allowExcelExport: false,
+          allowPdfExport: false,
+          visibleQuestionIds: null,
+        };
+      }
+      return res.json();
+    },
+    enabled: !!surveyId && isViewer,
+  });
+
+  // Determine if filters panel should be shown for viewers
+  const shouldShowFiltersPanel = useMemo(() => {
+    if (!isViewer) return true; // Admins/coordinators always see filters
+    if (!viewerSettings) return false; // Default: no filters for viewers
+    if (!viewerSettings.showFilters) return false;
+    // Check if at least one filter is enabled
+    return viewerSettings.filterAgeGroup || 
+           viewerSettings.filterGender || 
+           viewerSettings.filterNeighborhood || 
+           viewerSettings.filterInterviewer;
+  }, [isViewer, viewerSettings]);
   
   const canViewResults = useMemo(() => {
     if (!currentMember) return false;
     if (isInterviewerRole(userRole)) return false;
     return hasPermission(userRole, 'analytics:view') || hasPermission(userRole, 'analytics:view_aggregate');
   }, [currentMember, userRole]);
+  
+  const canViewInterviewerDetails = useMemo(() => {
+    return !isViewer && hasPermission(userRole, 'analytics:view');
+  }, [isViewer, userRole]);
+
+  // Pre-filter question results for viewers - must be done before any derived calculations
+  const filteredQuestionResults = useMemo(() => {
+    if (!aggregatedData?.questionResults) return [];
+    const visQIds = isViewer ? (viewerSettings?.visibleQuestionIds ?? null) : null;
+    if (visQIds === null) return aggregatedData.questionResults;
+    return aggregatedData.questionResults.filter(qr => visQIds.includes(qr.questionId));
+  }, [aggregatedData, isViewer, viewerSettings]);
 
   const voteIntentionQuestion = useMemo(() => {
-    if (!aggregatedData?.questionResults) return null;
-    return aggregatedData.questionResults.find(q => 
+    if (filteredQuestionResults.length === 0) return null;
+    return filteredQuestionResults.find(q => 
       q.questionText.toLowerCase().includes('voto') || 
       q.questionText.toLowerCase().includes('candidato') ||
       q.questionText.toLowerCase().includes('prefeito') ||
       q.questionText.toLowerCase().includes('governador') ||
       q.questionText.toLowerCase().includes('presidente')
-    ) || aggregatedData.questionResults[0];
-  }, [aggregatedData]);
+    ) || filteredQuestionResults[0];
+  }, [filteredQuestionResults]);
 
   const allCandidates = useMemo(() => {
     if (!voteIntentionQuestion) return [];
@@ -346,6 +834,12 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   }, [timelineData, voteIntentionQuestion]);
 
   const exportToPDF = useCallback(() => {
+    // Guard: check permission for viewers
+    if (isViewer && (!viewerSettings || !viewerSettings.allowPdfExport)) {
+      toast({ title: "Sem permissão", description: "Você não tem permissão para exportar PDF", variant: "destructive" });
+      return;
+    }
+    
     if (!aggregatedData) {
       toast({ title: "Sem dados", description: "Não há dados para exportar", variant: "destructive" });
       return;
@@ -423,7 +917,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
         yPos = (doc as any).lastAutoTable.finalY + 15;
       }
 
-      const otherQuestions = aggregatedData.questionResults.filter(q => 
+      const otherQuestions = filteredQuestionResults.filter(q => 
         q.questionId !== voteIntentionQuestion?.questionId
       );
 
@@ -500,9 +994,15 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       console.error('Erro ao gerar PDF:', error);
       toast({ title: "Erro", description: "Falha ao gerar o PDF", variant: "destructive" });
     }
-  }, [aggregatedData, voteIntentionQuestion, toast]);
+  }, [aggregatedData, voteIntentionQuestion, toast, isViewer, viewerSettings]);
 
   const exportToExcel = useCallback(() => {
+    // Guard: check permission for viewers
+    if (isViewer && (!viewerSettings || !viewerSettings.allowExcelExport)) {
+      toast({ title: "Sem permissão", description: "Você não tem permissão para exportar Excel", variant: "destructive" });
+      return;
+    }
+    
     if (!aggregatedData || !voteIntentionQuestion) {
       toast({ title: "Sem dados", description: "Não há dados para exportar", variant: "destructive" });
       return;
@@ -537,7 +1037,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     URL.revokeObjectURL(url);
 
     toast({ title: "Exportado!", description: "Dados exportados para Excel/CSV" });
-  }, [aggregatedData, voteIntentionQuestion, toast]);
+  }, [aggregatedData, voteIntentionQuestion, toast, isViewer, viewerSettings]);
 
   const resetFilters = useCallback(() => {
     setFilters({
@@ -550,6 +1050,102 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       dateTo: ""
     });
   }, []);
+
+  // Filter facets based on viewer settings (must be before early returns)
+  const allowedFilterKeys = useMemo(() => {
+    if (!isViewer) return ['neighborhood', 'ageRange', 'gender', 'education']; // All for admins
+    if (!viewerSettings || !viewerSettings.showFilters) return [];
+    const allowed: string[] = [];
+    if (viewerSettings.filterNeighborhood) allowed.push('neighborhood');
+    if (viewerSettings.filterAgeGroup) allowed.push('ageRange');
+    if (viewerSettings.filterGender) allowed.push('gender');
+    return allowed;
+  }, [isViewer, viewerSettings]);
+
+  const showInterviewerFilter = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showFilters && viewerSettings?.filterInterviewer;
+  }, [isViewer, viewerSettings]);
+
+  // Check export permissions for viewers
+  const canExportExcel = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.allowExcelExport ?? false;
+  }, [isViewer, viewerSettings]);
+
+  const canExportPdf = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.allowPdfExport ?? false;
+  }, [isViewer, viewerSettings]);
+
+  // Tab visibility for viewers
+  const showIntentionTab = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showIntentionTab ?? true; // Default visible for viewers
+  }, [isViewer, viewerSettings]);
+
+  const showEvolutionTab = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showEvolutionTab ?? false;
+  }, [isViewer, viewerSettings]);
+
+  const showCrossingsTab = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showCrossingsTab ?? false;
+  }, [isViewer, viewerSettings]);
+
+  const showProfileTab = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showProfileTab ?? false;
+  }, [isViewer, viewerSettings]);
+
+  const showReportTab = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showReportTab ?? false;
+  }, [isViewer, viewerSettings]);
+
+  // Card visibility for viewers
+  const showMainResult = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showMainResult ?? true; // Default visible
+  }, [isViewer, viewerSettings]);
+
+  const showDemographicBreakdowns = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showDemographicBreakdowns ?? false;
+  }, [isViewer, viewerSettings]);
+
+  const showGenderBreakdown = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showGenderBreakdown ?? false;
+  }, [isViewer, viewerSettings]);
+
+  const showAgeBreakdown = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showAgeBreakdown ?? false;
+  }, [isViewer, viewerSettings]);
+
+  const showNeighborhoodBreakdown = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showNeighborhoodBreakdown ?? false;
+  }, [isViewer, viewerSettings]);
+
+  const showInterviewerStats = useMemo(() => {
+    if (!isViewer) return true;
+    return viewerSettings?.showInterviewerStats ?? false;
+  }, [isViewer, viewerSettings]);
+
+  // Calculate visible tabs count for grid layout
+  const visibleTabsCount = useMemo(() => {
+    let count = 2; // overview is always visible, plus 1 base
+    if (showIntentionTab) count++;
+    if (showEvolutionTab) count++;
+    if (showCrossingsTab) count++;
+    if (showProfileTab) count++;
+    if (canViewInterviewerDetails) count++;
+    if (showReportTab) count++;
+    return count;
+  }, [showIntentionTab, showEvolutionTab, showCrossingsTab, showProfileTab, showReportTab, canViewInterviewerDetails]);
 
   if (memberLoading || resultsLoading) {
     return <LoadingScreen message="Carregando resultados..." />;
@@ -582,7 +1178,11 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     );
   }
 
-  const { survey, totalResponses, validResponses, questionResults, collectionPeriod } = aggregatedData;
+  const { survey, totalResponses, validResponses, collectionPeriod } = aggregatedData;
+  
+  // Use pre-filtered question results for all viewer-facing displays
+  const questionResults = filteredQuestionResults;
+  
   const completionRate = survey.targetSample ? Math.min(100, Math.round((totalResponses / survey.targetSample) * 100)) : 100;
 
   const getStatusLabel = (status: string) => {
@@ -605,83 +1205,85 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   return (
     <DashboardLayout orgId={params.orgId}>
       <div className="flex flex-col lg:flex-row gap-6">
-        <div className="hidden lg:block w-64 shrink-0">
-          <Card className="sticky top-4">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Filter className="w-4 h-4" />
-                Filtros
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {(aggregatedData.filterFacets && aggregatedData.filterFacets.length > 0) || (interviewersList && interviewersList.length > 0) ? (
-                <>
-                  {aggregatedData.filterFacets?.map((facet) => {
-                    const filterLabels: Record<string, string> = {
-                      neighborhood: 'Bairro / Zona',
-                      ageRange: 'Faixa Etária',
-                      gender: 'Sexo',
-                      education: 'Escolaridade'
-                    };
-                    const filterKey = facet.filterKey as keyof FilterState;
-                    return (
-                      <div key={facet.questionId} className="space-y-2">
-                        <Label className="text-xs">{filterLabels[facet.filterKey] || facet.questionText}</Label>
+        {shouldShowFiltersPanel && (
+          <div className="hidden lg:block w-64 shrink-0">
+            <Card className="sticky top-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  Filtros
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {(aggregatedData.filterFacets && aggregatedData.filterFacets.length > 0) || (interviewersList && interviewersList.length > 0) ? (
+                  <>
+                    {aggregatedData.filterFacets?.filter(facet => allowedFilterKeys.includes(facet.filterKey)).map((facet) => {
+                      const filterLabels: Record<string, string> = {
+                        neighborhood: 'Bairro / Zona',
+                        ageRange: 'Faixa Etária',
+                        gender: 'Sexo',
+                        education: 'Escolaridade'
+                      };
+                      const filterKey = facet.filterKey as keyof FilterState;
+                      return (
+                        <div key={facet.questionId} className="space-y-2">
+                          <Label className="text-xs">{filterLabels[facet.filterKey] || facet.questionText}</Label>
+                          <Select 
+                            value={filters[filterKey] || "all"} 
+                            onValueChange={(v) => setFilters(f => ({ ...f, [filterKey]: v }))}
+                          >
+                            <SelectTrigger data-testid={`select-${facet.filterKey}`}>
+                              <SelectValue placeholder="Todos" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Todos</SelectItem>
+                              {facet.options.map((opt) => (
+                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })}
+                    {showInterviewerFilter && interviewersList && interviewersList.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-xs">Entrevistador</Label>
                         <Select 
-                          value={filters[filterKey] || "all"} 
-                          onValueChange={(v) => setFilters(f => ({ ...f, [filterKey]: v }))}
+                          value={filters.interviewer} 
+                          onValueChange={(v) => setFilters(f => ({ ...f, interviewer: v }))}
                         >
-                          <SelectTrigger data-testid={`select-${facet.filterKey}`}>
+                          <SelectTrigger data-testid="select-interviewer">
                             <SelectValue placeholder="Todos" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">Todos</SelectItem>
-                            {facet.options.map((opt) => (
-                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            {interviewersList.map((interviewer) => (
+                              <SelectItem key={interviewer.id} value={interviewer.id}>{interviewer.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
-                    );
-                  })}
-                  {interviewersList && interviewersList.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-xs">Entrevistador</Label>
-                      <Select 
-                        value={filters.interviewer} 
-                        onValueChange={(v) => setFilters(f => ({ ...f, interviewer: v }))}
-                      >
-                        <SelectTrigger data-testid="select-interviewer">
-                          <SelectValue placeholder="Todos" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Todos</SelectItem>
-                          {interviewersList.map((interviewer) => (
-                            <SelectItem key={interviewer.id} value={interviewer.id}>{interviewer.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  <Separator />
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full"
-                    onClick={resetFilters}
-                    data-testid="button-reset-filters"
-                  >
-                    Limpar Filtros
-                  </Button>
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">
-                  Nenhum filtro disponível para esta pesquisa
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                    )}
+                    <Separator />
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={resetFilters}
+                      data-testid="button-reset-filters"
+                    >
+                      Limpar Filtros
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center py-4">
+                    Nenhum filtro disponível para esta pesquisa
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <div className="flex-1 space-y-6 min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -709,47 +1311,63 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Button variant="outline" onClick={exportToExcel} data-testid="button-download-excel">
-                <FileSpreadsheet className="w-4 h-4 mr-2" />
-                Excel
-              </Button>
-              <Button onClick={exportToPDF} data-testid="button-download-pdf">
-                <Download className="w-4 h-4 mr-2" />
-                PDF
-              </Button>
+              {canExportExcel && (
+                <Button variant="outline" onClick={exportToExcel} data-testid="button-download-excel">
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Excel
+                </Button>
+              )}
+              {canExportPdf && (
+                <Button onClick={exportToPDF} data-testid="button-download-pdf">
+                  <Download className="w-4 h-4 mr-2" />
+                  PDF
+                </Button>
+              )}
             </div>
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 gap-1">
+            <TabsList className="flex w-full gap-1 flex-wrap">
               <TabsTrigger value="overview" data-testid="tab-overview" className="text-xs sm:text-sm">
                 <Eye className="w-4 h-4 mr-1 hidden sm:inline" />
                 Visão Geral
               </TabsTrigger>
-              <TabsTrigger value="vote-intention" data-testid="tab-vote-intention" className="text-xs sm:text-sm">
-                <BarChart3 className="w-4 h-4 mr-1 hidden sm:inline" />
-                Intenção
-              </TabsTrigger>
-              <TabsTrigger value="timeline" data-testid="tab-timeline" className="text-xs sm:text-sm">
-                <TrendingUp className="w-4 h-4 mr-1 hidden sm:inline" />
-                Evolução
-              </TabsTrigger>
-              <TabsTrigger value="cross-tabs" data-testid="tab-cross-tabs" className="text-xs sm:text-sm">
-                <Layers className="w-4 h-4 mr-1 hidden sm:inline" />
-                Cruzamentos
-              </TabsTrigger>
-              <TabsTrigger value="distribution" data-testid="tab-distribution" className="text-xs sm:text-sm">
-                <PieChartIcon className="w-4 h-4 mr-1 hidden sm:inline" />
-                Perfil
-              </TabsTrigger>
-              <TabsTrigger value="interviewers" data-testid="tab-interviewers" className="text-xs sm:text-sm">
-                <Users className="w-4 h-4 mr-1 hidden sm:inline" />
-                Entrevistadores
-              </TabsTrigger>
-              <TabsTrigger value="report" data-testid="tab-report" className="text-xs sm:text-sm">
-                <FileText className="w-4 h-4 mr-1 hidden sm:inline" />
-                Relatório
-              </TabsTrigger>
+              {showIntentionTab && (
+                <TabsTrigger value="vote-intention" data-testid="tab-vote-intention" className="text-xs sm:text-sm">
+                  <BarChart3 className="w-4 h-4 mr-1 hidden sm:inline" />
+                  Intenção
+                </TabsTrigger>
+              )}
+              {showEvolutionTab && (
+                <TabsTrigger value="timeline" data-testid="tab-timeline" className="text-xs sm:text-sm">
+                  <TrendingUp className="w-4 h-4 mr-1 hidden sm:inline" />
+                  Evolução
+                </TabsTrigger>
+              )}
+              {showCrossingsTab && (
+                <TabsTrigger value="cross-tabs" data-testid="tab-cross-tabs" className="text-xs sm:text-sm">
+                  <Layers className="w-4 h-4 mr-1 hidden sm:inline" />
+                  Cruzamentos
+                </TabsTrigger>
+              )}
+              {showProfileTab && (
+                <TabsTrigger value="distribution" data-testid="tab-distribution" className="text-xs sm:text-sm">
+                  <PieChartIcon className="w-4 h-4 mr-1 hidden sm:inline" />
+                  Perfil
+                </TabsTrigger>
+              )}
+              {canViewInterviewerDetails && (
+                <TabsTrigger value="interviewers" data-testid="tab-interviewers" className="text-xs sm:text-sm">
+                  <Users className="w-4 h-4 mr-1 hidden sm:inline" />
+                  Entrevistadores
+                </TabsTrigger>
+              )}
+              {showReportTab && (
+                <TabsTrigger value="report" data-testid="tab-report" className="text-xs sm:text-sm">
+                  <FileText className="w-4 h-4 mr-1 hidden sm:inline" />
+                  Relatório
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="overview" className="mt-6">
@@ -889,147 +1507,19 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               </Card>
 
               {voteIntentionQuestion && voteIntentionQuestion.results.length > 0 && (
-                <Card className="mt-6">
-                  <CardHeader>
-                    <CardTitle>Resultado Principal</CardTitle>
-                    <CardDescription>{voteIntentionQuestion.questionText}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-[400px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart 
-                        data={voteIntentionQuestion.results.sort((a, b) => b.percentage - a.percentage)} 
-                        layout="vertical"
-                        margin={{ top: 5, right: 60, left: voteIntentionQuestion.showOptionImages ? 50 : 20, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                        <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                        <YAxis 
-                          type="category" 
-                          dataKey="option" 
-                          width={voteIntentionQuestion.showOptionImages ? 200 : 180}
-                          tick={(props) => (
-                            <CustomYAxisTick 
-                              {...props} 
-                              resultsData={voteIntentionQuestion.results}
-                              showImages={voteIntentionQuestion.showOptionImages}
-                            />
-                          )}
-                        />
-                        <Tooltip 
-                          formatter={(value: number) => [`${value}%`, 'Percentual']}
-                          contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
-                        />
-                        <Bar dataKey="percentage" radius={[0, 4, 4, 0]}>
-                          {voteIntentionQuestion.results.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                          ))}
-                          <LabelList 
-                            dataKey="percentage" 
-                            position="right" 
-                            formatter={(v: number) => `${v}%`}
-                            style={{ fontSize: 12, fontWeight: 600 }}
-                          />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
+                <MainResultChart questionData={voteIntentionQuestion} />
               )}
             </TabsContent>
 
             <TabsContent value="vote-intention" className="mt-6">
               <div className="space-y-6">
-                {questionResults.map((qr, index) => (
-                  <Card key={qr.questionId}>
-                    <CardHeader>
-                      <CardTitle className="text-lg">{qr.questionText}</CardTitle>
-                      <CardDescription>
-                        Base: {validResponses} entrevistas válidas | Margem de erro: ±{survey.marginOfError || 2}%
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-[350px] mb-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart 
-                            data={qr.results.sort((a, b) => b.percentage - a.percentage)} 
-                            layout="vertical"
-                            margin={{ top: 5, right: 60, left: qr.showOptionImages ? 50 : 20, bottom: 5 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                            <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                            <YAxis 
-                              type="category" 
-                              dataKey="option" 
-                              width={qr.showOptionImages ? 200 : 180}
-                              tick={(props) => (
-                                <CustomYAxisTick 
-                                  {...props} 
-                                  resultsData={qr.results}
-                                  showImages={qr.showOptionImages}
-                                />
-                              )}
-                            />
-                            <Tooltip 
-                              formatter={(value: number) => [`${value}%`, 'Percentual']}
-                              contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
-                            />
-                            <Bar dataKey="percentage" radius={[0, 4, 4, 0]}>
-                              {qr.results.map((entry, i) => (
-                                <Cell key={`cell-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                              ))}
-                              <LabelList 
-                                dataKey="percentage" 
-                                position="right" 
-                                formatter={(v: number) => `${v}%`}
-                                style={{ fontSize: 12, fontWeight: 600 }}
-                              />
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left py-2 font-medium">Candidato / Opção</th>
-                              <th className="text-right py-2 font-medium">Votos</th>
-                              <th className="text-right py-2 font-medium">%</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {qr.results.sort((a, b) => b.percentage - a.percentage).map((r, i) => (
-                              <tr key={r.option} className="border-b border-muted">
-                                <td className="py-2">
-                                  <div className="flex items-center gap-3">
-                                    <div 
-                                      className="w-3 h-3 rounded-full shrink-0" 
-                                      style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
-                                    />
-                                    {qr.showOptionImages && r.imageUrl && (
-                                      <img 
-                                        src={r.imageUrl} 
-                                        alt={r.option}
-                                        className="w-10 h-10 rounded-full object-cover border-2 border-border shrink-0"
-                                      />
-                                    )}
-                                    <span>{r.option}</span>
-                                  </div>
-                                </td>
-                                <td className="text-right py-2 text-muted-foreground">{r.count}</td>
-                                <td className="text-right py-2 font-semibold">{r.percentage}%</td>
-                              </tr>
-                            ))}
-                            <tr className="font-medium">
-                              <td className="py-2">Total</td>
-                              <td className="text-right py-2">{qr.results.reduce((sum, r) => sum + r.count, 0)}</td>
-                              <td className="text-right py-2">100%</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </CardContent>
-                  </Card>
+                {questionResults.map((qr) => (
+                  <QuestionChartCard
+                    key={qr.questionId}
+                    questionResult={qr}
+                    validResponses={validResponses}
+                    marginOfError={survey.marginOfError || 2}
+                  />
                 ))}
                 
                 {questionResults.length === 0 && (
@@ -1320,6 +1810,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               </div>
             </TabsContent>
 
+            {canViewInterviewerDetails && (
             <TabsContent value="interviewers" className="mt-6">
               <Card>
                 <CardHeader>
@@ -1431,6 +1922,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 </CardContent>
               </Card>
             </TabsContent>
+            )}
 
             <TabsContent value="report" className="mt-6">
               <Card>
@@ -1445,33 +1937,45 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid sm:grid-cols-2 gap-4">
-                    <Card className="border-2 border-dashed">
-                      <CardContent className="flex flex-col items-center justify-center py-8">
-                        <Download className="w-12 h-12 text-red-600 mb-4" />
-                        <h3 className="font-semibold mb-2">Relatório em PDF</h3>
-                        <p className="text-sm text-muted-foreground text-center mb-4">
-                          Documento formatado para impressão e apresentação
-                        </p>
-                        <Button onClick={exportToPDF} data-testid="button-export-pdf-full">
-                          <Download className="w-4 h-4 mr-2" />
-                          Baixar PDF
-                        </Button>
-                      </CardContent>
-                    </Card>
+                    {canExportPdf && (
+                      <Card className="border-2 border-dashed">
+                        <CardContent className="flex flex-col items-center justify-center py-8">
+                          <Download className="w-12 h-12 text-red-600 mb-4" />
+                          <h3 className="font-semibold mb-2">Relatório em PDF</h3>
+                          <p className="text-sm text-muted-foreground text-center mb-4">
+                            Documento formatado para impressão e apresentação
+                          </p>
+                          <Button onClick={exportToPDF} data-testid="button-export-pdf-full">
+                            <Download className="w-4 h-4 mr-2" />
+                            Baixar PDF
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    )}
 
-                    <Card className="border-2 border-dashed">
-                      <CardContent className="flex flex-col items-center justify-center py-8">
-                        <FileSpreadsheet className="w-12 h-12 text-green-600 mb-4" />
-                        <h3 className="font-semibold mb-2">Dados em Excel</h3>
-                        <p className="text-sm text-muted-foreground text-center mb-4">
-                          Planilha com todos os dados para análises adicionais
-                        </p>
-                        <Button variant="outline" onClick={exportToExcel} data-testid="button-export-excel-full">
-                          <FileSpreadsheet className="w-4 h-4 mr-2" />
-                          Baixar Excel
-                        </Button>
-                      </CardContent>
-                    </Card>
+                    {canExportExcel && (
+                      <Card className="border-2 border-dashed">
+                        <CardContent className="flex flex-col items-center justify-center py-8">
+                          <FileSpreadsheet className="w-12 h-12 text-green-600 mb-4" />
+                          <h3 className="font-semibold mb-2">Dados em Excel</h3>
+                          <p className="text-sm text-muted-foreground text-center mb-4">
+                            Planilha com todos os dados para análises adicionais
+                          </p>
+                          <Button variant="outline" onClick={exportToExcel} data-testid="button-export-excel-full">
+                            <FileSpreadsheet className="w-4 h-4 mr-2" />
+                            Baixar Excel
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {!canExportPdf && !canExportExcel && (
+                      <Card className="border-2 border-dashed col-span-2">
+                        <CardContent className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                          <p>Exportação não disponível para seu perfil.</p>
+                        </CardContent>
+                      </Card>
+                    )}
                   </div>
 
                   <Separator />

@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { savePendingInterview, generateInterviewId, getPendingCount } from "@/lib/offlineStorage";
+import { savePendingInterview, generateInterviewId, generateClientId, getPendingCount } from "@/lib/offlineStorage";
 import { syncAllPending } from "@/lib/syncQueue";
 import type { QuestionLogic, SkipLogicRule } from "@shared/schema";
 
@@ -127,6 +127,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [pendingCount, setPendingCount] = useState(0);
   const [isSavingOffline, setIsSavingOffline] = useState(false);
   const [startTime] = useState(new Date());
+  const [clientId] = useState(() => generateClientId());
   
   const [shuffledQuestions, setShuffledQuestions] = useState<typeof survey extends { questions: infer Q } ? Q : any[]>([]);
   const [shuffledOptionsMap, setShuffledOptionsMap] = useState<Record<number, (string | QuestionOption)[]>>({});
@@ -345,6 +346,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       await savePendingInterview({
         id: generateInterviewId(),
         surveyId,
+        clientId,
         createdAt: new Date(),
         status: 'pending',
         retryCount: 0,
@@ -354,9 +356,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             longitude: gpsCoords?.longitude ?? 0,
             accuracy: gpsCoords?.accuracy ?? 0,
             gpsTimestamp: new Date(),
-            audioBlob: audioBuffer,
-            audioMimeType: requireAudio && audioBlob ? 'audio/webm' : null,
-            audioFileName: requireAudio && audioBlob ? `entrevista-${Date.now()}.webm` : null,
+            audioBlob: audioBuffer ?? new ArrayBuffer(0),
+            audioMimeType: requireAudio && audioBlob ? 'audio/webm' : 'audio/webm',
+            audioFileName: requireAudio && audioBlob ? `entrevista-${Date.now()}.webm` : `no-audio-${Date.now()}.webm`,
             deviceInfo: { userAgent: navigator.userAgent },
             startTime,
             endTime,
@@ -430,6 +432,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     submitResponse({
       surveyId,
       data: {
+        clientId,
         response: {
           latitude: gpsCoords?.latitude ?? 0,
           longitude: gpsCoords?.longitude ?? 0,

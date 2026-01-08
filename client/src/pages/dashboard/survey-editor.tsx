@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers, Image, X, Loader2, Target, AlertTriangle, GitBranch, ChevronUp, ChevronDown } from "lucide-react";
+import { ArrowLeft, Save, Plus, GripVertical, Trash2, Play, Pause, ExternalLink, Copy, Settings2, FileText, CheckCircle, Users, UserPlus, UserMinus, Layers, Image, X, Loader2, Target, AlertTriangle, GitBranch, ChevronUp, ChevronDown, Eye } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import type { SurveyQuotas, QuotaGroup, QuotaTarget, QuestionLogic, SkipLogicRule } from "@shared/schema";
 import { LoadingScreen } from "@/components/ui/loading-screen";
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -454,6 +455,120 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     }
   });
 
+  // Viewer assignments - only fetch if not new survey
+  const { data: viewerAssignments = [], isLoading: viewerAssignmentsLoading } = useQuery<any[]>({
+    queryKey: [`/api/surveys/${surveyId}/viewers`],
+    enabled: !isNewSurvey && surveyId > 0,
+  });
+
+  const { data: availableViewers = [], isLoading: viewersLoading } = useQuery<any[]>({
+    queryKey: [`/api/organizations/${orgId}/viewers`],
+    enabled: !isNewSurvey && surveyId > 0,
+  });
+
+  const assignViewer = useMutation({
+    mutationFn: async (viewerId: string) => {
+      const res = await apiRequest('POST', `/api/surveys/${surveyId}/viewers`, { viewerId });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Erro ao designar visualizador');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/viewers`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/organizations/${orgId}/viewers`] });
+      toast({ title: "Visualizador designado" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const unassignViewer = useMutation({
+    mutationFn: async (viewerId: string) => {
+      const res = await apiRequest('DELETE', `/api/surveys/${surveyId}/viewers/${viewerId}`);
+      if (!res.ok) throw new Error('Erro ao remover designação');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/viewers`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/organizations/${orgId}/viewers`] });
+      toast({ title: "Visualizador removido" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao remover visualizador", variant: "destructive" });
+    }
+  });
+
+  // Viewer settings - configures what viewers can see
+  const { data: viewerSettings, isLoading: viewerSettingsLoading } = useQuery<any>({
+    queryKey: [`/api/surveys/${surveyId}/viewer-settings`],
+    enabled: !isNewSurvey && surveyId > 0,
+  });
+
+  const [viewerSettingsForm, setViewerSettingsForm] = useState({
+    showFilters: false,
+    filterAgeGroup: false,
+    filterGender: false,
+    filterNeighborhood: false,
+    filterInterviewer: false,
+    showIntentionTab: true,
+    showEvolutionTab: false,
+    showCrossingsTab: false,
+    showProfileTab: false,
+    showReportTab: false,
+    showMainResult: true,
+    showDemographicBreakdowns: false,
+    showGenderBreakdown: false,
+    showAgeBreakdown: false,
+    showNeighborhoodBreakdown: false,
+    showInterviewerStats: false,
+    allowExcelExport: false,
+    allowPdfExport: false,
+    visibleQuestionIds: null as number[] | null,
+  });
+
+  useEffect(() => {
+    if (viewerSettings) {
+      setViewerSettingsForm({
+        showFilters: viewerSettings.showFilters ?? false,
+        filterAgeGroup: viewerSettings.filterAgeGroup ?? false,
+        filterGender: viewerSettings.filterGender ?? false,
+        filterNeighborhood: viewerSettings.filterNeighborhood ?? false,
+        filterInterviewer: viewerSettings.filterInterviewer ?? false,
+        showIntentionTab: viewerSettings.showIntentionTab ?? true,
+        showEvolutionTab: viewerSettings.showEvolutionTab ?? false,
+        showCrossingsTab: viewerSettings.showCrossingsTab ?? false,
+        showProfileTab: viewerSettings.showProfileTab ?? false,
+        showReportTab: viewerSettings.showReportTab ?? false,
+        showMainResult: viewerSettings.showMainResult ?? true,
+        showDemographicBreakdowns: viewerSettings.showDemographicBreakdowns ?? false,
+        showGenderBreakdown: viewerSettings.showGenderBreakdown ?? false,
+        showAgeBreakdown: viewerSettings.showAgeBreakdown ?? false,
+        showNeighborhoodBreakdown: viewerSettings.showNeighborhoodBreakdown ?? false,
+        showInterviewerStats: viewerSettings.showInterviewerStats ?? false,
+        allowExcelExport: viewerSettings.allowExcelExport ?? false,
+        allowPdfExport: viewerSettings.allowPdfExport ?? false,
+        visibleQuestionIds: viewerSettings.visibleQuestionIds ?? null,
+      });
+    }
+  }, [viewerSettings]);
+
+  const saveViewerSettings = useMutation({
+    mutationFn: async (data: typeof viewerSettingsForm) => {
+      const res = await apiRequest('PUT', `/api/surveys/${surveyId}/viewer-settings`, data);
+      if (!res.ok) throw new Error('Erro ao salvar configurações');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/viewer-settings`] });
+      toast({ title: "Configurações salvas", description: "As configurações de visualização foram atualizadas." });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao salvar configurações", variant: "destructive" });
+    }
+  });
+
   const [surveyForm, setSurveyForm] = useState({
     title: "",
     description: "",
@@ -793,7 +908,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         </div>
 
         <Tabs defaultValue={isNewSurvey ? "settings" : "questions"} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 max-w-3xl">
+          <TabsList className="grid w-full grid-cols-7 max-w-5xl">
             <TabsTrigger value="questions" className="gap-2" disabled={isNewSurvey} data-testid="tab-questions">
               <FileText className="w-4 h-4" /> Perguntas
             </TabsTrigger>
@@ -805,6 +920,12 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             </TabsTrigger>
             <TabsTrigger value="coordinators" className="gap-2" disabled={isNewSurvey} data-testid="tab-coordinators">
               <Users className="w-4 h-4" /> Coordenadores
+            </TabsTrigger>
+            <TabsTrigger value="viewers" className="gap-2" disabled={isNewSurvey} data-testid="tab-viewers">
+              <Users className="w-4 h-4" /> Visualizadores
+            </TabsTrigger>
+            <TabsTrigger value="viewer-config" className="gap-2" disabled={isNewSurvey} data-testid="tab-viewer-config">
+              <Eye className="w-4 h-4" /> Exibição
             </TabsTrigger>
             <TabsTrigger value="settings" className="gap-2" data-testid="tab-settings">
               <Settings2 className="w-4 h-4" /> Config
@@ -1191,6 +1312,412 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                     );
                   })()}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="viewers" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Visualizadores Designados</CardTitle>
+                <CardDescription>Escolha quais visualizadores podem acessar os resultados desta pesquisa</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-3">
+                  <Label>Visualizadores atribuidos a esta pesquisa</Label>
+                  {viewerAssignmentsLoading ? (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">Carregando...</p>
+                  ) : viewerAssignments.length > 0 ? (
+                    <div className="space-y-2">
+                      {viewerAssignments.map((a: any) => (
+                        <div key={a.viewerId} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback>
+                                {(a.viewer?.firstName?.[0] || a.viewer?.email?.[0] || '?').toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium text-sm">
+                                {a.viewer?.firstName && a.viewer?.lastName
+                                  ? `${a.viewer.firstName} ${a.viewer.lastName}`
+                                  : a.viewer?.email || 'Visualizador'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{a.viewer?.email}</p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => unassignViewer.mutate(a.viewerId)}
+                            disabled={unassignViewer.isPending}
+                            data-testid={`button-unassign-viewer-${a.viewerId}`}
+                          >
+                            <UserMinus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                      Nenhum visualizador designado. Adicione visualizadores abaixo.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-3 pt-4 border-t">
+                  <Label>Adicionar visualizador</Label>
+                  {viewersLoading ? (
+                    <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">Carregando visualizadores...</p>
+                  ) : (() => {
+                    const assignedIds = viewerAssignments.map((a: any) => a.viewerId);
+                    const unassigned = availableViewers.filter((v: any) => !assignedIds.includes(v.userId));
+                    
+                    if (unassigned.length === 0) {
+                      return (
+                        <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
+                          {availableViewers.length === 0
+                            ? "Nao ha visualizadores cadastrados na organizacao. Adicione membros com a funcao 'Visualizador' na pagina de Equipe."
+                            : "Todos os visualizadores ja estao designados para esta pesquisa."}
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        {unassigned.map((v: any) => (
+                          <div key={v.userId} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>
+                                  {(v.user?.firstName?.[0] || v.user?.email?.[0] || '?').toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium text-sm">
+                                  {v.user?.firstName && v.user?.lastName
+                                    ? `${v.user.firstName} ${v.user.lastName}`
+                                    : v.user?.email || 'Visualizador'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{v.user?.email}</p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => assignViewer.mutate(v.userId)}
+                              disabled={assignViewer.isPending}
+                              data-testid={`button-assign-viewer-${v.userId}`}
+                            >
+                              <UserPlus className="w-4 h-4 mr-2" /> Adicionar
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="viewer-config" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Eye className="w-5 h-5" /> Configurar Exibição para Visualizadores
+                </CardTitle>
+                <CardDescription>
+                  Controle quais elementos os visualizadores podem ver na página de resultados desta pesquisa.
+                  Os cards de métricas (Universo, Realizadas, Margem de Erro, Período) e a Ficha Técnica são sempre visíveis.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-8">
+                {viewerSettingsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-base border-b pb-2">Filtros</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Por padrão, filtros estão ocultos para visualizadores. Ative para permitir que filtrem os dados.
+                      </p>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <div>
+                            <p className="font-medium text-sm">Mostrar Painel de Filtros</p>
+                            <p className="text-xs text-muted-foreground">Exibe a barra lateral de filtros</p>
+                          </div>
+                          <Switch
+                            checked={viewerSettingsForm.showFilters}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showFilters: checked})}
+                            data-testid="switch-show-filters"
+                          />
+                        </div>
+                        {viewerSettingsForm.showFilters && (
+                          <div className="pl-4 space-y-2 border-l-2 border-muted ml-2">
+                            <div className="flex items-center justify-between p-2 rounded">
+                              <span className="text-sm">Filtro por Faixa Etária</span>
+                              <Switch
+                                checked={viewerSettingsForm.filterAgeGroup}
+                                onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, filterAgeGroup: checked})}
+                                data-testid="switch-filter-age"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between p-2 rounded">
+                              <span className="text-sm">Filtro por Sexo</span>
+                              <Switch
+                                checked={viewerSettingsForm.filterGender}
+                                onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, filterGender: checked})}
+                                data-testid="switch-filter-gender"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between p-2 rounded">
+                              <span className="text-sm">Filtro por Bairro/Zona</span>
+                              <Switch
+                                checked={viewerSettingsForm.filterNeighborhood}
+                                onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, filterNeighborhood: checked})}
+                                data-testid="switch-filter-neighborhood"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between p-2 rounded">
+                              <span className="text-sm">Filtro por Entrevistador</span>
+                              <Switch
+                                checked={viewerSettingsForm.filterInterviewer}
+                                onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, filterInterviewer: checked})}
+                                data-testid="switch-filter-interviewer"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-base border-b pb-2">Abas de Navegação</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Escolha quais abas estarão disponíveis para visualizadores.
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <span className="text-sm font-medium">Intenção</span>
+                          <Switch
+                            checked={viewerSettingsForm.showIntentionTab}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showIntentionTab: checked})}
+                            data-testid="switch-tab-intention"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <span className="text-sm font-medium">Evolução</span>
+                          <Switch
+                            checked={viewerSettingsForm.showEvolutionTab}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showEvolutionTab: checked})}
+                            data-testid="switch-tab-evolution"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <span className="text-sm font-medium">Cruzamentos</span>
+                          <Switch
+                            checked={viewerSettingsForm.showCrossingsTab}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showCrossingsTab: checked})}
+                            data-testid="switch-tab-crossings"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <span className="text-sm font-medium">Perfil</span>
+                          <Switch
+                            checked={viewerSettingsForm.showProfileTab}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showProfileTab: checked})}
+                            data-testid="switch-tab-profile"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <span className="text-sm font-medium">Relatório</span>
+                          <Switch
+                            checked={viewerSettingsForm.showReportTab}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showReportTab: checked})}
+                            data-testid="switch-tab-report"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-base border-b pb-2">Cards de Resultado</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Escolha quais cards de análise serão exibidos.
+                      </p>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <div>
+                            <p className="font-medium text-sm">Resultado Principal</p>
+                            <p className="text-xs text-muted-foreground">Gráfico com os resultados da pergunta principal</p>
+                          </div>
+                          <Switch
+                            checked={viewerSettingsForm.showMainResult}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showMainResult: checked})}
+                            data-testid="switch-card-main-result"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <div>
+                            <p className="font-medium text-sm">Breakdowns Demográficos</p>
+                            <p className="text-xs text-muted-foreground">Análises detalhadas por segmento</p>
+                          </div>
+                          <Switch
+                            checked={viewerSettingsForm.showDemographicBreakdowns}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showDemographicBreakdowns: checked})}
+                            data-testid="switch-card-demographics"
+                          />
+                        </div>
+                        {viewerSettingsForm.showDemographicBreakdowns && (
+                          <div className="pl-4 space-y-2 border-l-2 border-muted ml-2">
+                            <div className="flex items-center justify-between p-2 rounded">
+                              <span className="text-sm">Por Sexo</span>
+                              <Switch
+                                checked={viewerSettingsForm.showGenderBreakdown}
+                                onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showGenderBreakdown: checked})}
+                                data-testid="switch-breakdown-gender"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between p-2 rounded">
+                              <span className="text-sm">Por Idade</span>
+                              <Switch
+                                checked={viewerSettingsForm.showAgeBreakdown}
+                                onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showAgeBreakdown: checked})}
+                                data-testid="switch-breakdown-age"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between p-2 rounded">
+                              <span className="text-sm">Por Bairro/Zona</span>
+                              <Switch
+                                checked={viewerSettingsForm.showNeighborhoodBreakdown}
+                                onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showNeighborhoodBreakdown: checked})}
+                                data-testid="switch-breakdown-neighborhood"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <div>
+                            <p className="font-medium text-sm">Estatísticas de Entrevistadores</p>
+                            <p className="text-xs text-muted-foreground">Dados sobre produção dos entrevistadores</p>
+                          </div>
+                          <Switch
+                            checked={viewerSettingsForm.showInterviewerStats}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, showInterviewerStats: checked})}
+                            data-testid="switch-card-interviewer-stats"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-base border-b pb-2">Perguntas Visíveis</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Selecione quais perguntas os visualizadores podem ver nos resultados. Se nenhuma for selecionada, todas serão visíveis.
+                      </p>
+                      <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-3">
+                        {questions.length === 0 ? (
+                          <p className="text-sm text-muted-foreground italic">Nenhuma pergunta cadastrada nesta pesquisa.</p>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2 pb-2 border-b mb-2">
+                              <Checkbox
+                                id="select-all-questions"
+                                checked={viewerSettingsForm.visibleQuestionIds === null || viewerSettingsForm.visibleQuestionIds?.length === questions.length}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setViewerSettingsForm({...viewerSettingsForm, visibleQuestionIds: null});
+                                  } else {
+                                    setViewerSettingsForm({...viewerSettingsForm, visibleQuestionIds: []});
+                                  }
+                                }}
+                                data-testid="checkbox-select-all-questions"
+                              />
+                              <label htmlFor="select-all-questions" className="text-sm font-medium cursor-pointer">
+                                Todas as perguntas
+                              </label>
+                            </div>
+                            {questions.map((q, idx) => {
+                              const questionId = q.id || idx;
+                              const isVisible = viewerSettingsForm.visibleQuestionIds === null || 
+                                viewerSettingsForm.visibleQuestionIds.includes(questionId);
+                              return (
+                                <div key={idx} className="flex items-start gap-2 p-2 hover-elevate rounded">
+                                  <Checkbox
+                                    id={`question-visible-${idx}`}
+                                    checked={isVisible}
+                                    onCheckedChange={(checked) => {
+                                      let newIds: number[];
+                                      if (viewerSettingsForm.visibleQuestionIds === null) {
+                                        newIds = questions.map((_, i) => questions[i].id || i).filter(id => id !== questionId);
+                                      } else if (checked) {
+                                        newIds = [...viewerSettingsForm.visibleQuestionIds, questionId];
+                                      } else {
+                                        newIds = viewerSettingsForm.visibleQuestionIds.filter(id => id !== questionId);
+                                      }
+                                      setViewerSettingsForm({...viewerSettingsForm, visibleQuestionIds: newIds.length === questions.length ? null : newIds});
+                                    }}
+                                    data-testid={`checkbox-question-visible-${idx}`}
+                                  />
+                                  <label htmlFor={`question-visible-${idx}`} className="text-sm cursor-pointer flex-1">
+                                    <span className="font-medium">{idx + 1}.</span> {q.text || 'Pergunta sem texto'}
+                                  </label>
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-base border-b pb-2">Exportação</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Permita que visualizadores exportem os dados.
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <span className="text-sm font-medium">Exportar Excel</span>
+                          <Switch
+                            checked={viewerSettingsForm.allowExcelExport}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, allowExcelExport: checked})}
+                            data-testid="switch-export-excel"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <span className="text-sm font-medium">Exportar PDF</span>
+                          <Switch
+                            checked={viewerSettingsForm.allowPdfExport}
+                            onCheckedChange={(checked) => setViewerSettingsForm({...viewerSettingsForm, allowPdfExport: checked})}
+                            data-testid="switch-export-pdf"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-4 border-t">
+                      <Button 
+                        onClick={() => saveViewerSettings.mutate(viewerSettingsForm)}
+                        disabled={saveViewerSettings.isPending}
+                        data-testid="button-save-viewer-settings"
+                      >
+                        {saveViewerSettings.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Salvando...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" /> Salvar Configurações
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

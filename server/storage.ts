@@ -9,11 +9,15 @@ import {
   answers, Answer, InsertAnswer,
   surveyAssignments, SurveyAssignment, InsertSurveyAssignment,
   surveyCoordinators, SurveyCoordinator, InsertSurveyCoordinator,
+  surveyViewers, SurveyViewer, InsertSurveyViewer,
+  surveyViewerSettings, SurveyViewerSettings, InsertSurveyViewerSettings,
   memberPermissionOverrides, MemberPermissionOverride, InsertMemberPermissionOverride,
   accessAuditLog, AccessAuditLog, InsertAccessAuditLog,
   questionModules, QuestionModule, InsertQuestionModule,
   organizationDomains, OrganizationDomain, InsertOrganizationDomain,
-  subscriptionPlans, SubscriptionPlan
+  subscriptionPlans, SubscriptionPlan,
+  landingPageConfig, LandingPageConfig, InsertLandingPageConfig,
+  interviewerLocations, InterviewerLocation, dailyDistanceSummary
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -71,6 +75,7 @@ export interface IStorage {
   createResponse(response: InsertResponse, answers: Omit<InsertAnswer, 'responseId'>[]): Promise<Response>;
   getResponses(surveyId: number): Promise<Response[]>;
   getResponse(id: number): Promise<(Response & { answers: Answer[] }) | undefined>;
+  getResponseByClientId(clientId: string): Promise<Response | undefined>;
   getResponsesWithAnswers(surveyId: number): Promise<(Response & { answers: Answer[] })[]>;
   
   // Analytics
@@ -158,6 +163,17 @@ export interface IStorage {
   unassignCoordinator(surveyId: number, coordinatorId: string): Promise<void>;
   isCoordinatorAssigned(surveyId: number, coordinatorId: string): Promise<boolean>;
 
+  // Survey Viewers
+  getSurveyViewers(surveyId: number): Promise<(SurveyViewer & { viewer: User })[]>;
+  getViewerAssignedSurveys(viewerId: string, orgId: number): Promise<Survey[]>;
+  assignViewer(data: InsertSurveyViewer): Promise<SurveyViewer>;
+  unassignViewer(surveyId: number, viewerId: string): Promise<void>;
+  isViewerAssigned(surveyId: number, viewerId: string): Promise<boolean>;
+
+  // Survey Viewer Settings
+  getSurveyViewerSettings(surveyId: number): Promise<SurveyViewerSettings | undefined>;
+  upsertSurveyViewerSettings(surveyId: number, data: Partial<InsertSurveyViewerSettings>, updatedBy?: string): Promise<SurveyViewerSettings>;
+
   // Permission Overrides
   getMemberPermissionOverrides(memberId: number): Promise<MemberPermissionOverride[]>;
   getOrgPermissionOverrides(orgId: number): Promise<(MemberPermissionOverride & { member: Member & { user: User } })[]>;
@@ -188,6 +204,10 @@ export interface IStorage {
   listAllUsersWithMemberships(): Promise<(User & { 
     memberships: { organizationId: number; organizationName: string; role: string }[] 
   })[]>;
+
+  // Landing Page CMS
+  getLandingPageConfig(): Promise<LandingPageConfig | undefined>;
+  upsertLandingPageConfig(data: Partial<InsertLandingPageConfig>, updatedBy?: string): Promise<LandingPageConfig>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -524,6 +544,13 @@ export class DatabaseStorage implements IStorage {
     return response;
   }
 
+  async getResponseByClientId(clientId: string): Promise<Response | undefined> {
+    const [response] = await db.select().from(responses)
+      .where(eq(responses.clientId, clientId))
+      .limit(1);
+    return response;
+  }
+
   async getResponsesWithAnswers(surveyId: number): Promise<(Response & { answers: Answer[] })[]> {
     const result = await db.query.responses.findMany({
       where: eq(responses.surveyId, surveyId),
@@ -717,6 +744,84 @@ export class DatabaseStorage implements IStorage {
     return !!assignment;
   }
 
+  // --- SURVEY VIEWERS ---
+  async getSurveyViewers(surveyId: number): Promise<(SurveyViewer & { viewer: User })[]> {
+    const result = await db.select({
+      assignment: surveyViewers,
+      viewer: users
+    })
+      .from(surveyViewers)
+      .innerJoin(users, eq(surveyViewers.viewerId, users.id))
+      .where(eq(surveyViewers.surveyId, surveyId));
+    
+    return result.map(r => ({ ...r.assignment, viewer: r.viewer }));
+  }
+
+  async getViewerAssignedSurveys(viewerId: string, orgId: number): Promise<Survey[]> {
+    const result = await db.select({ survey: surveys })
+      .from(surveyViewers)
+      .innerJoin(surveys, eq(surveyViewers.surveyId, surveys.id))
+      .where(and(
+        eq(surveyViewers.viewerId, viewerId),
+        eq(surveys.organizationId, orgId)
+      ));
+    
+    return result.map(r => r.survey);
+  }
+
+  async assignViewer(data: InsertSurveyViewer): Promise<SurveyViewer> {
+    const [assignment] = await db.insert(surveyViewers).values(data).returning();
+    return assignment;
+  }
+
+  async unassignViewer(surveyId: number, viewerId: string): Promise<void> {
+    await db.delete(surveyViewers).where(and(
+      eq(surveyViewers.surveyId, surveyId),
+      eq(surveyViewers.viewerId, viewerId)
+    ));
+  }
+
+  async isViewerAssigned(surveyId: number, viewerId: string): Promise<boolean> {
+    const [assignment] = await db.select()
+      .from(surveyViewers)
+      .where(and(
+        eq(surveyViewers.surveyId, surveyId),
+        eq(surveyViewers.viewerId, viewerId)
+      ))
+      .limit(1);
+    return !!assignment;
+  }
+
+  // --- SURVEY VIEWER SETTINGS ---
+  async getSurveyViewerSettings(surveyId: number): Promise<SurveyViewerSettings | undefined> {
+    const [settings] = await db.select()
+      .from(surveyViewerSettings)
+      .where(eq(surveyViewerSettings.surveyId, surveyId))
+      .limit(1);
+    return settings;
+  }
+
+  async upsertSurveyViewerSettings(
+    surveyId: number, 
+    data: Partial<InsertSurveyViewerSettings>, 
+    updatedBy?: string
+  ): Promise<SurveyViewerSettings> {
+    const existing = await this.getSurveyViewerSettings(surveyId);
+    
+    if (existing) {
+      const [updated] = await db.update(surveyViewerSettings)
+        .set({ ...data, updatedAt: new Date(), updatedBy })
+        .where(eq(surveyViewerSettings.surveyId, surveyId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(surveyViewerSettings)
+        .values({ ...data, surveyId, updatedBy })
+        .returning();
+      return created;
+    }
+  }
+
   // --- INTERVIEWER COMPARISON (Audit) ---
   async getInterviewerComparison(orgId: number, filters: {
     surveyId?: number;
@@ -775,19 +880,7 @@ export class DatabaseStorage implements IStorage {
       allResponses = allResponses.filter(r => filters.interviewerIds!.includes(r.interviewerId));
     }
 
-    // Get unique interviewer IDs
-    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId)));
-    if (interviewerIds.length === 0) {
-      return { interviewers: [], questions: [], comparison: [] };
-    }
-
-    // Get interviewer details
-    const interviewerUsers = await db.select().from(users).where(
-      sql`${users.id} IN (${sql.join(interviewerIds.map(id => sql`${id}`), sql`, `)})`
-    );
-    const interviewerMap = new Map(interviewerUsers.map(u => [u.id, u]));
-
-    // Get questions for these surveys
+    // Get questions for these surveys FIRST (needed for dropdown even without responses)
     let surveyQuestions = await db.select().from(questions).where(
       sql`${questions.surveyId} IN (${sql.join(targetSurveyIds.map(id => sql`${id}`), sql`, `)})`
     );
@@ -797,10 +890,30 @@ export class DatabaseStorage implements IStorage {
       surveyQuestions = surveyQuestions.filter(q => q.id === filters.questionId);
     }
 
+    // Format questions for the dropdown (always return these)
+    const formattedQuestions = surveyQuestions.map(q => {
+      const rawOptions = q.options as any[] || [];
+      const options = rawOptions.map(opt => typeof opt === 'string' ? opt : opt?.text || '');
+      return { id: q.id, text: q.text, options };
+    });
+
+    // Get unique interviewer IDs
+    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId)));
+    if (interviewerIds.length === 0) {
+      // Return questions for dropdown even when no responses
+      return { interviewers: [], questions: formattedQuestions, comparison: [] };
+    }
+
+    // Get interviewer details
+    const interviewerUsers = await db.select().from(users).where(
+      sql`${users.id} IN (${sql.join(interviewerIds.map(id => sql`${id}`), sql`, `)})`
+    );
+    const interviewerMap = new Map(interviewerUsers.map(u => [u.id, u]));
+
     // Get all answers for responses
     const responseIds = allResponses.map(r => r.id);
     if (responseIds.length === 0) {
-      return { interviewers: [], questions: [], comparison: [] };
+      return { interviewers: [], questions: formattedQuestions, comparison: [] };
     }
 
     const allAnswers = await db.select().from(answers).where(
@@ -1492,6 +1605,82 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  // --- REAL-TIME TRACKING ---
+  async getInterviewersWithRealtimeLocation(orgId: number): Promise<Array<{
+    userId: string;
+    name: string;
+    email: string | null;
+    profileImageUrl: string | null;
+    isOnline: boolean;
+    lastLocation: { lat: number; lng: number; time: Date } | null;
+    currentSurvey: { id: number; title: string } | null;
+    distanceToday: number;
+  }>> {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const onlineThreshold = 5 * 60 * 1000; // 5 minutes
+
+    // Get all interviewers in the organization
+    const members = await db.select({
+      userId: organizationMembers.userId,
+      user: users
+    })
+      .from(organizationMembers)
+      .innerJoin(users, eq(organizationMembers.userId, users.id))
+      .where(and(
+        eq(organizationMembers.organizationId, orgId),
+        eq(organizationMembers.role, 'interviewer')
+      ));
+
+    // Get all org surveys
+    const orgSurveys = await db.select().from(surveys).where(eq(surveys.organizationId, orgId));
+    const surveyMap = new Map(orgSurveys.map(s => [s.id, { id: s.id, title: s.title }]));
+
+    const result = await Promise.all(members.map(async (m) => {
+      // Get latest location
+      const [lastLoc] = await db.select()
+        .from(interviewerLocations)
+        .where(and(
+          eq(interviewerLocations.userId, m.userId),
+          eq(interviewerLocations.organizationId, orgId)
+        ))
+        .orderBy(desc(interviewerLocations.recordedAt))
+        .limit(1);
+
+      // Get today's distance
+      const [distanceData] = await db.select({
+        distance: dailyDistanceSummary.distanceMeters
+      })
+        .from(dailyDistanceSummary)
+        .where(and(
+          eq(dailyDistanceSummary.userId, m.userId),
+          eq(dailyDistanceSummary.organizationId, orgId),
+          sql`${dailyDistanceSummary.date} >= ${todayStart}`
+        ))
+        .limit(1);
+
+      const isOnline = lastLoc && lastLoc.isOnline && 
+        (now.getTime() - new Date(lastLoc.recordedAt).getTime()) < onlineThreshold;
+
+      return {
+        userId: m.userId,
+        name: `${m.user.firstName || ''} ${m.user.lastName || ''}`.trim() || m.user.email || 'Sem nome',
+        email: m.user.email,
+        profileImageUrl: m.user.profileImageUrl,
+        isOnline: !!isOnline,
+        lastLocation: lastLoc ? {
+          lat: lastLoc.latitude,
+          lng: lastLoc.longitude,
+          time: lastLoc.recordedAt
+        } : null,
+        currentSurvey: lastLoc?.surveyId ? surveyMap.get(lastLoc.surveyId) || null : null,
+        distanceToday: distanceData?.distance || 0
+      };
+    }));
+
+    return result;
+  }
+
   // --- PLATFORM ADMIN - GLOBAL OPERATIONS ---
   async listAllOrganizations(): Promise<(Organization & { memberCount: number; ownerEmail: string | null })[]> {
     const orgs = await db.select().from(organizations).orderBy(desc(organizations.createdAt));
@@ -1598,6 +1787,34 @@ export class DatabaseStorage implements IStorage {
     }));
     
     return result;
+  }
+
+  // --- LANDING PAGE CMS ---
+  async getLandingPageConfig(): Promise<LandingPageConfig | undefined> {
+    const [config] = await db.select().from(landingPageConfig).where(eq(landingPageConfig.id, 'default'));
+    return config;
+  }
+
+  async upsertLandingPageConfig(data: Partial<InsertLandingPageConfig>, updatedBy?: string): Promise<LandingPageConfig> {
+    const existing = await this.getLandingPageConfig();
+    
+    if (existing) {
+      const [updated] = await db.update(landingPageConfig)
+        .set({ ...data, updatedAt: new Date(), updatedBy: updatedBy || null })
+        .where(eq(landingPageConfig.id, 'default'))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(landingPageConfig)
+        .values({ 
+          id: 'default', 
+          ...data, 
+          updatedAt: new Date(), 
+          updatedBy: updatedBy || null 
+        })
+        .returning();
+      return created;
+    }
   }
 }
 

@@ -1,0 +1,1 @@
+ALTER TABLE "survey_viewer_settings" ADD COLUMN "visible_question_ids" integer[];
