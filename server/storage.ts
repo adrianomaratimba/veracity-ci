@@ -871,19 +871,7 @@ export class DatabaseStorage implements IStorage {
       allResponses = allResponses.filter(r => filters.interviewerIds!.includes(r.interviewerId));
     }
 
-    // Get unique interviewer IDs
-    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId)));
-    if (interviewerIds.length === 0) {
-      return { interviewers: [], questions: [], comparison: [] };
-    }
-
-    // Get interviewer details
-    const interviewerUsers = await db.select().from(users).where(
-      sql`${users.id} IN (${sql.join(interviewerIds.map(id => sql`${id}`), sql`, `)})`
-    );
-    const interviewerMap = new Map(interviewerUsers.map(u => [u.id, u]));
-
-    // Get questions for these surveys
+    // Get questions for these surveys FIRST (needed for dropdown even without responses)
     let surveyQuestions = await db.select().from(questions).where(
       sql`${questions.surveyId} IN (${sql.join(targetSurveyIds.map(id => sql`${id}`), sql`, `)})`
     );
@@ -893,10 +881,30 @@ export class DatabaseStorage implements IStorage {
       surveyQuestions = surveyQuestions.filter(q => q.id === filters.questionId);
     }
 
+    // Format questions for the dropdown (always return these)
+    const formattedQuestions = surveyQuestions.map(q => {
+      const rawOptions = q.options as any[] || [];
+      const options = rawOptions.map(opt => typeof opt === 'string' ? opt : opt?.text || '');
+      return { id: q.id, text: q.text, options };
+    });
+
+    // Get unique interviewer IDs
+    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId)));
+    if (interviewerIds.length === 0) {
+      // Return questions for dropdown even when no responses
+      return { interviewers: [], questions: formattedQuestions, comparison: [] };
+    }
+
+    // Get interviewer details
+    const interviewerUsers = await db.select().from(users).where(
+      sql`${users.id} IN (${sql.join(interviewerIds.map(id => sql`${id}`), sql`, `)})`
+    );
+    const interviewerMap = new Map(interviewerUsers.map(u => [u.id, u]));
+
     // Get all answers for responses
     const responseIds = allResponses.map(r => r.id);
     if (responseIds.length === 0) {
-      return { interviewers: [], questions: [], comparison: [] };
+      return { interviewers: [], questions: formattedQuestions, comparison: [] };
     }
 
     const allAnswers = await db.select().from(answers).where(
