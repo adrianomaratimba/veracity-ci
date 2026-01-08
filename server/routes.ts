@@ -15,7 +15,8 @@ import {
   organizationMembers, 
   pendingInvitations, 
   surveyAssignments, 
-  surveyCoordinators, 
+  surveyCoordinators,
+  surveyViewers, 
   responses, 
   surveys
 } from "@shared/schema";
@@ -1107,6 +1108,114 @@ export async function registerRoutes(
     }
   });
 
+  // ============= SURVEY VIEWERS =============
+  
+  // List viewers for a survey
+  app.get("/api/surveys/:surveyId/viewers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const viewers = await storage.getSurveyViewers(surveyId);
+      res.json(viewers);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao listar visualizadores" });
+    }
+  });
+
+  // Assign viewer to survey
+  app.post("/api/surveys/:surveyId/viewers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para designar visualizadores" });
+      }
+      
+      const { viewerId } = req.body;
+      if (!viewerId) {
+        return res.status(400).json({ message: "ID do visualizador é obrigatório" });
+      }
+      
+      // Check if viewer is a member of the organization with viewer role
+      const viewerMember = await storage.getMemberByUserId(viewerId, survey.organizationId);
+      if (!viewerMember) {
+        return res.status(400).json({ message: "O usuário não é membro desta organização" });
+      }
+      
+      if (viewerMember.role !== 'viewer') {
+        return res.status(400).json({ message: "O usuário não tem a função de visualizador" });
+      }
+      
+      // Check if already assigned
+      const isAssigned = await storage.isViewerAssigned(surveyId, viewerId);
+      if (isAssigned) {
+        return res.status(400).json({ message: "Visualizador já está designado para esta pesquisa" });
+      }
+      
+      const assignment = await storage.assignViewer({
+        surveyId,
+        viewerId,
+        assignedBy: userId
+      });
+      
+      res.status(201).json(assignment);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao designar visualizador" });
+    }
+  });
+
+  // Remove viewer from survey
+  app.delete("/api/surveys/:surveyId/viewers/:viewerId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      const viewerId = req.params.viewerId;
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Você não tem permissão para remover designações" });
+      }
+      
+      await storage.unassignViewer(surveyId, viewerId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao remover visualizador" });
+    }
+  });
+  
+  // Get viewers available for assignment (members with viewer role)
+  app.get("/api/organizations/:id/viewers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.id);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+      
+      const members = await storage.getOrganizationMembers(orgId);
+      // Filter to only viewers
+      const viewers = members.filter(m => m.role === 'viewer');
+      res.json(viewers);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao listar visualizadores" });
+    }
+  });
+
   // 5. Responses (Collection) - CRITICAL: GPS & Audio Validation - SECURED
   app.post(api.responses.submit.path, isAuthenticated, async (req, res) => {
     try {
@@ -1360,6 +1469,14 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Você não tem permissão para ver resultados" });
       }
       
+      // Viewers só podem ver resultados de pesquisas atribuídas
+      if (role === 'viewer') {
+        const isAssigned = await storage.isViewerAssigned(surveyId, userId);
+        if (!isAssigned) {
+          return res.status(403).json({ message: "Você não está atribuído a esta pesquisa" });
+        }
+      }
+      
       // Build filters from query params
       const filters: {
         interviewerId?: string;
@@ -1396,6 +1513,16 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Acesso negado" });
       }
       
+      const role = member.role as UserRole;
+      
+      // Viewers só podem acessar dados de pesquisas atribuídas
+      if (role === 'viewer') {
+        const isAssigned = await storage.isViewerAssigned(surveyId, userId);
+        if (!isAssigned) {
+          return res.status(403).json({ message: "Você não está atribuído a esta pesquisa" });
+        }
+      }
+      
       const interviewers = await storage.getSurveyInterviewers(surveyId);
       res.json(interviewers);
     } catch (error) {
@@ -1425,6 +1552,14 @@ export async function registerRoutes(
       
       if (!hasPermission(role, "analytics:view") && !hasPermission(role, "analytics:view_aggregate")) {
         return res.status(403).json({ message: "Você não tem permissão para ver resultados" });
+      }
+      
+      // Viewers só podem ver resultados de pesquisas atribuídas
+      if (role === 'viewer') {
+        const isAssigned = await storage.isViewerAssigned(surveyId, userId);
+        if (!isAssigned) {
+          return res.status(403).json({ message: "Você não está atribuído a esta pesquisa" });
+        }
       }
       
       const timeline = await storage.getSurveyTimeline(surveyId);
@@ -2337,6 +2472,10 @@ export async function registerRoutes(
       // 4. Remove coordinator assignments
       await db.delete(surveyCoordinators).where(eq(surveyCoordinators.coordinatorId, targetUserId));
       await db.delete(surveyCoordinators).where(eq(surveyCoordinators.assignedBy, targetUserId));
+      
+      // 4b. Remove viewer assignments
+      await db.delete(surveyViewers).where(eq(surveyViewers.viewerId, targetUserId));
+      await db.delete(surveyViewers).where(eq(surveyViewers.assignedBy, targetUserId));
       
       // 5. Set NULL for responses (preserve data for audit)
       await db.update(responses).set({ interviewerId: null as any }).where(eq(responses.interviewerId, targetUserId));
