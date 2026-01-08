@@ -120,17 +120,17 @@ function useInterviewerRoute(orgId: number, userId: string | null, date?: Date) 
 }
 
 function usePerformanceMetrics(orgId: number) {
-  console.log('[usePerformanceMetrics] called with orgId:', orgId, 'enabled:', !!orgId);
+  const isValidOrgId = !isNaN(orgId) && orgId > 0;
   return useQuery<PerformanceDashboard>({
     queryKey: ['/api/organizations', orgId, 'analytics', 'interviewers'],
     queryFn: async () => {
-      console.log('[usePerformanceMetrics] queryFn executing for org:', orgId);
       const res = await fetch(`/api/organizations/${orgId}/analytics/interviewers`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch performance metrics");
       return res.json();
     },
     staleTime: 60000,
-    enabled: !!orgId,
+    enabled: isValidOrgId,
+    refetchOnMount: true,
   });
 }
 
@@ -249,13 +249,9 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   const [routesVisible, setRoutesVisible] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("realtime");
   
-  console.log('[SupervisorDashboard] orgId:', orgId, 'params:', params, 'activeTab:', activeTab);
-  
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
   const { data: performanceData, isLoading: performanceLoading, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError } = usePerformanceMetrics(orgId);
-
-  console.log('[SupervisorDashboard] performanceLoading:', performanceLoading, 'performanceData:', !!performanceData, 'performanceError:', performanceError, 'isFetchingPerformance:', isFetchingPerformance);
 
   const isFetching = isFetchingOverview || isFetchingRealtime || isFetchingPerformance;
   const isLoading = overviewLoading || realtimeLoading;
