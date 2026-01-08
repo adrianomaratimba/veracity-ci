@@ -2533,11 +2533,11 @@ export async function registerRoutes(
       const input = z.object({
         latitude: z.number(),
         longitude: z.number(),
-        accuracy: z.number().optional(),
-        speed: z.number().optional(),
-        heading: z.number().optional(),
-        surveyId: z.number().optional(),
-        sessionId: z.string().optional()
+        accuracy: z.number().optional().nullable(),
+        speed: z.number().optional().nullable(),
+        heading: z.number().optional().nullable(),
+        surveyId: z.number().optional().nullable(),
+        sessionId: z.string().optional().nullable()
       }).parse(req.body);
 
       const MAX_ACCURACY_THRESHOLD = 5000;
@@ -2551,10 +2551,10 @@ export async function registerRoutes(
         latitude: input.latitude,
         longitude: input.longitude,
         accuracy: input.accuracy ?? 10,
-        speed: input.speed,
-        heading: input.heading,
-        surveyId: input.surveyId,
-        sessionId: input.sessionId,
+        speed: input.speed ?? undefined,
+        heading: input.heading ?? undefined,
+        surveyId: input.surveyId ?? undefined,
+        sessionId: input.sessionId ?? undefined,
         isOnline: true
       });
 
