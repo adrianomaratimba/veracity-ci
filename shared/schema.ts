@@ -202,6 +202,41 @@ export const surveyViewers = pgTable("survey_viewers", {
   assignedAt: timestamp("assigned_at").defaultNow(),
 });
 
+// Survey Viewer Settings - controls what viewers can see in survey results
+export const surveyViewerSettings = pgTable("survey_viewer_settings", {
+  id: serial("id").primaryKey(),
+  surveyId: integer("survey_id").references(() => surveys.id).notNull().unique(),
+  
+  // Filters visibility (all disabled by default for viewers)
+  showFilters: boolean("show_filters").default(false),
+  filterAgeGroup: boolean("filter_age_group").default(false),
+  filterGender: boolean("filter_gender").default(false),
+  filterNeighborhood: boolean("filter_neighborhood").default(false),
+  filterInterviewer: boolean("filter_interviewer").default(false),
+  
+  // Tabs visibility
+  showIntentionTab: boolean("show_intention_tab").default(true),
+  showEvolutionTab: boolean("show_evolution_tab").default(false),
+  showCrossingsTab: boolean("show_crossings_tab").default(false),
+  showProfileTab: boolean("show_profile_tab").default(false),
+  showReportTab: boolean("show_report_tab").default(false),
+  
+  // Cards visibility (beyond the fixed ones)
+  showMainResult: boolean("show_main_result").default(true),
+  showDemographicBreakdowns: boolean("show_demographic_breakdowns").default(false),
+  showGenderBreakdown: boolean("show_gender_breakdown").default(false),
+  showAgeBreakdown: boolean("show_age_breakdown").default(false),
+  showNeighborhoodBreakdown: boolean("show_neighborhood_breakdown").default(false),
+  showInterviewerStats: boolean("show_interviewer_stats").default(false),
+  
+  // Export options
+  allowExcelExport: boolean("allow_excel_export").default(false),
+  allowPdfExport: boolean("allow_pdf_export").default(false),
+  
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by").references(() => users.id),
+});
+
 // === QUESTION MODULES (Reusable question templates) ===
 
 export const questionModules = pgTable("question_modules", {
@@ -316,6 +351,22 @@ export const surveyViewersRelations = relations(surveyViewers, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const surveyViewerSettingsRelations = relations(surveyViewerSettings, ({ one }) => ({
+  survey: one(surveys, {
+    fields: [surveyViewerSettings.surveyId],
+    references: [surveys.id],
+  }),
+  updater: one(users, {
+    fields: [surveyViewerSettings.updatedBy],
+    references: [users.id],
+  }),
+}));
+
+// Insert/Select schemas for surveyViewerSettings
+export const insertSurveyViewerSettingsSchema = createInsertSchema(surveyViewerSettings).omit({ id: true, updatedAt: true });
+export type InsertSurveyViewerSettings = z.infer<typeof insertSurveyViewerSettingsSchema>;
+export type SurveyViewerSettings = typeof surveyViewerSettings.$inferSelect;
 
 export const questionsRelations = relations(questions, ({ one }) => ({
   survey: one(surveys, {
