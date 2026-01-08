@@ -121,7 +121,7 @@ function useInterviewerRoute(orgId: number, userId: string | null, date?: Date) 
 
 function usePerformanceMetrics(orgId: number) {
   const isValidOrgId = !isNaN(orgId) && orgId > 0;
-  return useQuery<PerformanceDashboard>({
+  const query = useQuery<PerformanceDashboard>({
     queryKey: ['/api/organizations', orgId, 'analytics', 'interviewers'],
     queryFn: async () => {
       const res = await fetch(`/api/organizations/${orgId}/analytics/interviewers`, { credentials: "include" });
@@ -130,8 +130,17 @@ function usePerformanceMetrics(orgId: number) {
     },
     staleTime: 60000,
     enabled: isValidOrgId,
-    refetchOnMount: true,
   });
+  
+  // isLoading is true when enabled=false and no data exists
+  // We need to differentiate between "not enabled" vs "actively loading"
+  const isActuallyLoading = query.fetchStatus === 'fetching' && !query.data;
+  
+  return {
+    ...query,
+    isActuallyLoading,
+    isValidOrgId,
+  };
 }
 
 function formatTimeFromMinutes(minutes: number): string {
@@ -251,7 +260,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
-  const { data: performanceData, isLoading: performanceLoading, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError } = usePerformanceMetrics(orgId);
+  const { data: performanceData, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError, isActuallyLoading: performanceLoading, isValidOrgId } = usePerformanceMetrics(orgId);
 
   const isFetching = isFetchingOverview || isFetchingRealtime || isFetchingPerformance;
   const isLoading = overviewLoading || realtimeLoading;
@@ -263,10 +272,10 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   }, [isFetching]);
 
   useEffect(() => {
-    if (activeTab === "performance" && !performanceData && !performanceLoading) {
+    if (activeTab === "performance" && !performanceData && isValidOrgId) {
       refetchPerformance();
     }
-  }, [activeTab, performanceData, performanceLoading, refetchPerformance]);
+  }, [activeTab, performanceData, isValidOrgId, refetchPerformance]);
 
   const handleManualRefresh = () => {
     refetchOverview();
@@ -565,7 +574,13 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-6">
-            {performanceError && !performanceData ? (
+            {!isValidOrgId ? (
+              <Card>
+                <CardContent className="py-8 text-center">
+                  <p className="text-muted-foreground">Organização inválida</p>
+                </CardContent>
+              </Card>
+            ) : performanceError && !performanceData ? (
               <Card>
                 <CardContent className="py-8 text-center">
                   <p className="text-muted-foreground">Erro ao carregar dados de desempenho</p>
@@ -574,7 +589,11 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                   </Button>
                 </CardContent>
               </Card>
-            ) : (performanceLoading && !performanceData) ? (
+            ) : performanceLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : !performanceData ? (
               <div className="flex items-center justify-center py-12">
                 <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
               </div>
