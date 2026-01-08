@@ -1327,28 +1327,28 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                   ) : viewerAssignments.length > 0 ? (
                     <div className="space-y-2">
                       {viewerAssignments.map((a: any) => (
-                        <div key={a.userId} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div key={a.viewerId} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
                               <AvatarFallback>
-                                {(a.user?.firstName?.[0] || a.user?.email?.[0] || '?').toUpperCase()}
+                                {(a.viewer?.firstName?.[0] || a.viewer?.email?.[0] || '?').toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <div>
                               <p className="font-medium text-sm">
-                                {a.user?.firstName && a.user?.lastName
-                                  ? `${a.user.firstName} ${a.user.lastName}`
-                                  : a.user?.email || 'Visualizador'}
+                                {a.viewer?.firstName && a.viewer?.lastName
+                                  ? `${a.viewer.firstName} ${a.viewer.lastName}`
+                                  : a.viewer?.email || 'Visualizador'}
                               </p>
-                              <p className="text-xs text-muted-foreground">{a.user?.email}</p>
+                              <p className="text-xs text-muted-foreground">{a.viewer?.email}</p>
                             </div>
                           </div>
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => unassignViewer.mutate(a.userId)}
+                            onClick={() => unassignViewer.mutate(a.viewerId)}
                             disabled={unassignViewer.isPending}
-                            data-testid={`button-unassign-viewer-${a.userId}`}
+                            data-testid={`button-unassign-viewer-${a.viewerId}`}
                           >
                             <UserMinus className="w-4 h-4" />
                           </Button>
@@ -1367,7 +1367,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                   {viewersLoading ? (
                     <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">Carregando visualizadores...</p>
                   ) : (() => {
-                    const assignedIds = viewerAssignments.map((a: any) => a.userId);
+                    const assignedIds = viewerAssignments.map((a: any) => a.viewerId);
                     const unassigned = availableViewers.filter((v: any) => !assignedIds.includes(v.userId));
                     
                     if (unassigned.length === 0) {
