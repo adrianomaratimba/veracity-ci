@@ -9,6 +9,7 @@ import {
   answers, Answer, InsertAnswer,
   surveyAssignments, SurveyAssignment, InsertSurveyAssignment,
   surveyCoordinators, SurveyCoordinator, InsertSurveyCoordinator,
+  surveyViewers, SurveyViewer, InsertSurveyViewer,
   memberPermissionOverrides, MemberPermissionOverride, InsertMemberPermissionOverride,
   accessAuditLog, AccessAuditLog, InsertAccessAuditLog,
   questionModules, QuestionModule, InsertQuestionModule,
@@ -158,6 +159,13 @@ export interface IStorage {
   assignCoordinator(data: InsertSurveyCoordinator): Promise<SurveyCoordinator>;
   unassignCoordinator(surveyId: number, coordinatorId: string): Promise<void>;
   isCoordinatorAssigned(surveyId: number, coordinatorId: string): Promise<boolean>;
+
+  // Survey Viewers
+  getSurveyViewers(surveyId: number): Promise<(SurveyViewer & { viewer: User })[]>;
+  getViewerAssignedSurveys(viewerId: string, orgId: number): Promise<Survey[]>;
+  assignViewer(data: InsertSurveyViewer): Promise<SurveyViewer>;
+  unassignViewer(surveyId: number, viewerId: string): Promise<void>;
+  isViewerAssigned(surveyId: number, viewerId: string): Promise<boolean>;
 
   // Permission Overrides
   getMemberPermissionOverrides(memberId: number): Promise<MemberPermissionOverride[]>;
@@ -717,6 +725,54 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(surveyCoordinators.surveyId, surveyId),
         eq(surveyCoordinators.coordinatorId, coordinatorId)
+      ))
+      .limit(1);
+    return !!assignment;
+  }
+
+  // --- SURVEY VIEWERS ---
+  async getSurveyViewers(surveyId: number): Promise<(SurveyViewer & { viewer: User })[]> {
+    const result = await db.select({
+      assignment: surveyViewers,
+      viewer: users
+    })
+      .from(surveyViewers)
+      .innerJoin(users, eq(surveyViewers.viewerId, users.id))
+      .where(eq(surveyViewers.surveyId, surveyId));
+    
+    return result.map(r => ({ ...r.assignment, viewer: r.viewer }));
+  }
+
+  async getViewerAssignedSurveys(viewerId: string, orgId: number): Promise<Survey[]> {
+    const result = await db.select({ survey: surveys })
+      .from(surveyViewers)
+      .innerJoin(surveys, eq(surveyViewers.surveyId, surveys.id))
+      .where(and(
+        eq(surveyViewers.viewerId, viewerId),
+        eq(surveys.organizationId, orgId)
+      ));
+    
+    return result.map(r => r.survey);
+  }
+
+  async assignViewer(data: InsertSurveyViewer): Promise<SurveyViewer> {
+    const [assignment] = await db.insert(surveyViewers).values(data).returning();
+    return assignment;
+  }
+
+  async unassignViewer(surveyId: number, viewerId: string): Promise<void> {
+    await db.delete(surveyViewers).where(and(
+      eq(surveyViewers.surveyId, surveyId),
+      eq(surveyViewers.viewerId, viewerId)
+    ));
+  }
+
+  async isViewerAssigned(surveyId: number, viewerId: string): Promise<boolean> {
+    const [assignment] = await db.select()
+      .from(surveyViewers)
+      .where(and(
+        eq(surveyViewers.surveyId, surveyId),
+        eq(surveyViewers.viewerId, viewerId)
       ))
       .limit(1);
     return !!assignment;

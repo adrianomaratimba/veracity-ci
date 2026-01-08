@@ -608,7 +608,14 @@ export async function registerRoutes(
         return res.json(assignedSurveys);
       }
       
-      // Outros usuários com permissão surveys:view veem todas
+      // Viewers só veem pesquisas designadas a eles
+      if (role === 'viewer') {
+        const assignedSurveys = await storage.getViewerAssignedSurveys(userId, orgId);
+        console.log('[surveys/list] Viewer assigned surveys:', { userId, count: assignedSurveys.length, surveyIds: assignedSurveys.map(s => s.id) });
+        return res.json(assignedSurveys);
+      }
+      
+      // Outros usuários com permissão surveys:view veem todas (admin, owner)
       if (!hasPermission(role, "surveys:view")) {
         return res.status(403).json({ message: "Você não tem permissão para visualizar pesquisas" });
       }
