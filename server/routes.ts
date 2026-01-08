@@ -2806,6 +2806,7 @@ export async function registerRoutes(
 
   // Supervisor dashboard metrics (for coordinators/admins)
   app.get("/api/organizations/:orgId/analytics/interviewers", isAuthenticated, requireOrgAccess, async (req, res) => {
+    console.log('[analytics/interviewers] Request received for org:', req.params.orgId);
     try {
       const orgId = parseInt(req.params.orgId);
       const userId = await getResolvedUserId(req);

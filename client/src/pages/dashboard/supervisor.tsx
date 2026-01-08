@@ -245,6 +245,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [selectedInterviewers, setSelectedInterviewers] = useState<Set<string>>(new Set());
   const [routesVisible, setRoutesVisible] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState("realtime");
   
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
@@ -258,6 +259,12 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
       setLastRefresh(new Date());
     }
   }, [isFetching]);
+
+  useEffect(() => {
+    if (activeTab === "performance" && !performanceData && !performanceLoading) {
+      refetchPerformance();
+    }
+  }, [activeTab, performanceData, performanceLoading, refetchPerformance]);
 
   const handleManualRefresh = () => {
     refetchOverview();
@@ -354,7 +361,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
           </div>
         </div>
 
-        <Tabs defaultValue="realtime" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList>
             <TabsTrigger value="realtime" data-testid="tab-realtime">
               <MapPin className="w-4 h-4 mr-2" />
