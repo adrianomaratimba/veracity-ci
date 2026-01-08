@@ -4,6 +4,7 @@ import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { useUpload } from "@/hooks/use-upload";
 import { useSubmitResponse } from "@/hooks/use-responses";
 import { useSurvey } from "@/hooks/use-surveys";
+import { useLocationTracking } from "@/hooks/use-location-tracking";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle, WifiOff, Cloud } from "lucide-react";
@@ -132,6 +133,14 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [shuffledQuestions, setShuffledQuestions] = useState<typeof survey extends { questions: infer Q } ? Q : any[]>([]);
   const [shuffledOptionsMap, setShuffledOptionsMap] = useState<Record<number, (string | QuestionOption)[]>>({});
   const [shuffleVersion, setShuffleVersion] = useState(0);
+
+  // Real-time location tracking for supervisor monitoring
+  useLocationTracking({
+    orgId: (survey as any)?.organizationId || 0,
+    surveyId: surveyId,
+    intervalMs: 30000,
+    enabled: !!(survey as any)?.organizationId && step !== 'success'
+  });
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
