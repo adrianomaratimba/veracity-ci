@@ -467,7 +467,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
 
   const assignViewer = useMutation({
     mutationFn: async (viewerId: string) => {
-      const res = await apiRequest('POST', `/api/surveys/${surveyId}/viewers`, { userId: viewerId });
+      const res = await apiRequest('POST', `/api/surveys/${surveyId}/viewers`, { viewerId });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message || 'Erro ao designar visualizador');
@@ -476,6 +476,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/viewers`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/organizations/${orgId}/viewers`] });
       toast({ title: "Visualizador designado" });
     },
     onError: (err: Error) => {
@@ -490,6 +491,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/surveys/${surveyId}/viewers`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/organizations/${orgId}/viewers`] });
       toast({ title: "Visualizador removido" });
     },
     onError: () => {
