@@ -48,6 +48,7 @@ import {
 import { useState, useMemo, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 
 export default function SurveyAnalytics({ params }: { params: { orgId: string, id: string } }) {
   const surveyId = parseInt(params.id);
@@ -57,6 +58,21 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
   
   const { data: survey, isLoading: surveyLoading } = useSurvey(surveyId);
   const { data: responses, isLoading: responsesLoading } = useResponseList(surveyId);
+  
+  // Query for interviewers list (for name display)
+  interface InterviewerListItem {
+    id: string;
+    name: string;
+  }
+  const { data: interviewersList } = useQuery<InterviewerListItem[]>({
+    queryKey: ['/api/surveys', surveyId, 'interviewers'],
+    queryFn: async () => {
+      const res = await fetch(`/api/surveys/${surveyId}/interviewers`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!surveyId,
+  });
   
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -157,11 +173,15 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
       .sort((a, b) => a[0] - b[0])
       .map(([hour, count]) => ({ hour: `${hour}h`, count }));
 
-    // Interviewer stats
-    const interviewerMap = new Map<string, { id: string, total: number, valid: number, suspicious: number, avgDuration: number, avgAccuracy: number }>();
+    // Interviewer stats - build a name lookup from interviewersList
+    const nameMap = new Map<string, string>();
+    interviewersList?.forEach(int => nameMap.set(int.id, int.name));
+    
+    const interviewerMap = new Map<string, { id: string, name: string, total: number, valid: number, suspicious: number, avgDuration: number, avgAccuracy: number }>();
     responses.forEach(r => {
       const id = r.interviewerId || 'Desconhecido';
-      const existing = interviewerMap.get(id) || { id, total: 0, valid: 0, suspicious: 0, avgDuration: 0, avgAccuracy: 0 };
+      const name = nameMap.get(id) || id;
+      const existing = interviewerMap.get(id) || { id, name, total: 0, valid: 0, suspicious: 0, avgDuration: 0, avgAccuracy: 0 };
       existing.total++;
       if (r.status === 'valid') existing.valid++;
       if (r.status === 'suspicious') existing.suspicious++;
@@ -208,7 +228,7 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
       statusDistribution,
       accuracyDistribution
     };
-  }, [responses, survey]);
+  }, [responses, survey, interviewersList]);
 
   // Filtered responses for table
   const filteredResponses = useMemo(() => {
@@ -533,7 +553,7 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
                         {analytics.interviewerStats.map((interviewer, index) => (
                           <tr key={interviewer.id} className="hover:bg-muted/30" data-testid={`row-interviewer-${index}`}>
                             <td className="px-4 py-3 font-bold text-muted-foreground">{index + 1}</td>
-                            <td className="px-4 py-3 font-medium">{interviewer.id.substring(0, 12)}...</td>
+                            <td className="px-4 py-3 font-medium">{interviewer.name}</td>
                             <td className="px-4 py-3 text-center font-bold">{interviewer.total}</td>
                             <td className="px-4 py-3 text-center text-green-600">{interviewer.valid}</td>
                             <td className="px-4 py-3 text-center text-amber-600">{interviewer.suspicious}</td>
