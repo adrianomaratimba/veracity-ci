@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { Plus, FileText, MoreVertical, Play, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive } from "lucide-react";
+import { Plus, FileText, MoreVertical, Play, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive, Download, Upload } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -45,8 +45,12 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const [surveyToAction, setSurveyToAction] = useState<Survey | null>(null);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [duplicateTitle, setDuplicateTitle] = useState("");
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState<number | null>(null);
   
   const userRole = (currentMember?.role || 'viewer') as UserRole;
+  const canImportExport = userRole === 'owner' || userRole === 'admin';
   const canCreate = canManageSurveys(userRole);
   const canEdit = canManageSurveys(userRole);
   const canSeeResults = canViewAnalytics(userRole);
@@ -150,6 +154,78 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const openDeleteConfirm = (survey: Survey) => {
     setSurveyToAction(survey);
     setDeleteConfirmOpen(true);
+  };
+
+  const handleExportTemplate = async (surveyId: number, surveyTitle: string) => {
+    setIsExporting(surveyId);
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}/export-template`, {
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao exportar');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${surveyTitle.replace(/[^a-zA-Z0-9]/g, '_')}_template.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({ title: "Sucesso", description: "Template exportado! Você pode importá-lo em qualquer organização." });
+    } catch (error: any) {
+      toast({ title: "Erro", description: error.message || "Falha ao exportar template", variant: "destructive" });
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
+  const handleImportTemplate = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const template = JSON.parse(text);
+      
+      const response = await fetch(`/api/organizations/${orgId}/surveys/import-template`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(template),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao importar');
+      }
+      
+      const result = await response.json();
+      toast({ 
+        title: "Sucesso", 
+        description: `Pesquisa importada com ${result.questionsImported} perguntas!` 
+      });
+      setImportDialogOpen(false);
+      // Refresh surveys list
+      window.location.reload();
+    } catch (error: any) {
+      toast({ 
+        title: "Erro", 
+        description: error.message || "Falha ao importar template. Verifique se o arquivo é válido.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsImporting(false);
+      // Reset file input
+      event.target.value = '';
+    }
   };
 
   if (orgLoading || surveysLoading || memberLoading) return <LoadingScreen message="Carregando pesquisas..." />;
@@ -306,6 +382,17 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                           Duplicar
                         </DropdownMenuItem>
                       )}
+                      {canImportExport && (
+                        <DropdownMenuItem 
+                          onClick={() => handleExportTemplate(survey.id, survey.title)} 
+                          disabled={isExporting === survey.id}
+                          data-testid={`button-export-${survey.id}`}
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          {isExporting === survey.id ? "Exportando..." : "Exportar Template"}
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/collect/${survey.id}`)}>
                         <Copy className="w-4 h-4 mr-2" />
                         Copiar Link de Coleta
@@ -349,12 +436,58 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
             </p>
           </div>
           {canCreate && (
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2" data-testid="button-new-survey">
-                <Plus className="w-4 h-4" /> Nova Pesquisa
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2 flex-wrap">
+            {canImportExport && (
+              <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="gap-2" data-testid="button-import-survey">
+                    <Upload className="w-4 h-4" /> Importar
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Importar Pesquisa</DialogTitle>
+                    <DialogDescription>
+                      Importe uma pesquisa de um arquivo JSON exportado anteriormente. 
+                      Útil para migrar pesquisas entre ambientes ou reutilizar templates.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg p-8">
+                      <Upload className="w-12 h-12 text-muted-foreground mb-4" />
+                      <p className="text-sm text-muted-foreground mb-4 text-center">
+                        Selecione um arquivo .json exportado do Veracity
+                      </p>
+                      <input
+                        type="file"
+                        accept=".json,application/json"
+                        onChange={handleImportTemplate}
+                        disabled={isImporting}
+                        className="hidden"
+                        id="import-file"
+                        data-testid="input-import-file"
+                      />
+                      <label htmlFor="import-file">
+                        <Button asChild disabled={isImporting}>
+                          <span>
+                            {isImporting ? "Importando..." : "Selecionar Arquivo"}
+                          </span>
+                        </Button>
+                      </label>
+                    </div>
+                    <p className="text-xs text-muted-foreground text-center">
+                      A pesquisa será criada como rascunho. Respostas coletadas não são importadas.
+                    </p>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2" data-testid="button-new-survey">
+                  <Plus className="w-4 h-4" /> Nova Pesquisa
+                </Button>
+              </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>Criar Nova Pesquisa</DialogTitle>
@@ -426,6 +559,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
           )}
         </div>
 

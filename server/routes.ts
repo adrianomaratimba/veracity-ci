@@ -1517,6 +1517,147 @@ export async function registerRoutes(
     }
   });
 
+  // === SURVEY TEMPLATE IMPORT/EXPORT (for migration between environments) ===
+  
+  // Export survey structure as JSON template (admin/owner only)
+  app.get("/api/surveys/:surveyId/export-template", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const role = member.role as UserRole;
+      // Only owner and admin can export templates
+      if (role !== 'owner' && role !== 'admin') {
+        return res.status(403).json({ message: "Apenas administradores e proprietários podem exportar templates" });
+      }
+      
+      // Questions are included with the survey from getSurvey
+      const questions = survey.questions || [];
+      
+      // Build template object (excluding IDs and organization-specific data)
+      const template = {
+        _veracityTemplate: true,
+        _version: "1.0",
+        _exportedAt: new Date().toISOString(),
+        survey: {
+          title: survey.title,
+          description: survey.description,
+          type: survey.type,
+          location: survey.location,
+          targetSample: survey.targetSample,
+          marginOfError: survey.marginOfError,
+          quotas: survey.quotas,
+          shuffleQuestions: survey.shuffleQuestions,
+          requireGps: survey.requireGps,
+          requireAudio: survey.requireAudio,
+        },
+        questions: questions.map((q: any, index: number) => ({
+          text: q.text,
+          type: q.type,
+          options: q.options,
+          order: q.order ?? index,
+          required: q.required,
+          logic: q.logic,
+          shuffleOptions: q.shuffleOptions,
+          showOptionImages: q.showOptionImages,
+        })),
+      };
+      
+      const filename = `${survey.title.replace(/[^a-zA-Z0-9]/g, '_')}_template_${new Date().toISOString().split('T')[0]}.json`;
+      
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.json(template);
+    } catch (err) {
+      console.error("Erro ao exportar template:", err);
+      res.status(500).json({ message: "Erro ao exportar template" });
+    }
+  });
+
+  // Import survey from JSON template (admin/owner only)
+  app.post("/api/organizations/:orgId/surveys/import-template", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.orgId);
+      
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      
+      const role = member.role as UserRole;
+      // Only owner and admin can import templates
+      if (role !== 'owner' && role !== 'admin') {
+        return res.status(403).json({ message: "Apenas administradores e proprietários podem importar templates" });
+      }
+      
+      const template = req.body;
+      
+      // Validate template structure
+      if (!template._veracityTemplate) {
+        return res.status(400).json({ message: "Arquivo inválido. Este não parece ser um template de pesquisa Veracity." });
+      }
+      
+      if (!template.survey || !template.survey.title) {
+        return res.status(400).json({ message: "Template inválido: pesquisa não encontrada no arquivo." });
+      }
+      
+      // Create the survey (always as draft)
+      const surveyData = {
+        organizationId: orgId,
+        title: template.survey.title + " (Importado)",
+        description: template.survey.description || null,
+        type: template.survey.type || "electoral",
+        status: "draft", // Always start as draft
+        location: template.survey.location || null,
+        targetSample: template.survey.targetSample || null,
+        marginOfError: template.survey.marginOfError || null,
+        quotas: template.survey.quotas || null,
+        shuffleQuestions: template.survey.shuffleQuestions || false,
+        requireGps: template.survey.requireGps !== false,
+        requireAudio: template.survey.requireAudio !== false,
+        startDate: null, // Reset dates
+        endDate: null,
+      };
+      
+      const newSurvey = await storage.createSurvey(surveyData);
+      
+      // Create questions if present
+      if (template.questions && Array.isArray(template.questions)) {
+        for (const [index, q] of template.questions.entries()) {
+          await storage.createQuestion({
+            surveyId: newSurvey.id,
+            text: q.text || "Pergunta sem texto",
+            type: q.type || "single_choice",
+            options: q.options || null,
+            order: q.order ?? index,
+            required: q.required !== false,
+            logic: q.logic || null,
+            shuffleOptions: q.shuffleOptions || false,
+            showOptionImages: q.showOptionImages || false,
+          });
+        }
+      }
+      
+      res.status(201).json({
+        message: "Pesquisa importada com sucesso",
+        survey: newSurvey,
+        questionsImported: template.questions?.length || 0,
+      });
+    } catch (err) {
+      console.error("Erro ao importar template:", err);
+      res.status(500).json({ message: "Erro ao importar template" });
+    }
+  });
+
   // === ACCESS CONTROL & PERMISSIONS ===
   
   // Get role matrix (permissions for each role)
