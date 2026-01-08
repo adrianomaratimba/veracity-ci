@@ -223,7 +223,7 @@ export default function MyPerformance() {
           </CardContent>
         </Card>
 
-        <div className="pb-6"></div>
+        <div className="pb-6" />
       </main>
     </div>
   );
