@@ -246,7 +246,9 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
           description: newSurvey.description || undefined,
           type: newSurvey.type,
           location: newSurvey.location || undefined,
-          targetSample: newSurvey.targetSample || 400
+          targetSample: newSurvey.targetSample || 400,
+          startDate: null,
+          endDate: null
         }
       });
       toast({ title: "Sucesso", description: "Pesquisa criada com sucesso!" });
