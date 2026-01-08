@@ -11,15 +11,22 @@ interface LocationTrackingOptions {
 export function useLocationTracking({ 
   orgId, 
   surveyId, 
-  intervalMs = 30000,
+  intervalMs = 60000,
   enabled = true 
 }: LocationTrackingOptions) {
-  const watchIdRef = useRef<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPositionRef = useRef<GeolocationCoordinates | null>(null);
+  const lastSentTimeRef = useRef<number>(0);
   const sessionIdRef = useRef<string>(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
 
-  const sendLocation = useCallback(async (coords: GeolocationCoordinates) => {
+  const sendLocation = useCallback(async (coords: GeolocationCoordinates, force: boolean = false) => {
+    const now = Date.now();
+    const timeSinceLastSent = now - lastSentTimeRef.current;
+    
+    if (!force && timeSinceLastSent < 30000) {
+      return;
+    }
+    
     try {
       await apiRequest('POST', `/api/organizations/${orgId}/tracking/location`, {
         latitude: coords.latitude,
@@ -31,6 +38,7 @@ export function useLocationTracking({
         sessionId: sessionIdRef.current
       });
       lastPositionRef.current = coords;
+      lastSentTimeRef.current = now;
     } catch (error) {
       console.error('[LocationTracking] Failed to send location:', error);
     }
@@ -48,22 +56,18 @@ export function useLocationTracking({
     if (!enabled || !navigator.geolocation) return;
 
     const handlePosition = (position: GeolocationPosition) => {
-      sendLocation(position.coords);
+      sendLocation(position.coords, true);
     };
 
     const handleError = (error: GeolocationPositionError) => {
       console.warn('[LocationTracking] GPS error:', error.message);
     };
 
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      handlePosition,
-      handleError,
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 5000
-      }
-    );
+    navigator.geolocation.getCurrentPosition(handlePosition, handleError, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    });
 
     intervalRef.current = setInterval(() => {
       navigator.geolocation.getCurrentPosition(
@@ -83,9 +87,6 @@ export function useLocationTracking({
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
       if (intervalRef.current !== null) {
         clearInterval(intervalRef.current);
       }
