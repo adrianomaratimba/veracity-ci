@@ -5,12 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LoadingScreen } from "@/components/ui/loading-screen";
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { Icon, DivIcon } from 'leaflet';
-import { RefreshCw, Users, ClipboardList, MapPin, Clock, Activity } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { DivIcon } from 'leaflet';
+import { RefreshCw, Users, ClipboardList, MapPin, Clock, Activity, Route, Eye, EyeOff } from "lucide-react";
+import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import 'leaflet/dist/leaflet.css';
 
 interface InterviewerData {
@@ -26,10 +28,27 @@ interface InterviewerData {
   status: 'active' | 'idle' | 'offline';
 }
 
+interface RealtimeInterviewer {
+  userId: string;
+  name: string;
+  email: string | null;
+  profileImageUrl: string | null;
+  isOnline: boolean;
+  lastLocation: { lat: number; lng: number; time: string } | null;
+  currentSurvey: { id: number; title: string } | null;
+  distanceToday: number;
+}
+
 interface SupervisorOverview {
   interviewers: InterviewerData[];
   totalInterviewsToday: number;
   activeInterviewers: number;
+}
+
+interface RoutePoint {
+  lat: number;
+  lng: number;
+  time: string;
 }
 
 function useSupervisorOverview(orgId: number, refetchInterval: number = 30000) {
@@ -46,24 +65,44 @@ function useSupervisorOverview(orgId: number, refetchInterval: number = 30000) {
   });
 }
 
-function getStatusColor(status: InterviewerData['status']) {
-  switch (status) {
-    case 'active': return 'bg-green-500';
-    case 'idle': return 'bg-yellow-500';
-    case 'offline': return 'bg-gray-400';
-  }
+function useRealtimeInterviewers(orgId: number, refetchInterval: number = 15000) {
+  return useQuery<RealtimeInterviewer[]>({
+    queryKey: ['/api/organizations', orgId, 'tracking', 'interviewers'],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${orgId}/tracking/interviewers`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch realtime interviewers");
+      return res.json();
+    },
+    refetchInterval,
+    staleTime: 5000,
+    enabled: !!orgId,
+  });
 }
 
-function getStatusLabel(status: InterviewerData['status']) {
-  switch (status) {
-    case 'active': return 'Ativo';
-    case 'idle': return 'Inativo';
-    case 'offline': return 'Offline';
-  }
+function useInterviewerRoute(orgId: number, userId: string | null, date?: Date) {
+  return useQuery<{ route: RoutePoint[]; totalDistance: number }>({
+    queryKey: ['/api/organizations', orgId, 'tracking', 'route', userId, date?.toISOString()],
+    queryFn: async () => {
+      const dateParam = date ? `?date=${date.toISOString().split('T')[0]}` : '';
+      const res = await fetch(`/api/organizations/${orgId}/tracking/route/${userId}${dateParam}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch route");
+      return res.json();
+    },
+    enabled: !!orgId && !!userId,
+    staleTime: 30000,
+  });
 }
 
-function createMarkerIcon(status: InterviewerData['status']) {
-  const color = status === 'active' ? '#22c55e' : status === 'idle' ? '#eab308' : '#9ca3af';
+function getStatusColor(isOnline: boolean) {
+  return isOnline ? 'bg-green-500' : 'bg-gray-400';
+}
+
+function getStatusLabel(isOnline: boolean) {
+  return isOnline ? 'Online' : 'Offline';
+}
+
+function createMarkerIcon(isOnline: boolean) {
+  const color = isOnline ? '#22c55e' : '#9ca3af';
   return new DivIcon({
     html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
     className: '',
@@ -72,7 +111,24 @@ function createMarkerIcon(status: InterviewerData['status']) {
   });
 }
 
-function InterviewerCard({ interviewer }: { interviewer: InterviewerData }) {
+function formatDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(2)} km`;
+}
+
+function InterviewerListItem({ 
+  interviewer, 
+  isSelected, 
+  onToggle,
+  showRoute,
+  onToggleRoute
+}: { 
+  interviewer: RealtimeInterviewer; 
+  isSelected: boolean;
+  onToggle: () => void;
+  showRoute: boolean;
+  onToggleRoute: () => void;
+}) {
   const initials = interviewer.name
     .split(' ')
     .map(n => n[0])
@@ -81,68 +137,74 @@ function InterviewerCard({ interviewer }: { interviewer: InterviewerData }) {
     .toUpperCase();
 
   return (
-    <Card className="hover:shadow-md transition-shadow" data-testid={`card-interviewer-${interviewer.userId}`}>
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="relative">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={interviewer.profileImageUrl || undefined} />
-              <AvatarFallback>{initials}</AvatarFallback>
-            </Avatar>
-            <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-background ${getStatusColor(interviewer.status)}`} />
-          </div>
-          
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h4 className="font-medium truncate" data-testid={`text-interviewer-name-${interviewer.userId}`}>
-                {interviewer.name}
-              </h4>
-              <Badge variant="outline" className="text-xs">
-                {getStatusLabel(interviewer.status)}
-              </Badge>
-            </div>
-            
-            {interviewer.currentSurvey && (
-              <p className="text-sm text-muted-foreground truncate mt-1">
-                <ClipboardList className="w-3 h-3 inline mr-1" />
-                {interviewer.currentSurvey.title}
-              </p>
-            )}
-            
-            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-              <span className="flex items-center gap-1">
-                <Activity className="w-3 h-3" />
-                {interviewer.interviewsToday} hoje
-              </span>
-              <span className="flex items-center gap-1">
-                <Users className="w-3 h-3" />
-                {interviewer.interviewsTotal} total
-              </span>
-              {interviewer.lastActivity && (
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {formatDistanceToNow(new Date(interviewer.lastActivity), { addSuffix: true, locale: ptBR })}
-                </span>
-              )}
-            </div>
-            
-            {interviewer.lastLocation && (
-              <p className="text-xs text-muted-foreground mt-1">
-                <MapPin className="w-3 h-3 inline mr-1" />
-                {interviewer.lastLocation.lat.toFixed(4)}, {interviewer.lastLocation.lng.toFixed(4)}
-              </p>
-            )}
-          </div>
+    <div 
+      className={`flex items-center gap-3 p-3 rounded-lg border ${isSelected ? 'border-primary bg-primary/5' : 'border-transparent'}`}
+      data-testid={`card-interviewer-${interviewer.userId}`}
+    >
+      <Checkbox 
+        checked={isSelected} 
+        onCheckedChange={onToggle}
+        data-testid={`checkbox-interviewer-${interviewer.userId}`}
+      />
+      <div className="relative">
+        <Avatar className="h-8 w-8">
+          <AvatarImage src={interviewer.profileImageUrl || undefined} />
+          <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+        </Avatar>
+        <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${getStatusColor(interviewer.isOnline)}`} />
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm truncate">{interviewer.name}</span>
+          <Badge variant="outline" className="text-xs shrink-0">
+            {getStatusLabel(interviewer.isOnline)}
+          </Badge>
         </div>
-      </CardContent>
-    </Card>
+        <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+          {interviewer.distanceToday > 0 && (
+            <span className="flex items-center gap-1">
+              <Route className="w-3 h-3" />
+              {formatDistance(interviewer.distanceToday)}
+            </span>
+          )}
+          {interviewer.lastLocation && (
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {formatDistanceToNow(new Date(interviewer.lastLocation.time), { addSuffix: true, locale: ptBR })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {interviewer.lastLocation && (
+        <Button
+          size="icon"
+          variant={showRoute ? "default" : "ghost"}
+          onClick={onToggleRoute}
+          title={showRoute ? "Ocultar rota" : "Mostrar rota"}
+          data-testid={`button-route-${interviewer.userId}`}
+        >
+          {showRoute ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </Button>
+      )}
+    </div>
   );
 }
+
+const routeColors = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 export default function SupervisorDashboard({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
   const [lastRefresh, setLastRefresh] = useState(new Date());
-  const { data, isLoading, refetch, isFetching } = useSupervisorOverview(orgId);
+  const [selectedInterviewers, setSelectedInterviewers] = useState<Set<string>>(new Set());
+  const [routesVisible, setRoutesVisible] = useState<Set<string>>(new Set());
+  
+  const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
+  const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
+
+  const isFetching = isFetchingOverview || isFetchingRealtime;
+  const isLoading = overviewLoading || realtimeLoading;
 
   useEffect(() => {
     if (!isFetching) {
@@ -151,15 +213,73 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   }, [isFetching]);
 
   const handleManualRefresh = () => {
-    refetch();
+    refetchOverview();
+    refetchRealtime();
   };
 
-  if (isLoading) return <LoadingScreen message="Carregando dashboard do supervisor..." />;
+  const toggleInterviewer = (userId: string) => {
+    setSelectedInterviewers(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
 
-  const interviewersWithLocation = data?.interviewers.filter(i => i.lastLocation) || [];
-  const defaultCenter: [number, number] = interviewersWithLocation.length > 0
-    ? [interviewersWithLocation[0].lastLocation!.lat, interviewersWithLocation[0].lastLocation!.lng]
-    : [-15.7801, -47.9292];
+  const toggleRoute = (userId: string) => {
+    setRoutesVisible(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (realtimeData) {
+      setSelectedInterviewers(new Set(realtimeData.map(i => i.userId)));
+    }
+  };
+
+  const deselectAll = () => {
+    setSelectedInterviewers(new Set());
+    setRoutesVisible(new Set());
+  };
+
+  const displayedInterviewers = useMemo(() => {
+    if (!realtimeData) return [];
+    if (selectedInterviewers.size === 0) return realtimeData;
+    return realtimeData.filter(i => selectedInterviewers.has(i.userId));
+  }, [realtimeData, selectedInterviewers]);
+
+  const interviewersWithLocation = useMemo(() => {
+    return displayedInterviewers.filter(i => i.lastLocation);
+  }, [displayedInterviewers]);
+
+  const defaultCenter: [number, number] = useMemo(() => {
+    if (interviewersWithLocation.length > 0) {
+      return [interviewersWithLocation[0].lastLocation!.lat, interviewersWithLocation[0].lastLocation!.lng];
+    }
+    return [-15.7801, -47.9292];
+  }, [interviewersWithLocation]);
+
+  const totalDistanceToday = useMemo(() => {
+    if (!realtimeData) return 0;
+    return realtimeData.reduce((sum, i) => sum + (i.distanceToday || 0), 0);
+  }, [realtimeData]);
+
+  const onlineCount = useMemo(() => {
+    if (!realtimeData) return 0;
+    return realtimeData.filter(i => i.isOnline).length;
+  }, [realtimeData]);
+
+  if (isLoading) return <LoadingScreen message="Carregando dashboard do supervisor..." />;
 
   return (
     <DashboardLayout orgId={params.orgId}>
@@ -186,21 +306,21 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Entrevistadores Ativos</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Online Agora</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full">
                   <Users className="w-5 h-5 text-green-600 dark:text-green-400" />
                 </div>
-                <span className="text-2xl font-bold" data-testid="text-active-interviewers">
-                  {data?.activeInterviewers ?? 0}
+                <span className="text-2xl font-bold" data-testid="text-online-interviewers">
+                  {onlineCount}
                 </span>
                 <span className="text-muted-foreground text-sm">
-                  / {data?.interviewers.length ?? 0}
+                  / {realtimeData?.length ?? 0}
                 </span>
               </div>
             </CardContent>
@@ -216,7 +336,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                   <ClipboardList className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <span className="text-2xl font-bold" data-testid="text-interviews-today">
-                  {data?.totalInterviewsToday ?? 0}
+                  {overviewData?.totalInterviewsToday ?? 0}
                 </span>
               </div>
             </CardContent>
@@ -237,15 +357,41 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Distância Total Hoje</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-full">
+                  <Route className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <span className="text-2xl font-bold" data-testid="text-total-distance">
+                  {formatDistance(totalDistanceToday)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="text-lg">Mapa de Atividade</CardTitle>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-lg">Mapa em Tempo Real</CardTitle>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-green-500" />
+                  <span>Online</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-gray-400" />
+                  <span>Offline</span>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="h-[400px]">
+              <div className="h-[500px]">
                 <MapContainer
                   center={defaultCenter}
                   zoom={interviewersWithLocation.length > 0 ? 10 : 4}
@@ -256,61 +402,122 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
-                  {interviewersWithLocation.map(interviewer => (
+                  {interviewersWithLocation.map((interviewer, idx) => (
                     <Marker
                       key={interviewer.userId}
                       position={[interviewer.lastLocation!.lat, interviewer.lastLocation!.lng]}
-                      icon={createMarkerIcon(interviewer.status)}
+                      icon={createMarkerIcon(interviewer.isOnline)}
                     >
                       <Popup>
                         <div className="text-sm">
                           <strong>{interviewer.name}</strong>
                           <br />
                           <Badge variant="outline" className="mt-1 text-xs">
-                            {getStatusLabel(interviewer.status)}
+                            {getStatusLabel(interviewer.isOnline)}
                           </Badge>
                           <br />
                           {interviewer.currentSurvey && (
-                            <span className="text-muted-foreground">
-                              {interviewer.currentSurvey.title}
+                            <>
+                              <span className="text-muted-foreground">
+                                {interviewer.currentSurvey.title}
+                              </span>
+                              <br />
+                            </>
+                          )}
+                          {interviewer.distanceToday > 0 && (
+                            <>
+                              <span className="text-muted-foreground">
+                                {formatDistance(interviewer.distanceToday)} percorridos
+                              </span>
+                              <br />
+                            </>
+                          )}
+                          {interviewer.lastLocation && (
+                            <span className="text-muted-foreground text-xs">
+                              {format(new Date(interviewer.lastLocation.time), "HH:mm:ss", { locale: ptBR })}
                             </span>
                           )}
-                          <br />
-                          <span className="text-muted-foreground">
-                            {interviewer.interviewsToday} entrevistas hoje
-                          </span>
                         </div>
                       </Popup>
                     </Marker>
                   ))}
+                  <RoutePolylines 
+                    orgId={orgId} 
+                    visibleUserIds={Array.from(routesVisible)} 
+                    colors={routeColors}
+                  />
                 </MapContainer>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-lg">Entrevistadores</CardTitle>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" onClick={selectAll} data-testid="button-select-all">
+                  Todos
+                </Button>
+                <Button variant="ghost" size="sm" onClick={deselectAll} data-testid="button-deselect-all">
+                  Nenhum
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="max-h-[400px] overflow-y-auto space-y-3">
-              {data?.interviewers.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  Nenhum entrevistador cadastrado
-                </p>
-              ) : (
-                data?.interviewers
-                  .sort((a, b) => {
-                    const statusOrder = { active: 0, idle: 1, offline: 2 };
-                    return statusOrder[a.status] - statusOrder[b.status];
-                  })
-                  .map(interviewer => (
-                    <InterviewerCard key={interviewer.userId} interviewer={interviewer} />
-                  ))
-              )}
+            <CardContent className="p-2">
+              <ScrollArea className="h-[440px]">
+                <div className="space-y-1">
+                  {realtimeData?.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      Nenhum entrevistador cadastrado
+                    </p>
+                  ) : (
+                    realtimeData
+                      ?.sort((a, b) => {
+                        if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+                        return a.name.localeCompare(b.name);
+                      })
+                      .map(interviewer => (
+                        <InterviewerListItem
+                          key={interviewer.userId}
+                          interviewer={interviewer}
+                          isSelected={selectedInterviewers.has(interviewer.userId)}
+                          onToggle={() => toggleInterviewer(interviewer.userId)}
+                          showRoute={routesVisible.has(interviewer.userId)}
+                          onToggleRoute={() => toggleRoute(interviewer.userId)}
+                        />
+                      ))
+                  )}
+                </div>
+              </ScrollArea>
             </CardContent>
           </Card>
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+function RoutePolylines({ orgId, visibleUserIds, colors }: { orgId: number; visibleUserIds: string[]; colors: string[] }) {
+  return (
+    <>
+      {visibleUserIds.map((userId, idx) => (
+        <SingleRoute key={userId} orgId={orgId} userId={userId} color={colors[idx % colors.length]} />
+      ))}
+    </>
+  );
+}
+
+function SingleRoute({ orgId, userId, color }: { orgId: number; userId: string; color: string }) {
+  const { data } = useInterviewerRoute(orgId, userId);
+  
+  if (!data?.route || data.route.length < 2) return null;
+  
+  const positions: [number, number][] = data.route.map(p => [p.lat, p.lng]);
+  
+  return (
+    <Polyline 
+      positions={positions} 
+      pathOptions={{ color, weight: 3, opacity: 0.7 }}
+    />
   );
 }

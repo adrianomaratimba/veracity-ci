@@ -378,22 +378,22 @@ export default function TeamPage({ params }: { params: { orgId: string } }) {
             {members && members.length > 0 ? (
               <div className="divide-y">
                 {members.map((member, index) => (
-                  <div key={member.id} className="py-4 flex items-center justify-between gap-4" data-testid={`row-member-${index}`}>
-                    <div className="flex items-center gap-4">
-                      <Avatar>
+                  <div key={member.id} className="py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4" data-testid={`row-member-${index}`}>
+                    <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                      <Avatar className="shrink-0">
                         <AvatarImage src={member.user?.profileImageUrl || undefined} />
                         <AvatarFallback>
                           {member.user?.firstName?.[0]}{member.user?.lastName?.[0]}
                         </AvatarFallback>
                       </Avatar>
-                      <div>
-                        <p className="font-medium">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">
                           {member.user?.firstName} {member.user?.lastName}
                         </p>
-                        <p className="text-sm text-muted-foreground">{member.user?.email}</p>
+                        <p className="text-sm text-muted-foreground truncate">{member.user?.email}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3 ml-11 sm:ml-0">
                       <Badge variant={getRoleBadgeVariant(member.role)}>{getRoleLabel(member.role)}</Badge>
                       {canManageMember(member.role) && (
                         <DropdownMenu>
