@@ -9,7 +9,7 @@ import { hasPermission, UserRole, canManageRole, getManageableRoles, isInterview
 import { z } from "zod";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, desc } from "drizzle-orm";
 import { authService } from "./auth-service";
 import { 
   organizationMembers, 
@@ -2623,6 +2623,45 @@ export async function registerRoutes(
     }
   });
 
+  // Heartbeat to keep interviewer online (dashboard presence)
+  app.post("/api/organizations/:id/tracking/heartbeat", isAuthenticated, requireOrgAccess("id", "responses:submit"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id);
+      const userId = await getResolvedUserId(req);
+      
+      const now = new Date();
+      
+      const existingLocation = await db.select()
+        .from(interviewerLocations)
+        .where(eq(interviewerLocations.userId, userId))
+        .orderBy(desc(interviewerLocations.recordedAt))
+        .limit(1);
+      
+      if (existingLocation.length > 0) {
+        await db.update(interviewerLocations)
+          .set({ 
+            isOnline: true
+          })
+          .where(eq(interviewerLocations.id, existingLocation[0].id));
+      } else {
+        await db.insert(interviewerLocations).values({
+          userId,
+          organizationId: orgId,
+          latitude: 0,
+          longitude: 0,
+          accuracy: null,
+          isOnline: true,
+          sessionId: `heartbeat_${Date.now()}`
+        });
+      }
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[tracking/heartbeat] error:', err);
+      res.status(500).json({ message: "Erro ao enviar heartbeat" });
+    }
+  });
+
   // Set interviewer offline (when they close the app)
   app.post("/api/organizations/:id/tracking/offline", isAuthenticated, requireOrgAccess("id", "responses:submit"), async (req, res) => {
     try {
@@ -2889,7 +2928,7 @@ export async function registerRoutes(
   });
 
   // Supervisor dashboard metrics (for coordinators/admins)
-  app.get("/api/organizations/:orgId/analytics/interviewers", isAuthenticated, requireOrgAccess, async (req, res) => {
+  app.get("/api/organizations/:orgId/analytics/interviewers", isAuthenticated, requireOrgAccess("orgId", "analytics:view"), async (req, res) => {
     console.log('[analytics/interviewers] Request received for org:', req.params.orgId);
     try {
       const orgId = parseInt(req.params.orgId);
@@ -2913,7 +2952,7 @@ export async function registerRoutes(
   });
 
   // Trend data for charts
-  app.get("/api/organizations/:orgId/analytics/trend", isAuthenticated, requireOrgAccess, async (req, res) => {
+  app.get("/api/organizations/:orgId/analytics/trend", isAuthenticated, requireOrgAccess("orgId", "analytics:view"), async (req, res) => {
     try {
       const orgId = parseInt(req.params.orgId);
       const userId = await getResolvedUserId(req);

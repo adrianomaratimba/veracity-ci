@@ -269,13 +269,19 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
   const isValidOrgId = orgId > 0;
   
   const [lastRefresh, setLastRefresh] = useState(new Date());
-  const [selectedInterviewers, setSelectedInterviewers] = useState<Set<string>>(new Set());
+  const [selectedInterviewers, setSelectedInterviewers] = useState<Set<string> | null>(null);
   const [routesVisible, setRoutesVisible] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("realtime");
   
   const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isFetching: isFetchingOverview } = useSupervisorOverview(orgId);
   const { data: realtimeData, isLoading: realtimeLoading, refetch: refetchRealtime, isFetching: isFetchingRealtime } = useRealtimeInterviewers(orgId);
   const { data: performanceData, refetch: refetchPerformance, isFetching: isFetchingPerformance, isError: performanceError, isLoading: performanceLoading } = usePerformanceMetrics(orgId);
+  
+  useEffect(() => {
+    if (realtimeData && selectedInterviewers === null) {
+      setSelectedInterviewers(new Set(realtimeData.map(i => i.userId)));
+    }
+  }, [realtimeData, selectedInterviewers]);
 
   const isFetching = isFetchingOverview || isFetchingRealtime || isFetchingPerformance;
   const isLoading = overviewLoading || realtimeLoading;
@@ -294,7 +300,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
 
   const toggleInterviewer = (userId: string) => {
     setSelectedInterviewers(prev => {
-      const next = new Set(prev);
+      const next = new Set(prev || []);
       if (next.has(userId)) {
         next.delete(userId);
       } else {
@@ -329,7 +335,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
 
   const displayedInterviewers = useMemo(() => {
     if (!realtimeData) return [];
-    if (selectedInterviewers.size === 0) return realtimeData;
+    if (!selectedInterviewers || selectedInterviewers.size === 0) return [];
     return realtimeData.filter(i => selectedInterviewers.has(i.userId));
   }, [realtimeData, selectedInterviewers]);
 
@@ -575,7 +581,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                             <InterviewerListItem
                               key={interviewer.userId}
                               interviewer={interviewer}
-                              isSelected={selectedInterviewers.has(interviewer.userId)}
+                              isSelected={selectedInterviewers?.has(interviewer.userId) ?? false}
                               onToggle={() => toggleInterviewer(interviewer.userId)}
                               showRoute={routesVisible.has(interviewer.userId)}
                               onToggleRoute={() => toggleRoute(interviewer.userId)}
@@ -618,7 +624,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                           })
                           .map(interviewer => {
                             const initials = interviewer.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-                            const isSelected = selectedInterviewers.size === 0 || selectedInterviewers.has(interviewer.userId);
+                            const isSelected = selectedInterviewers?.has(interviewer.userId) ?? false;
                             return (
                               <div 
                                 key={interviewer.userId}

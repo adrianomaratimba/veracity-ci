@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrganizations } from "@/hooks/use-organizations";
+import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,8 @@ export default function MyPerformance() {
   const { user } = useAuth();
   const { data: orgs } = useOrganizations();
   const orgId = orgs?.[0]?.id;
+  
+  usePresenceHeartbeat({ orgId: orgId || 0, enabled: !!orgId, intervalMs: 60000 });
   
   const [selectedSurvey, setSelectedSurvey] = useState<string>("all");
 
