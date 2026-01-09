@@ -77,7 +77,7 @@ interface PerformanceDashboard {
   interviewers: InterviewerMetrics[];
 }
 
-function useSupervisorOverview(orgId: number, refetchInterval: number = 30000) {
+function useSupervisorOverview(orgId: number, refetchInterval: number = 120000) {
   return useQuery<SupervisorOverview>({
     queryKey: ['/api/organizations', orgId, 'supervisor', 'overview'],
     queryFn: async () => {
@@ -86,12 +86,12 @@ function useSupervisorOverview(orgId: number, refetchInterval: number = 30000) {
       return res.json();
     },
     refetchInterval,
-    staleTime: 10000,
+    staleTime: 60000,
     enabled: !!orgId,
   });
 }
 
-function useRealtimeInterviewers(orgId: number, refetchInterval: number = 15000) {
+function useRealtimeInterviewers(orgId: number, refetchInterval: number = 120000) {
   return useQuery<RealtimeInterviewer[]>({
     queryKey: ['/api/organizations', orgId, 'tracking', 'interviewers'],
     queryFn: async () => {
@@ -100,7 +100,7 @@ function useRealtimeInterviewers(orgId: number, refetchInterval: number = 15000)
       return res.json();
     },
     refetchInterval,
-    staleTime: 5000,
+    staleTime: 60000,
     enabled: !!orgId,
   });
 }
@@ -119,7 +119,7 @@ function useInterviewerRoute(orgId: number, userId: string | null, date?: Date) 
   });
 }
 
-function usePerformanceMetrics(orgId: number) {
+function usePerformanceMetrics(orgId: number, refetchInterval: number = 120000) {
   return useQuery<PerformanceDashboard>({
     queryKey: ['/api/organizations', orgId, 'analytics', 'interviewers'],
     queryFn: async () => {
@@ -127,6 +127,7 @@ function usePerformanceMetrics(orgId: number) {
       if (!res.ok) throw new Error("Failed to fetch performance metrics");
       return res.json();
     },
+    refetchInterval,
     staleTime: 60000,
     enabled: Number.isFinite(orgId) && orgId > 0,
     retry: 2,
