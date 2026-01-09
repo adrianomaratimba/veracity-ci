@@ -59,7 +59,9 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const isInterviewer = isInterviewerRole(userRole);
   const isViewer = userRole === 'viewer';
   const canAccessCollection = !isViewer && (isInterviewer || userRole === 'admin' || userRole === 'owner' || userRole === 'coordinator');
-  const isFieldWorkerRole = isFieldWorker(userRole);
+  
+  // Only compute field worker status after member data is loaded to avoid false "viewer" default
+  const isFieldWorkerRole = !memberLoading && currentMember ? isFieldWorker(currentMember.role as UserRole) : false;
   
   // Track location and presence for all field workers (owner, admin, coordinator, interviewer)
   useLocationTracking({
