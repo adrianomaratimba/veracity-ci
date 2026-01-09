@@ -144,6 +144,8 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [shuffledOptionsMap, setShuffledOptionsMap] = useState<Record<number, (string | QuestionOption)[]>>({});
   const [shuffleVersion, setShuffleVersion] = useState(0);
   const [showAbandonDialog, setShowAbandonDialog] = useState(false);
+  const [skippedGps, setSkippedGps] = useState(false);
+  const [gpsTimeoutReached, setGpsTimeoutReached] = useState(false);
 
   // Real-time location tracking for supervisor monitoring
   useLocationTracking({
@@ -179,12 +181,14 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
     if (!navigator.geolocation) {
       setGpsError("Geolocalização não é suportada por este navegador.");
+      setGpsTimeoutReached(true);
       return;
     }
 
     let samples: GeolocationCoordinates[] = [];
     let watchId: number | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let skipOptionTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const selectBestSample = () => {
       if (samples.length === 0) return;
@@ -200,6 +204,8 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         // Update with current best reading
         if (samples.length === 1) {
           setGpsCoords(position.coords);
+          // GPS acquired - no need for skip option
+          setGpsTimeoutReached(false);
         } else {
           selectBestSample();
         }
@@ -212,19 +218,30 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       },
       {
         enableHighAccuracy: true,
-        timeout: 5000,
+        timeout: 10000,
         maximumAge: 0
       }
     );
 
-    // Stop collecting after 5 seconds and use best sample
+    // After 5 seconds without GPS, show skip option
+    skipOptionTimeoutId = setTimeout(() => {
+      if (samples.length === 0) {
+        setGpsTimeoutReached(true);
+      }
+    }, 5000);
+
+    // Stop collecting after 10 seconds and use best sample
     timeoutId = setTimeout(() => {
       if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
       }
       selectBestSample();
-    }, 5000);
+      // If still no GPS after 10 seconds, keep showing skip option
+      if (samples.length === 0) {
+        setGpsTimeoutReached(true);
+      }
+    }, 10000);
 
     return () => {
       if (watchId !== null) {
@@ -232,6 +249,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       }
       if (timeoutId !== null) {
         clearTimeout(timeoutId);
+      }
+      if (skipOptionTimeoutId !== null) {
+        clearTimeout(skipOptionTimeoutId);
       }
     };
   }, [survey]);
@@ -271,14 +291,18 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     const requireGps = (survey as any)?.requireGps ?? true;
     const requireAudio = (survey as any)?.requireAudio ?? true;
     
-    // Only check GPS if required
-    if (requireGps && !gpsCoords) return;
+    // Only check GPS if required and not skipped
+    if (requireGps && !gpsCoords && !skippedGps) return;
     
     // Only start recording if audio is required
     if (requireAudio) {
       await startRecording();
     }
     setStep('questions');
+  };
+
+  const handleSkipGps = () => {
+    setSkippedGps(true);
   };
 
   const handleNewInterview = () => {
@@ -361,9 +385,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     const requireGps = (survey as any)?.requireGps ?? true;
     const requireAudio = (survey as any)?.requireAudio ?? true;
     
-    // Only check required fields
+    // Only check required fields (GPS can be skipped if user chose to continue without it)
     if (requireAudio && !audioBlob) return;
-    if (requireGps && !gpsCoords) return;
+    if (requireGps && !gpsCoords && !skippedGps) return;
     
     setIsSavingOffline(true);
     try {
@@ -392,7 +416,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             audioBlob: audioBuffer ?? new ArrayBuffer(0),
             audioMimeType: requireAudio && audioBlob ? 'audio/webm' : 'audio/webm',
             audioFileName: requireAudio && audioBlob ? `entrevista-${Date.now()}.webm` : `no-audio-${Date.now()}.webm`,
-            deviceInfo: { userAgent: navigator.userAgent },
+            deviceInfo: { userAgent: navigator.userAgent, noGps: skippedGps } as any,
             startTime,
             endTime,
             duration
@@ -425,9 +449,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     const requireGps = (survey as any)?.requireGps ?? true;
     const requireAudio = (survey as any)?.requireAudio ?? true;
     
-    // Only check required fields
+    // Only check required fields (GPS can be skipped if user chose to continue without it)
     if (requireAudio && !audioBlob) return;
-    if (requireGps && !gpsCoords) return;
+    if (requireGps && !gpsCoords && !skippedGps) return;
 
     if (!isOnline) {
       await saveOffline();
@@ -474,7 +498,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
           audioUrl,
           audioHash,
           audioDuration: 0,
-          deviceInfo: { userAgent: navigator.userAgent },
+          deviceInfo: { userAgent: navigator.userAgent, noGps: skippedGps } as any,
           startTime,
           endTime,
           duration
@@ -550,6 +574,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         <div className="flex items-center gap-2 text-xs opacity-80 mt-1 flex-wrap">
           {isRecording && <span className="flex items-center gap-1 text-red-300 animate-pulse"><Mic className="w-3 h-3" /> GRAVANDO</span>}
           {gpsCoords && <span className="flex items-center gap-1 text-green-300"><MapPin className="w-3 h-3" /> GPS Ativo</span>}
+          {skippedGps && !gpsCoords && <span className="flex items-center gap-1 text-yellow-300"><MapPin className="w-3 h-3" /> Sem GPS</span>}
           {!isOnline && <span className="flex items-center gap-1 text-yellow-300"><WifiOff className="w-3 h-3" /> Modo Offline</span>}
         </div>
       </header>
@@ -568,13 +593,29 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             <div className="space-y-3 text-left">
               {((survey as any)?.requireGps ?? true) && (
                 <div className="flex items-center gap-3 p-3 bg-white border rounded-lg">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${gpsCoords ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                    {gpsCoords ? <CheckCircle className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${gpsCoords ? 'bg-green-100 text-green-600' : skippedGps ? 'bg-yellow-100 text-yellow-600' : 'bg-red-100 text-red-600'}`}>
+                    {gpsCoords ? <CheckCircle className="w-5 h-5" /> : skippedGps ? <MapPin className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
                   </div>
                   <div className="flex-1">
                     <p className="font-medium text-sm">Localização GPS</p>
-                    <p className="text-xs text-muted-foreground">{gpsError || (gpsCoords ? `Precisão: ${gpsCoords.accuracy.toFixed(0)}m` : "Aguardando sinal...")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {skippedGps 
+                        ? "Entrevista sem GPS" 
+                        : gpsError || (gpsCoords ? `Precisão: ${gpsCoords.accuracy.toFixed(0)}m` : "Aguardando sinal...")}
+                    </p>
                   </div>
+                  {/* Show skip GPS button after 5 seconds timeout */}
+                  {!gpsCoords && !skippedGps && gpsTimeoutReached && (
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="shrink-0 border-yellow-500 text-yellow-600 hover:bg-yellow-50"
+                      onClick={handleSkipGps}
+                      data-testid="button-skip-gps"
+                    >
+                      Continuar sem GPS
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -595,10 +636,16 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               size="lg" 
               className="w-full" 
               onClick={handleStartInterview}
-              disabled={((survey as any)?.requireGps ?? true) && !gpsCoords}
+              disabled={((survey as any)?.requireGps ?? true) && !gpsCoords && !skippedGps}
             >
               Iniciar Entrevista
             </Button>
+            
+            {skippedGps && (
+              <p className="text-xs text-yellow-600 text-center">
+                Esta entrevista será marcada como "Sem GPS" no painel do supervisor.
+              </p>
+            )}
           </Card>
         )}
 
@@ -747,27 +794,32 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               </div>
             </Card>
 
-            {/* Floating navigation buttons - centered vertically and horizontally */}
-            <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-4 z-50 pointer-events-none">
-              <Button
-                size="icon"
-                className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg pointer-events-auto"
-                onClick={handleScrollToTop}
-                title="Escolher outra resposta"
-                data-testid="button-floating-change-answer"
-              >
-                <Square className="w-6 h-6" />
-              </Button>
-              <Button
-                size="icon"
-                className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-lg pointer-events-auto"
-                onClick={handleNextQuestion}
-                title="Próxima pergunta"
-                data-testid="button-floating-next"
-              >
-                <Play className="w-6 h-6" />
-              </Button>
-            </div>
+            {/* Floating navigation buttons - only show when answer is selected */}
+            {answers[shuffledQuestions[currentQuestionIndex].id] !== undefined && 
+             answers[shuffledQuestions[currentQuestionIndex].id] !== null && 
+             answers[shuffledQuestions[currentQuestionIndex].id] !== '' &&
+             !(Array.isArray(answers[shuffledQuestions[currentQuestionIndex].id]) && answers[shuffledQuestions[currentQuestionIndex].id].length === 0) && (
+              <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-4 z-50 pointer-events-none">
+                <Button
+                  size="icon"
+                  className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg pointer-events-auto"
+                  onClick={handleScrollToTop}
+                  title="Escolher outra resposta"
+                  data-testid="button-floating-change-answer"
+                >
+                  <Square className="w-6 h-6" />
+                </Button>
+                <Button
+                  size="icon"
+                  className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-lg pointer-events-auto"
+                  onClick={handleNextQuestion}
+                  title="Próxima pergunta"
+                  data-testid="button-floating-next"
+                >
+                  <Play className="w-6 h-6" />
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
