@@ -159,6 +159,22 @@ function createMarkerIcon(isOnline: boolean) {
   });
 }
 
+function createMarkerIconWithPhoto(isOnline: boolean, photoUrl?: string, initials?: string) {
+  const borderColor = isOnline ? '#22c55e' : '#9ca3af';
+  const size = 40;
+  
+  const photoContent = photoUrl 
+    ? `<img src="${photoUrl}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><div style="display: none; width: 100%; height: 100%; border-radius: 50%; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; font-size: 14px; font-weight: 600; align-items: center; justify-content: center;">${initials || '?'}</div>`
+    : `<div style="width: 100%; height: 100%; border-radius: 50%; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center;">${initials || '?'}</div>`;
+  
+  return new DivIcon({
+    html: `<div style="width: ${size}px; height: ${size}px; border-radius: 50%; border: 3px solid ${borderColor}; box-shadow: 0 2px 6px rgba(0,0,0,0.3); overflow: hidden; background: white;">${photoContent}</div>`,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
 function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`;
   return `${(meters / 1000).toFixed(2)} km`;
@@ -478,11 +494,13 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       />
-                      {interviewersWithLocation.map((interviewer, idx) => (
+                      {interviewersWithLocation.map((interviewer, idx) => {
+                        const initials = interviewer.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                        return (
                         <Marker
                           key={interviewer.userId}
                           position={[interviewer.lastLocation!.lat, interviewer.lastLocation!.lng]}
-                          icon={createMarkerIcon(interviewer.isOnline)}
+                          icon={createMarkerIconWithPhoto(interviewer.isOnline, interviewer.profileImageUrl || undefined, initials)}
                         >
                           <Popup>
                             <div className="text-sm">
@@ -516,7 +534,8 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                             </div>
                           </Popup>
                         </Marker>
-                      ))}
+                      );
+                      })}
                       <RoutePolylines 
                         orgId={orgId} 
                         visibleUserIds={Array.from(routesVisible)} 
@@ -675,7 +694,7 @@ export default function SupervisorDashboard({ params }: { params: { orgId: strin
                           <Marker
                             key={interviewer.userId}
                             position={[interviewer.lastLocation!.lat, interviewer.lastLocation!.lng]}
-                            icon={createMarkerIcon(interviewer.isOnline)}
+                            icon={createMarkerIconWithPhoto(interviewer.isOnline, interviewer.profileImageUrl || undefined, initials)}
                           >
                             <Popup>
                               <div className="flex flex-col items-center gap-2 p-1 min-w-[150px]">
