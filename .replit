@@ -44,4 +44,4 @@ integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_object_storag
 [userenv]
 
 [userenv.shared]
-PLATFORM_ADMIN_EMAILS = "fabiosantoscosta@gmail.com,contato@maratimba.com,adriano@maratimba.com"
+PLATFORM_ADMIN_EMAILS = "contato@maratimba.com,adriano@maratimba.com"
