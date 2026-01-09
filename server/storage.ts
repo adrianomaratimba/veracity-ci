@@ -20,7 +20,7 @@ import {
   interviewerLocations, InterviewerLocation, dailyDistanceSummary
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Organizations
@@ -1631,6 +1631,7 @@ export class DatabaseStorage implements IStorage {
     name: string;
     email: string | null;
     profileImageUrl: string | null;
+    role: string;
     isOnline: boolean;
     lastLocation: { lat: number; lng: number; time: Date } | null;
     currentSurvey: { id: number; title: string } | null;
@@ -1640,16 +1641,19 @@ export class DatabaseStorage implements IStorage {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const onlineThreshold = 5 * 60 * 1000; // 5 minutes
 
-    // Get all interviewers in the organization
+    // Get all field workers in the organization (roles that can conduct interviews)
+    // This includes: owner, admin, coordinator, interviewer
+    const fieldWorkerRoles = ['owner', 'admin', 'coordinator', 'interviewer'];
     const members = await db.select({
       userId: organizationMembers.userId,
+      role: organizationMembers.role,
       user: users
     })
       .from(organizationMembers)
       .innerJoin(users, eq(organizationMembers.userId, users.id))
       .where(and(
         eq(organizationMembers.organizationId, orgId),
-        eq(organizationMembers.role, 'interviewer')
+        inArray(organizationMembers.role, fieldWorkerRoles)
       ));
 
     // Get all org surveys
@@ -1687,6 +1691,7 @@ export class DatabaseStorage implements IStorage {
         name: `${m.user.firstName || ''} ${m.user.lastName || ''}`.trim() || m.user.email || 'Sem nome',
         email: m.user.email,
         profileImageUrl: m.user.profileImageUrl,
+        role: m.role,
         isOnline: !!isOnline,
         lastLocation: lastLoc ? {
           lat: lastLoc.latitude,

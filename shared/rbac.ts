@@ -331,6 +331,22 @@ export function isInterviewerRole(role: UserRole): boolean {
   return role === 'interviewer';
 }
 
+/**
+ * Check if role can collect responses (conduct interviews)
+ * Owners, admins, coordinators, and interviewers can all conduct interviews
+ */
+export function canCollectResponses(role: UserRole): boolean {
+  return hasPermission(role, "responses:submit");
+}
+
+/**
+ * Check if user should appear in field worker monitoring (supervisor maps/dashboards)
+ * Any role that can submit responses should appear when they're actively working
+ */
+export function isFieldWorker(role: UserRole): boolean {
+  return hasPermission(role, "responses:submit");
+}
+
 export function isViewerRole(role: UserRole): boolean {
   return role === 'viewer';
 }
