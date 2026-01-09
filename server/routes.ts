@@ -2640,7 +2640,8 @@ export async function registerRoutes(
       if (existingLocation.length > 0) {
         await db.update(interviewerLocations)
           .set({ 
-            isOnline: true
+            isOnline: true,
+            recordedAt: now  // Update recordedAt so online threshold check works
           })
           .where(eq(interviewerLocations.id, existingLocation[0].id));
       } else {
