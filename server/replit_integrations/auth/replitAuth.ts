@@ -112,10 +112,14 @@ export async function setupAuth(app: Express) {
   });
 
   app.get("/api/callback", (req, res, next) => {
+    // Check if user denied authorization
+    if (req.query.error === 'access_denied') {
+      return res.redirect("/?auth_denied=true");
+    }
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
       successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login",
+      failureRedirect: "/?auth_error=true",
     })(req, res, next);
   });
 
