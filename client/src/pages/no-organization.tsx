@@ -1,11 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Building2, LogOut, Mail, Clock } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function NoOrganizationPage() {
-  const handleLogout = async () => {
-    window.location.href = "/api/auth/logout";
-  };
+  const { logout, isLoggingOut } = useAuth();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -53,11 +52,12 @@ export default function NoOrganizationPage() {
             <Button 
               variant="ghost" 
               className="w-full gap-2"
-              onClick={handleLogout}
+              onClick={() => logout()}
+              disabled={isLoggingOut}
               data-testid="button-logout-no-org"
             >
               <LogOut className="w-4 h-4" />
-              Sair da conta
+              {isLoggingOut ? "Saindo..." : "Sair da conta"}
             </Button>
           </div>
         </CardContent>
