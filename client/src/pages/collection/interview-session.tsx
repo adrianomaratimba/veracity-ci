@@ -7,7 +7,17 @@ import { useSurvey } from "@/hooks/use-surveys";
 import { useLocationTracking } from "@/hooks/use-location-tracking";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle, WifiOff, Cloud } from "lucide-react";
+import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle, WifiOff, Cloud, Square, Play } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -133,6 +143,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [shuffledQuestions, setShuffledQuestions] = useState<typeof survey extends { questions: infer Q } ? Q : any[]>([]);
   const [shuffledOptionsMap, setShuffledOptionsMap] = useState<Record<number, (string | QuestionOption)[]>>({});
   const [shuffleVersion, setShuffleVersion] = useState(0);
+  const [showAbandonDialog, setShowAbandonDialog] = useState(false);
 
   // Real-time location tracking for supervisor monitoring
   useLocationTracking({
@@ -331,6 +342,19 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
   const handleAnswer = (questionId: number, value: any) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
+  };
+
+  const handleScrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleAbandonInterview = () => {
+    // Stop recording if active
+    if (isRecording) {
+      stopRecording();
+    }
+    // Navigate back to survey selection
+    setLocation('/dashboard');
   };
 
   const saveOffline = async () => {
@@ -707,14 +731,66 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 )}
               </div>
 
-              <div className="mt-8 pt-4 border-t flex justify-end">
+              <div className="mt-8 pt-4 border-t flex justify-between gap-3">
+                <Button 
+                  variant="destructive" 
+                  size="lg"
+                  onClick={() => setShowAbandonDialog(true)}
+                  data-testid="button-abandon-interview"
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Abandonar
+                </Button>
                 <Button onClick={handleNextQuestion} size="lg" className="px-8">
                   {currentQuestionIndex === shuffledQuestions.length - 1 ? "Finalizar" : "Próxima"} <ChevronRight className="ml-2 w-4 h-4" />
                 </Button>
               </div>
             </Card>
+
+            {/* Floating navigation buttons - centered vertically and horizontally */}
+            <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-4 z-50 pointer-events-none">
+              <Button
+                size="icon"
+                className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg pointer-events-auto"
+                onClick={handleScrollToTop}
+                title="Escolher outra resposta"
+                data-testid="button-floating-change-answer"
+              >
+                <Square className="w-6 h-6" />
+              </Button>
+              <Button
+                size="icon"
+                className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-lg pointer-events-auto"
+                onClick={handleNextQuestion}
+                title="Próxima pergunta"
+                data-testid="button-floating-next"
+              >
+                <Play className="w-6 h-6" />
+              </Button>
+            </div>
           </div>
         )}
+
+        {/* Abandon interview confirmation dialog */}
+        <AlertDialog open={showAbandonDialog} onOpenChange={setShowAbandonDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Abandonar entrevista?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Todos os dados coletados nesta entrevista serão perdidos. Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-500 hover:bg-red-600"
+                onClick={handleAbandonInterview}
+              >
+                Sim, abandonar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {step === 'submit' && (
           <Card className="p-8 text-center space-y-6">
