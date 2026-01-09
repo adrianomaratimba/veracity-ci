@@ -95,7 +95,7 @@ const rolePermissions: Record<UserRole, Permission[]> = {
   ],
   
   // ------------------------------------------------
-  // COORDENADOR - View & monitor only, NO create/edit/delete
+  // COORDENADOR - View, monitor & collect data, NO create/edit/delete
   // ------------------------------------------------
   coordinator: [
     // Organization - view only
@@ -103,8 +103,8 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     // Members - NO access to team management
     // Surveys - view only, can assign interviewers
     "surveys:view", "surveys:assign_interviewers",
-    // Responses - view only, NO audit/invalidate
-    "responses:view",
+    // Responses - view all, can submit interviews (field work)
+    "responses:view", "responses:submit",
     // Analytics - view aggregated and detailed
     "analytics:view", "analytics:view_aggregate",
     // Sensitive data - can view GPS and maps for monitoring
