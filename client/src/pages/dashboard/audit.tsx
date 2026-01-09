@@ -387,6 +387,12 @@ export default function AuditPage({ params }: AuditPageProps) {
                             <p className="font-medium truncate">{response.survey.title}</p>
                             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                               <span className="flex items-center gap-1">
+                                <Users className="w-3 h-3" />
+                                {(response as any).interviewer 
+                                  ? `${(response as any).interviewer.firstName || ''} ${(response as any).interviewer.lastName || ''}`.trim() || 'Sem nome'
+                                  : 'Desconhecido'}
+                              </span>
+                              <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
                                 {response.createdAt ? format(new Date(response.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR }) : '-'}
                               </span>

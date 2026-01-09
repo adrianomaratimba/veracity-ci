@@ -649,7 +649,11 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
                       <tr key={resp.id} className="hover:bg-muted/30" data-testid={`row-response-${resp.id}`}>
                         <td className="px-4 py-3 font-mono text-xs text-muted-foreground">#{resp.id}</td>
                         <td className="px-4 py-3 whitespace-nowrap">{new Date(resp.createdAt!).toLocaleString('pt-BR')}</td>
-                        <td className="px-4 py-3 font-mono text-xs">{resp.interviewerId?.substring(0, 12)}...</td>
+                        <td className="px-4 py-3 text-sm">
+                          {(resp as any).interviewer 
+                            ? `${(resp as any).interviewer.firstName || ''} ${(resp as any).interviewer.lastName || ''}`.trim() || resp.interviewerId?.substring(0, 12) + '...'
+                            : resp.interviewerId?.substring(0, 12) + '...'}
+                        </td>
                         <td className="px-4 py-3">{formatDuration(resp.duration || 0)}</td>
                         <td className="px-4 py-3 font-mono text-xs">
                           <a 

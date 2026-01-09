@@ -580,7 +580,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getResponsesByOrg(orgId: number): Promise<(Response & { survey: { id: number; title: string } })[]> {
+  async getResponsesByOrg(orgId: number): Promise<(Response & { survey: { id: number; title: string }; interviewer?: { id: string; firstName: string | null; lastName: string | null } })[]> {
     const orgSurveys = await db.select().from(surveys).where(eq(surveys.organizationId, orgId));
     const surveyIds = orgSurveys.map(s => s.id);
     
@@ -592,9 +592,19 @@ export class DatabaseStorage implements IStorage {
     
     const surveyMap = new Map(orgSurveys.map(s => [s.id, { id: s.id, title: s.title }]));
     
+    // Get unique interviewer IDs and fetch user data
+    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId).filter(Boolean)));
+    const interviewerUsers = interviewerIds.length > 0 
+      ? await db.select().from(users).where(
+          sql`${users.id} IN (${sql.join(interviewerIds.map(id => sql`${id}`), sql`, `)})`
+        )
+      : [];
+    const interviewerMap = new Map(interviewerUsers.map(u => [u.id, { id: u.id, firstName: u.firstName, lastName: u.lastName }]));
+    
     return allResponses.map(r => ({
       ...r,
-      survey: surveyMap.get(r.surveyId) || { id: r.surveyId, title: 'Desconhecida' }
+      survey: surveyMap.get(r.surveyId) || { id: r.surveyId, title: 'Desconhecida' },
+      interviewer: r.interviewerId ? interviewerMap.get(r.interviewerId) : undefined
     }));
   }
 
