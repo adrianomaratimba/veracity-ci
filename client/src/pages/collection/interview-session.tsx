@@ -372,6 +372,18 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleClearCurrentAnswer = () => {
+    const question = shuffledQuestions[currentQuestionIndex];
+    if (question) {
+      setAnswers(prev => {
+        const newAnswers = { ...prev };
+        delete newAnswers[question.id];
+        return newAnswers;
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const handleAbandonInterview = () => {
     // Stop recording if active
     if (isRecording) {
@@ -803,8 +815,8 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 <Button
                   size="icon"
                   className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg pointer-events-auto"
-                  onClick={handleScrollToTop}
-                  title="Escolher outra resposta"
+                  onClick={handleClearCurrentAnswer}
+                  title="Desmarcar resposta"
                   data-testid="button-floating-change-answer"
                 >
                   <Square className="w-6 h-6" />
