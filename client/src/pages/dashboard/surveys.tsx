@@ -367,7 +367,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                   </Button>
                 )}
                 {isInterviewer ? (
-                  <Button size="sm" onClick={() => window.open(`/collect/${survey.id}`, '_blank')} data-testid={`button-collect-${survey.id}`}>
+                  <Button size="sm" onClick={() => setLocation(`/collect/${survey.id}`)} data-testid={`button-collect-${survey.id}`}>
                     <Play className="w-4 h-4 mr-2" />
                     Iniciar Coleta
                   </Button>
