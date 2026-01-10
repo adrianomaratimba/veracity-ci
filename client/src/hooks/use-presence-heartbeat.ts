@@ -13,8 +13,10 @@ export function usePresenceHeartbeat({
   enabled = true 
 }: PresenceHeartbeatOptions) {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
 
   const sendHeartbeat = useCallback(async () => {
+    if (!isMountedRef.current) return;
     try {
       await apiRequest('POST', `/api/organizations/${orgId}/tracking/heartbeat`, {});
     } catch (error) {
@@ -22,9 +24,15 @@ export function usePresenceHeartbeat({
     }
   }, [orgId]);
 
-  const sendOfflineStatus = useCallback(async () => {
+  const sendOfflineStatus = useCallback(() => {
     try {
-      await apiRequest('POST', `/api/organizations/${orgId}/tracking/offline`, {});
+      fetch(`/api/organizations/${orgId}/tracking/offline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        keepalive: true,
+        body: JSON.stringify({})
+      });
     } catch (error) {
       console.error('[PresenceHeartbeat] Failed to send offline status:', error);
     }
@@ -32,6 +40,8 @@ export function usePresenceHeartbeat({
 
   useEffect(() => {
     if (!enabled || !orgId) return;
+
+    isMountedRef.current = true;
 
     sendHeartbeat();
 
@@ -42,22 +52,13 @@ export function usePresenceHeartbeat({
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        sendOfflineStatus();
-      } else {
-        sendHeartbeat();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
+      isMountedRef.current = false;
       if (intervalRef.current !== null) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      sendOfflineStatus();
     };
   }, [enabled, intervalMs, orgId, sendHeartbeat, sendOfflineStatus]);
 }
