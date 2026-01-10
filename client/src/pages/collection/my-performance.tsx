@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import { useOrganizations } from "@/hooks/use-organizations";
+import { useOrganizations, useCurrentMember } from "@/hooks/use-organizations";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, ClipboardList, Users, Clock, MapPin, Flame, Loader2, ChevronDown } from "lucide-react";
 import { Link } from "wouter";
+import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
+import { isFieldWorker, type UserRole } from "@shared/rbac";
 
 interface SurveyOption {
   surveyId: number;
@@ -51,7 +53,12 @@ function formatDate(dateStr: string | null): string {
 export default function MyPerformance() {
   const { user } = useAuth();
   const { data: orgs } = useOrganizations();
-  const orgId = orgs?.[0]?.id;
+  const orgId = orgs?.[0]?.id ?? 0;
+  
+  const { data: currentMember, isLoading: memberLoading } = useCurrentMember(orgId);
+  const userRole = (currentMember?.role as UserRole) || 'viewer';
+  const enableHeartbeat = orgId > 0 && !memberLoading && !!currentMember && isFieldWorker(userRole);
+  usePresenceHeartbeat({ orgId, enabled: enableHeartbeat, intervalMs: 60000 });
   
   const [selectedSurvey, setSelectedSurvey] = useState<string>("all");
 

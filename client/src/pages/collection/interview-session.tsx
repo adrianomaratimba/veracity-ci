@@ -5,6 +5,7 @@ import { useUpload } from "@/hooks/use-upload";
 import { useSubmitResponse } from "@/hooks/use-responses";
 import { useSurvey } from "@/hooks/use-surveys";
 import { useLocationTracking } from "@/hooks/use-location-tracking";
+import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle, WifiOff, Cloud, Square, Play } from "lucide-react";
@@ -147,12 +148,21 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [skippedGps, setSkippedGps] = useState(false);
   const [gpsTimeoutReached, setGpsTimeoutReached] = useState(false);
 
+  const interviewOrgId = (survey as any)?.organizationId || 0;
+  
   // Real-time location tracking for supervisor monitoring
   useLocationTracking({
-    orgId: (survey as any)?.organizationId || 0,
+    orgId: interviewOrgId,
     surveyId: surveyId,
     intervalMs: 30000,
-    enabled: !!(survey as any)?.organizationId && step !== 'success'
+    enabled: !!interviewOrgId && step !== 'success'
+  });
+  
+  // Presence heartbeat for supervisor map visibility
+  usePresenceHeartbeat({ 
+    orgId: interviewOrgId, 
+    enabled: !!interviewOrgId && step !== 'success', 
+    intervalMs: 60000 
   });
 
   useEffect(() => {
