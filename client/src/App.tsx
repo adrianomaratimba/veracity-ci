@@ -4,11 +4,9 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
-import { useOrganizations, useCurrentMember } from "@/hooks/use-organizations";
+import { useOrganizations } from "@/hooks/use-organizations";
 import { useEffect, Component, type ReactNode } from "react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
-import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
-import { isFieldWorker, type UserRole } from "@shared/rbac";
 
 // Error Boundary to catch rendering errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
@@ -72,16 +70,6 @@ import LandingEditorPage from "@/pages/platform/landing-editor";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
 import { setupAutoSync } from "@/lib/syncQueue";
 
-function GlobalPresenceTracker({ orgId }: { orgId: number }) {
-  const { data: currentMember, isLoading: memberLoading } = useCurrentMember(orgId);
-  const userRole = (currentMember?.role as UserRole) || 'viewer';
-  const enableHeartbeat = !memberLoading && !!currentMember && isFieldWorker(userRole);
-  
-  usePresenceHeartbeat({ orgId, enabled: enableHeartbeat, intervalMs: 60000 });
-  
-  return null;
-}
-
 function AuthenticatedRoutes() {
   const { user, isLoading } = useAuth();
   const { data: orgs, isLoading: orgsLoading } = useOrganizations();
@@ -101,12 +89,8 @@ function AuthenticatedRoutes() {
     return <NoOrganizationPage />;
   }
   
-  const primaryOrgId = orgs?.[0]?.id;
-
   return (
-    <>
-      {primaryOrgId && <GlobalPresenceTracker orgId={primaryOrgId} />}
-      <Switch>
+    <Switch>
       {/* Root redirect - shows loading while useEffect redirects */}
       <Route path="/">{() => <LoadingScreen />}</Route>
       <Route path="/dashboard">{() => <LoadingScreen />}</Route>
@@ -141,8 +125,7 @@ function AuthenticatedRoutes() {
       
       {/* Fallback */}
       <Route path="/:rest*" component={NotFound} />
-      </Switch>
-    </>
+    </Switch>
   );
 }
 
