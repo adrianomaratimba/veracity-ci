@@ -24,16 +24,9 @@ import {
   type PendingInterview 
 } from "@/lib/offlineStorage";
 import { syncAllPending } from "@/lib/syncQueue";
-import { useOrganizations } from "@/hooks/use-organizations";
-import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 
 export default function PendingInterviews() {
   const { toast } = useToast();
-  const { data: orgs } = useOrganizations();
-  const orgId = orgs?.[0]?.id;
-  
-  usePresenceHeartbeat({ orgId: orgId || 0, enabled: !!orgId, intervalMs: 60000 });
-  
   const [interviews, setInterviews] = useState<PendingInterview[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);

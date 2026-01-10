@@ -9,8 +9,7 @@ import { Plus, Users, FileText, Activity, AlertTriangle, ShieldAlert, ArrowRight
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { getSurveyStatusLabel } from "@shared/i18n/labels";
 import { useMemo } from "react";
-import { hasPermission, isFieldWorker, type UserRole } from "@shared/rbac";
-import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
+import { hasPermission, type UserRole } from "@shared/rbac";
 
 export default function DashboardOverview({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
@@ -18,12 +17,10 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
   const { data: surveys, isLoading: surveysLoading } = useSurveys(orgId);
   const { data: stats, isLoading: statsLoading } = useOrganizationStats(orgId);
   const { data: responses, isLoading: responsesLoading } = useOrgResponses(orgId);
-  const { data: currentMember, isLoading: memberLoading } = useCurrentMember(orgId);
+  const { data: currentMember } = useCurrentMember(orgId);
   const [, setLocation] = useLocation();
 
   const userRole = (currentMember?.role as UserRole) || 'viewer';
-  const enableHeartbeat = !memberLoading && !!currentMember && isFieldWorker(userRole);
-  usePresenceHeartbeat({ orgId, enabled: enableHeartbeat, intervalMs: 60000 });
   const canCreateSurvey = hasPermission(userRole, 'surveys:create');
   const canAudit = hasPermission(userRole, 'responses:audit');
   const canManageSurvey = hasPermission(userRole, 'surveys:edit');

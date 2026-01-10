@@ -15,12 +15,10 @@ import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { canManageSurveys, canViewAnalytics, isInterviewerRole, isFieldWorker, type UserRole } from "@shared/rbac";
+import { canManageSurveys, canViewAnalytics, isInterviewerRole, type UserRole } from "@shared/rbac";
 import type { Survey } from "@shared/schema";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useLocationTracking } from "@/hooks/use-location-tracking";
-import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 
 export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
@@ -60,21 +58,6 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const isViewer = userRole === 'viewer';
   const canAccessCollection = !isViewer && (isInterviewer || userRole === 'admin' || userRole === 'owner' || userRole === 'coordinator');
   
-  // Only compute field worker status after member data is loaded to avoid false "viewer" default
-  const isFieldWorkerRole = !memberLoading && currentMember ? isFieldWorker(currentMember.role as UserRole) : false;
-  
-  // Track location and presence for all field workers (owner, admin, coordinator, interviewer)
-  useLocationTracking({
-    orgId,
-    intervalMs: 60000,
-    enabled: isFieldWorkerRole && !isNaN(orgId) && orgId > 0
-  });
-  
-  usePresenceHeartbeat({
-    orgId,
-    intervalMs: 60000,
-    enabled: isFieldWorkerRole && !isNaN(orgId) && orgId > 0
-  });
   const [newSurvey, setNewSurvey] = useState({
     title: "",
     description: "",
