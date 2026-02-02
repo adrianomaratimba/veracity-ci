@@ -69,6 +69,7 @@ interface OptionEditorProps {
 
 function OptionEditor({ option, optIndex, questionIndex, canDelete, showImages, onUpdate, onDelete }: OptionEditorProps) {
   const { uploadFile, isUploading } = useUpload();
+  const { toast } = useToast();
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -77,6 +78,27 @@ function OptionEditor({ option, optIndex, questionIndex, canDelete, showImages, 
     const result = await uploadFile(file);
     if (result) {
       onUpdate({ ...option, imageUrl: result.objectPath });
+    }
+  };
+
+  const handlePasteImage = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+        
+        const result = await uploadFile(file);
+        if (result) {
+          onUpdate({ ...option, imageUrl: result.objectPath });
+          toast({ title: "Imagem colada", description: "Imagem adicionada com sucesso" });
+        }
+        return;
+      }
     }
   };
 
@@ -89,7 +111,8 @@ function OptionEditor({ option, optIndex, questionIndex, canDelete, showImages, 
       <Input
         value={option.text}
         onChange={(e) => onUpdate({ ...option, text: e.target.value })}
-        placeholder={`Opcao ${optIndex + 1}`}
+        onPaste={showImages && !option.imageUrl ? handlePasteImage : undefined}
+        placeholder={showImages && !option.imageUrl ? `Opcao ${optIndex + 1} (Ctrl+V para colar imagem)` : `Opcao ${optIndex + 1}`}
         className="flex-1"
         data-testid={`input-option-${questionIndex}-${optIndex}`}
       />
@@ -128,6 +151,7 @@ function OptionEditor({ option, optIndex, questionIndex, canDelete, showImages, 
                 size="icon"
                 disabled={isUploading}
                 onClick={() => document.getElementById(`image-${questionIndex}-${optIndex}`)?.click()}
+                title="Clique ou cole uma imagem (Ctrl+V)"
                 data-testid={`button-add-image-${questionIndex}-${optIndex}`}
               >
                 {isUploading ? (
