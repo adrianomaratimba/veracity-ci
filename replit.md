@@ -38,7 +38,7 @@ The project is organized into `client/` (React frontend), `server/` (Express bac
 - **Subscription Plans**: Configurable basic, professional, and enterprise plans with varying limits on surveys, interviews, and users. Plans are stored dynamically in the database.
 - **White Label**: Organizations can customize branding with custom logos, color schemes, and domain names.
 - **Custom Domains**: Supports automatic subdomains and custom domains for Enterprise plans, with DNS verification.
-- **Geofencing**: Allows defining polygon-based geographical zones for surveys. Interviewers receive real-time alerts and push notifications when they exit designated areas, with an optional blocking mode to prevent data collection outside the zone. Violations are logged.
+- **Geofencing**: Allows defining polygon-based geographical zones for surveys. Supports both hardcoded neighborhood zones (Pontal, Centro) and database-driven custom geofences imported from GeoJSON. Interviewers receive real-time alerts and push notifications when they exit designated areas, with an optional blocking mode to prevent data collection outside the zone. Violations are logged. Custom geofences are managed in the "Geocercas" tab of the geofencing page and can be assigned to surveys via a dropdown that shows both static and custom options.
 - **Messaging System**: Provides real-time chat between supervisors/coordinators and interviewers, including push notifications for new messages.
 
 ## External Dependencies
