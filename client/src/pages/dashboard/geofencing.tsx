@@ -37,10 +37,209 @@ function formatDate(d: string | Date | null | undefined) {
 
 // ---------- Sub-components ----------
 
+function GeofenceSurveyCard({
+  survey, customGeofences, cities, updateSurvey
+}: {
+  survey: any;
+  customGeofences: any[];
+  cities: string[];
+  updateSurvey: ReturnType<typeof useUpdateSurvey>;
+}) {
+  const { toast } = useToast();
+  const orgId = survey.organizationId;
+
+  // Current city selection for this survey
+  const currentCity = (survey.geofenceCity as string | null) ?? null;
+  const currentCustomIds: number[] = Array.isArray(survey.geofenceCustomIds) ? survey.geofenceCustomIds : [];
+
+  // Local draft state so checklist changes don't immediately save
+  const [draftCity, setDraftCity] = useState<string | null>(currentCity);
+  const [draftIds, setDraftIds] = useState<number[]>(currentCustomIds);
+  const [dirty, setDirty] = useState(false);
+
+  // When survey data updates (after save), sync local state
+  useEffect(() => {
+    setDraftCity(currentCity);
+    setDraftIds(currentCustomIds);
+    setDirty(false);
+  }, [survey.geofenceCity, JSON.stringify(survey.geofenceCustomIds)]);
+
+  const fencesInCity = customGeofences.filter((f: any) => f.city === draftCity);
+  const hasNeighborhoods = fencesInCity.length > 0;
+
+  function toggleId(id: number) {
+    const next = draftIds.includes(id) ? draftIds.filter(x => x !== id) : [...draftIds, id];
+    setDraftIds(next);
+    setDirty(true);
+  }
+
+  async function save() {
+    try {
+      if (!draftCity) {
+        await updateSurvey.mutateAsync({
+          id: survey.id, orgId,
+          data: { geofenceCity: null, geofenceCustomIds: [], geofenceNeighborhood: null, customGeofenceId: null } as any,
+        });
+      } else {
+        const neighborhoodNames = draftIds.length > 0
+          ? draftIds.map(id => fencesInCity.find((f: any) => f.id === id)?.name || '').filter(Boolean).join(', ')
+          : draftCity + ' — todos os bairros';
+        await updateSurvey.mutateAsync({
+          id: survey.id, orgId,
+          data: {
+            geofenceCity: draftCity,
+            geofenceCustomIds: draftIds,
+            geofenceNeighborhood: neighborhoodNames,
+            customGeofenceId: null,
+          } as any,
+        });
+      }
+      setDirty(false);
+      toast({ title: "Geocerca atualizada" });
+    } catch {
+      toast({ title: "Erro ao atualizar", variant: "destructive" });
+    }
+  }
+
+  async function handleBlockingChange(value: boolean) {
+    try {
+      await updateSurvey.mutateAsync({ id: survey.id, orgId, data: { geofenceBlocking: value } as any });
+      toast({ title: value ? "Bloqueio ativado" : "Bloqueio desativado" });
+    } catch {
+      toast({ title: "Erro ao atualizar", variant: "destructive" });
+    }
+  }
+
+  const savedLabel = currentCity
+    ? (currentCustomIds.length > 0
+      ? `${currentCity}: ${currentCustomIds.length} bairro(s)`
+      : `${currentCity} — todos os bairros`)
+    : null;
+
+  return (
+    <Card data-testid={`card-geofence-survey-${survey.id}`}>
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">{survey.title}</CardTitle>
+            <CardDescription className="text-xs mt-1">
+              Status: <Badge variant="outline" className="text-xs">{survey.status}</Badge>
+            </CardDescription>
+          </div>
+          {savedLabel ? (
+            <Badge className="bg-green-100 text-green-800 border-green-200 shrink-0">
+              <MapPin className="w-3 h-3 mr-1" />{savedLabel}
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="shrink-0">Sem geocerca</Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Step 1: City selector */}
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium">Município</Label>
+          {cities.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">
+              Nenhum município disponível. Importe geocercas com cidade preenchida na aba Geocercas.
+            </p>
+          ) : (
+            <Select
+              value={draftCity ?? "none"}
+              onValueChange={(v) => {
+                const city = v === "none" ? null : v;
+                setDraftCity(city);
+                setDraftIds([]);
+                setDirty(true);
+              }}
+              disabled={updateSurvey.isPending}
+            >
+              <SelectTrigger data-testid={`select-city-${survey.id}`} className="max-w-xs">
+                <SelectValue placeholder="Sem restrição geográfica" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sem restrição geográfica</SelectItem>
+                {cities.map(city => (
+                  <SelectItem key={city} value={city}>
+                    <Globe className="w-3 h-3 mr-1 inline" />{city}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
+        {/* Step 2: Neighborhood checklist (only when city selected and has neighborhoods) */}
+        {draftCity && hasNeighborhoods && (
+          <div className="space-y-2 pl-3 border-l-2 border-primary/20">
+            <Label className="text-sm font-medium">Bairros de coleta</Label>
+            <p className="text-xs text-muted-foreground">
+              Deixe todos desmarcados para incluir o município inteiro.
+            </p>
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {fencesInCity.map((f: any) => (
+                <label key={f.id} className="flex items-center gap-2 p-2 rounded hover:bg-muted/50 cursor-pointer text-sm" data-testid={`checkbox-zone-${f.id}`}>
+                  <input
+                    type="checkbox"
+                    className="accent-primary"
+                    checked={draftIds.includes(f.id)}
+                    onChange={() => toggleId(f.id)}
+                  />
+                  <span className="flex-1">{f.name}</span>
+                  {f.populationCount && (
+                    <span className="text-xs text-muted-foreground">{f.populationCount.toLocaleString('pt-BR')} hab.</span>
+                  )}
+                </label>
+              ))}
+            </div>
+            {draftIds.length === 0 && draftCity && (
+              <p className="text-xs text-blue-600 pl-1">
+                Nenhum bairro selecionado → todos os bairros de <strong>{draftCity}</strong> serão incluídos.
+              </p>
+            )}
+            {draftIds.length > 0 && (
+              <p className="text-xs text-blue-600 pl-1">
+                {draftIds.length} bairro(s) selecionado(s).
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Save button (only shown when there are pending changes) */}
+        {dirty && (
+          <Button size="sm" onClick={save} disabled={updateSurvey.isPending} data-testid={`button-save-geofence-${survey.id}`}>
+            {updateSurvey.isPending ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Salvando...</> : "Salvar configuração"}
+          </Button>
+        )}
+
+        {/* Blocking toggle */}
+        {currentCity && (
+          <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+            <div className="space-y-0.5">
+              <Label htmlFor={`blocking-${survey.id}`} className="text-sm font-medium cursor-pointer">
+                Bloquear coleta fora do bairro
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Se ativado, impede o envio de respostas quando a entrevistadora estiver fora do setor.
+              </p>
+            </div>
+            <Switch
+              id={`blocking-${survey.id}`}
+              checked={(survey as any).geofenceBlocking ?? false}
+              onCheckedChange={handleBlockingChange}
+              disabled={updateSurvey.isPending}
+              data-testid={`switch-blocking-${survey.id}`}
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function GeofenceConfigTab({ orgId }: { orgId: number }) {
   const { data: surveys = [], isLoading } = useSurveys(orgId);
   const updateSurvey = useUpdateSurvey();
-  const { toast } = useToast();
 
   const { data: customGeofences = [] } = useQuery({
     queryKey: ['/api/organizations', orgId, 'custom-geofences'],
@@ -58,59 +257,6 @@ function GeofenceConfigTab({ orgId }: { orgId: number }) {
   );
 
   const activeSurveys = surveys.filter((s: any) => s.status !== 'archived' && s.status !== 'draft');
-
-  function getSelectValue(survey: any): string {
-    if (!survey.geofenceNeighborhood && !survey.customGeofenceId && !survey.geofenceCity) return "none";
-    if (survey.geofenceCity) return `city:${survey.geofenceCity}`;
-    if (survey.customGeofenceId) return `custom:${survey.customGeofenceId}`;
-    return `static:${survey.geofenceNeighborhood}`;
-  }
-
-  async function handleNeighborhoodChange(surveyId: number, value: string) {
-    try {
-      if (value === "none") {
-        await updateSurvey.mutateAsync({
-          id: surveyId, orgId,
-          data: { geofenceNeighborhood: null, customGeofenceId: null, geofenceCity: null } as any,
-        });
-      } else if (value.startsWith("city:")) {
-        const city = value.slice(5);
-        await updateSurvey.mutateAsync({
-          id: surveyId, orgId,
-          data: { geofenceNeighborhood: city, customGeofenceId: null, geofenceCity: city } as any,
-        });
-      } else if (value.startsWith("static:")) {
-        const name = value.slice(7);
-        await updateSurvey.mutateAsync({
-          id: surveyId, orgId,
-          data: { geofenceNeighborhood: name, customGeofenceId: null, geofenceCity: null } as any,
-        });
-      } else if (value.startsWith("custom:")) {
-        const id = parseInt(value.slice(7));
-        const fence = (customGeofences as any[]).find((f: any) => f.id === id);
-        await updateSurvey.mutateAsync({
-          id: surveyId, orgId,
-          data: { geofenceNeighborhood: fence?.name || null, customGeofenceId: id, geofenceCity: null } as any,
-        });
-      }
-      toast({ title: "Geocerca atualizada" });
-    } catch {
-      toast({ title: "Erro ao atualizar", variant: "destructive" });
-    }
-  }
-
-  async function handleBlockingChange(surveyId: number, value: boolean) {
-    try {
-      await updateSurvey.mutateAsync({
-        id: surveyId,
-        orgId,
-        data: { geofenceBlocking: value } as any,
-      });
-      toast({ title: value ? "Bloqueio ativado" : "Bloqueio desativado" });
-    } catch {
-      toast({ title: "Erro ao atualizar", variant: "destructive" });
-    }
-  }
 
   if (isLoading) return (
     <div className="flex items-center justify-center py-16">
@@ -132,91 +278,13 @@ function GeofenceConfigTab({ orgId }: { orgId: number }) {
         Configure a delimitação geográfica de cada pesquisa. Entrevistadoras serão alertadas ou bloqueadas ao sair do bairro designado.
       </p>
       {activeSurveys.map((survey: any) => (
-        <Card key={survey.id} data-testid={`card-geofence-survey-${survey.id}`}>
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <CardTitle className="text-base">{survey.title}</CardTitle>
-                <CardDescription className="text-xs mt-1">
-                  Status: <Badge variant="outline" className="text-xs">{survey.status}</Badge>
-                </CardDescription>
-              </div>
-              {(survey as any).geofenceNeighborhood ? (
-                <Badge className="bg-green-100 text-green-800 border-green-200 shrink-0">
-                  <MapPin className="w-3 h-3 mr-1" />
-                  {(survey as any).geofenceNeighborhood}
-                </Badge>
-              ) : (
-                <Badge variant="secondary" className="shrink-0">Sem geocerca</Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Zona de coleta</Label>
-              <Select
-                value={getSelectValue(survey)}
-                onValueChange={(v) => handleNeighborhoodChange(survey.id, v)}
-                disabled={updateSurvey.isPending}
-              >
-                <SelectTrigger data-testid={`select-neighborhood-${survey.id}`} className="max-w-xs">
-                  <SelectValue placeholder="Sem restrição geográfica" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem restrição geográfica</SelectItem>
-                  {cities.length > 0 && (
-                    <>
-                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Município inteiro</div>
-                      {cities.map(city => (
-                        <SelectItem key={`city:${city}`} value={`city:${city}`}>
-                          <Globe className="w-3 h-3 mr-1 inline" />{city} — todos os bairros
-                        </SelectItem>
-                      ))}
-                    </>
-                  )}
-                  {GEOFENCE_NAMES.length > 0 && (
-                    <>
-                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bairros predefinidos</div>
-                      {GEOFENCE_NAMES.map(name => (
-                        <SelectItem key={name} value={`static:${name}`}>{name}</SelectItem>
-                      ))}
-                    </>
-                  )}
-                  {(customGeofences as any[]).length > 0 && (
-                    <>
-                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bairros individuais</div>
-                      {(customGeofences as any[]).map((f: any) => (
-                        <SelectItem key={f.id} value={`custom:${f.id}`}>
-                          {f.name}{f.city ? ` (${f.city})` : ''}
-                        </SelectItem>
-                      ))}
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {(survey as any).geofenceNeighborhood && (
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                <div className="space-y-0.5">
-                  <Label htmlFor={`blocking-${survey.id}`} className="text-sm font-medium cursor-pointer">
-                    Bloquear coleta fora do bairro
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Se ativado, impede o envio de respostas quando a entrevistadora estiver fora do setor.
-                  </p>
-                </div>
-                <Switch
-                  id={`blocking-${survey.id}`}
-                  checked={(survey as any).geofenceBlocking ?? false}
-                  onCheckedChange={(v) => handleBlockingChange(survey.id, v)}
-                  disabled={updateSurvey.isPending}
-                  data-testid={`switch-blocking-${survey.id}`}
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <GeofenceSurveyCard
+          key={survey.id}
+          survey={survey}
+          customGeofences={customGeofences as any[]}
+          cities={cities}
+          updateSurvey={updateSurvey}
+        />
       ))}
     </div>
   );
@@ -741,6 +809,8 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
   const [editName, setEditName] = useState("");
   const [editCity, setEditCity] = useState("");
   const [editPopulation, setEditPopulation] = useState("");
+  const [editGeojson, setEditGeojson] = useState("");
+  const [editGeojsonError, setEditGeojsonError] = useState<string | null>(null);
 
   const { data: geofences = [], isLoading } = useQuery({
     queryKey: ['/api/organizations', orgId, 'custom-geofences'],
@@ -794,21 +864,67 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
 
+  function polygonToGeojsonString(polygon: [number, number][] | null): string {
+    if (!polygon || polygon.length < 3) return "";
+    const coords = [...polygon];
+    if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
+      coords.push(coords[0]);
+    }
+    return JSON.stringify({
+      type: "Feature",
+      properties: {},
+      geometry: { type: "Polygon", coordinates: [coords] }
+    }, null, 2);
+  }
+
+  function openOnMap(fence: any) {
+    const polygon: [number, number][] = fence.polygon || [];
+    if (!polygon.length) return;
+    const coords = [...polygon];
+    if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
+      coords.push(coords[0]);
+    }
+    const geojson = JSON.stringify({
+      type: "FeatureCollection",
+      features: [{
+        type: "Feature",
+        properties: { name: fence.name },
+        geometry: { type: "Polygon", coordinates: [coords] }
+      }]
+    });
+    const url = `https://geojson.io/#data=data:application/json,${encodeURIComponent(geojson)}`;
+    window.open(url, '_blank', 'noopener');
+  }
+
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editingFence) return;
+      setEditGeojsonError(null);
+      let polygon: [number, number][] | undefined;
+      if (editGeojson.trim()) {
+        const result = extractPolygonFromGeoJSON(editGeojson);
+        if (result.error) {
+          setEditGeojsonError(result.error);
+          throw new Error(result.error);
+        }
+        polygon = result.coordinates!;
+      }
       await apiRequest("PATCH", `/api/organizations/${orgId}/custom-geofences/${editingFence.id}`, {
         name: editName.trim(),
         city: editCity.trim() || null,
         populationCount: editPopulation ? parseInt(editPopulation) : null,
+        ...(polygon ? { polygon } : {}),
       });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'custom-geofences'] });
       setEditingFence(null);
+      setEditGeojsonError(null);
       toast({ title: "Geocerca atualizada" });
     },
-    onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+    onError: (err: any) => {
+      if (!editGeojsonError) toast({ title: "Erro ao atualizar", variant: "destructive" });
+    },
   });
 
   function openEdit(fence: any) {
@@ -816,6 +932,8 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
     setEditName(fence.name || "");
     setEditCity(fence.city || "");
     setEditPopulation(fence.populationCount != null ? String(fence.populationCount) : "");
+    setEditGeojson(polygonToGeojsonString(fence.polygon));
+    setEditGeojsonError(null);
   }
 
   return (
@@ -912,7 +1030,7 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
                   <TableHead>Cidade</TableHead>
                   <TableHead>População</TableHead>
                   <TableHead>Criada em</TableHead>
-                  <TableHead className="w-24"></TableHead>
+                  <TableHead className="w-32"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -924,6 +1042,15 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
                     <TableCell>{formatDate(f.createdAt)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => openOnMap(f)}
+                          title="Ver no mapa (geojson.io)"
+                          data-testid={`button-map-geofence-${f.id}`}
+                        >
+                          <Globe className="w-4 h-4 text-blue-500" />
+                        </Button>
                         <Button
                           size="icon"
                           variant="ghost"
@@ -957,35 +1084,64 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
           <DialogHeader>
             <DialogTitle>Editar Geocerca</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1">
-              <Label>Nome *</Label>
-              <Input
-                value={editName}
-                onChange={e => setEditName(e.target.value)}
-                placeholder="Ex: Centro"
-                data-testid="input-edit-geofence-name"
-              />
+          <div className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1">
+                <Label>Nome *</Label>
+                <Input
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  placeholder="Ex: Centro"
+                  data-testid="input-edit-geofence-name"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Cidade / Município</Label>
+                <Input
+                  value={editCity}
+                  onChange={e => setEditCity(e.target.value)}
+                  placeholder="Ex: Marataízes"
+                  data-testid="input-edit-geofence-city"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>População (habitantes)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={editPopulation}
+                  onChange={e => setEditPopulation(e.target.value)}
+                  placeholder="Ex: 3500"
+                  data-testid="input-edit-geofence-population"
+                />
+              </div>
             </div>
             <div className="space-y-1">
-              <Label>Cidade / Município</Label>
-              <Input
-                value={editCity}
-                onChange={e => setEditCity(e.target.value)}
-                placeholder="Ex: Marataízes"
-                data-testid="input-edit-geofence-city"
+              <div className="flex items-center justify-between">
+                <Label>GeoJSON (polígono)</Label>
+                {editingFence?.polygon?.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => openOnMap(editingFence)}
+                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    <Globe className="w-3 h-3" />Ver no mapa
+                  </button>
+                )}
+              </div>
+              <Textarea
+                value={editGeojson}
+                onChange={e => { setEditGeojson(e.target.value); setEditGeojsonError(null); }}
+                placeholder="Cole o GeoJSON aqui para atualizar o polígono (opcional — deixe em branco para manter o atual)"
+                className="font-mono text-xs h-40 resize-none"
+                data-testid="textarea-edit-geofence-geojson"
               />
-            </div>
-            <div className="space-y-1">
-              <Label>População (habitantes)</Label>
-              <Input
-                type="number"
-                min="0"
-                value={editPopulation}
-                onChange={e => setEditPopulation(e.target.value)}
-                placeholder="Ex: 3500"
-                data-testid="input-edit-geofence-population"
-              />
+              {editGeojsonError && (
+                <p className="text-xs text-destructive mt-1">{editGeojsonError}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Deixe em branco para manter o polígono atual. Cole um GeoJSON válido para substituí-lo.
+              </p>
             </div>
           </div>
           <DialogFooter>

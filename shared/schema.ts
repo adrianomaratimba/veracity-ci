@@ -128,6 +128,7 @@ export const surveys = pgTable("surveys", {
   geofenceNeighborhood: text("geofence_neighborhood"),
   geofenceEnabled: boolean("geofence_enabled").default(false),
   geofenceBlocking: boolean("geofence_blocking").default(false),
+  geofenceCustomIds: jsonb("geofence_custom_ids").$type<number[]>().default([]),
   customGeofenceId: integer("custom_geofence_id"),
   geofenceCity: text("geofence_city"),
   samplingPercentage: doublePrecision("sampling_percentage"),
