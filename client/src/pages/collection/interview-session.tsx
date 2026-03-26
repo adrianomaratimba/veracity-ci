@@ -159,10 +159,10 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const interviewOrgId = (survey as any)?.organizationId || 0;
   const geofenceEnabled = (survey as any)?.geofenceEnabled ?? false;
   const geofenceBlocking = (survey as any)?.geofenceBlocking ?? false;
-  // Legacy fallback: also check old geofenceNeighborhood / geofencePolygon fields
-  const legacyNeighborhood = (survey as any)?.geofenceNeighborhood || null;
-  const legacyPolygon = (survey as any)?.geofencePolygon || null;
-  const isGeofenceActive = geofenceEnabled || !!(legacyNeighborhood || legacyPolygon);
+  // Geofencing is ONLY active when explicitly enabled by the survey settings.
+  // Legacy geofenceNeighborhood / geofencePolygon fields are ignored — they used
+  // hardcoded Pontal/Centro zones that no longer exist in the system.
+  const isGeofenceActive = geofenceEnabled;
 
   // Fetch assigned zone polygons for this survey (when geofenceEnabled)
   const [myZones, setMyZones] = useState<{ neighborhood: string; polygon: [number,number][] | null }[]>([]);
@@ -178,20 +178,19 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
   useEffect(() => { if (step === 'questions') loadMyZones(); }, [step, loadMyZones]);
 
-  // Build polygon list: zone assignments take priority over legacy survey fields
+  // Build polygon list from zone assignments (database-driven, no legacy fallback)
   const activePolygons: [number,number][][] = myZones
     .map(z => z.polygon)
     .filter((p): p is [number,number][] => !!(p && p.length >= 3));
-  const activeNeighborhood = myZones.length > 0 ? myZones[0].neighborhood : legacyNeighborhood;
+  const activeNeighborhood = myZones.length > 0 ? myZones[0].neighborhood : null;
 
   // Track if we already sent a violation report for this session
   const violationReportedRef = useRef(false);
 
-  // Geofencing - only active during question collection step
+  // Geofencing - only active during question collection step, only when survey has it enabled
   const { isInsideZone, neighborhoodName: geofenceZoneName } = useGeofencing({
     neighborhoodName: activePolygons.length > 0 ? null : activeNeighborhood,
     polygons: activePolygons.length > 0 ? activePolygons : undefined,
-    polygon: activePolygons.length === 0 ? legacyPolygon : undefined,
     enabled: step === 'questions' && isGeofenceActive,
   });
 
