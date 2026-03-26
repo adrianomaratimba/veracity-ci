@@ -12,9 +12,15 @@ interface GeofencingState {
   hasPosition: boolean;
 }
 
+interface WindowWithWebkit extends Window {
+  webkitAudioContext?: typeof AudioContext;
+}
+
 function playBeepAlert() {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioCtx = window.AudioContext || (window as WindowWithWebkit).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
 

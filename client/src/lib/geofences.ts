@@ -1,3 +1,6 @@
+import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+import { point, polygon, Feature, Polygon } from '@turf/helpers';
+
 export interface Geofence {
   name: string;
   coordinates: [number, number][];
@@ -81,20 +84,19 @@ export const GEOFENCES: Record<string, Geofence> = {
 
 export const GEOFENCE_NAMES = Object.keys(GEOFENCES);
 
-function pointInPolygon(lng: number, lat: number, polygon: [number, number][]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const [xi, yi] = polygon[i];
-    const [xj, yj] = polygon[j];
-    const intersect = (yi > lat) !== (yj > lat) &&
-      lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
+const geofencePolygons: Record<string, Feature<Polygon>> = {};
+
+function getPolygon(neighborhoodName: string): Feature<Polygon> | null {
+  if (geofencePolygons[neighborhoodName]) return geofencePolygons[neighborhoodName];
+  const fence = GEOFENCES[neighborhoodName];
+  if (!fence) return null;
+  const poly = polygon([fence.coordinates]);
+  geofencePolygons[neighborhoodName] = poly;
+  return poly;
 }
 
 export function isPointInsideGeofence(lng: number, lat: number, neighborhoodName: string): boolean {
-  const fence = GEOFENCES[neighborhoodName];
-  if (!fence) return true;
-  return pointInPolygon(lng, lat, fence.coordinates);
+  const poly = getPolygon(neighborhoodName);
+  if (!poly) return true;
+  return booleanPointInPolygon(point([lng, lat]), poly);
 }
