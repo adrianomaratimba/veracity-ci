@@ -232,6 +232,18 @@ function GeofenceSurveyCard({
             />
           </div>
         )}
+
+        {/* Next-step callout: remind admin to also assign zones per interviewer */}
+        {currentCity && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <p className="text-xs">
+              <strong>Importante:</strong> Além de configurar o município aqui, vá até a aba{' '}
+              <strong>Setores</strong> e atribua bairros a cada entrevistadora individualmente.
+              Sem atribuição de setor, a geocerca não bloqueia a coleta.
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -542,37 +554,62 @@ function ZoneAssignmentTab({ orgId }: { orgId: number }) {
             </Card>
           )}
 
-          {/* Summary table: all current assignments */}
-          {selectedSurveyId && assignmentsByInterviewer.length > 0 && (
+          {/* Summary table: all current assignments + unassigned interviewers warning */}
+          {selectedSurveyId && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Resumo de atribuições — {selectedSurvey?.title}</CardTitle>
               </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Entrevistadora</TableHead>
-                      <TableHead>Bairros atribuídos</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {assignmentsByInterviewer.map((a) => (
-                      <TableRow key={a.interviewerId} data-testid={`row-assignment-${a.interviewerId}`}>
-                        <TableCell className="font-medium">{a.name}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {a.zones.map(z => (
-                              <Badge key={z} variant="outline" className="text-xs gap-1">
-                                <MapPin className="w-2.5 h-2.5" />{z}
-                              </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
+              <CardContent className="space-y-3">
+                {assignmentsByInterviewer.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">Nenhuma atribuição salva para esta pesquisa.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Entrevistadora</TableHead>
+                        <TableHead>Bairros atribuídos</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {assignmentsByInterviewer.map((a) => (
+                        <TableRow key={a.interviewerId} data-testid={`row-assignment-${a.interviewerId}`}>
+                          <TableCell className="font-medium">{a.name}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {a.zones.map(z => (
+                                <Badge key={z} variant="outline" className="text-xs gap-1">
+                                  <MapPin className="w-2.5 h-2.5" />{z}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+
+                {/* Warn about interviewers with NO assignment (geocerca won't block them) */}
+                {(() => {
+                  const assignedIds = new Set(assignmentsByInterviewer.map(a => a.interviewerId));
+                  const unassigned = interviewers.filter((m: any) => !assignedIds.has(m.userId));
+                  if (unassigned.length === 0) return null;
+                  return (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800" data-testid="warning-unassigned-interviewers">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div className="text-xs">
+                        <p className="font-semibold mb-1">Entrevistadoras SEM setor atribuído — geocerca não vai bloquear:</p>
+                        <ul className="space-y-0.5">
+                          {unassigned.map((m: any) => (
+                            <li key={m.userId}>• {m.user?.firstName} {m.user?.lastName}</li>
+                          ))}
+                        </ul>
+                        <p className="mt-1 text-red-700">Selecione cada uma acima e atribua bairros para ativar o bloqueio.</p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           )}

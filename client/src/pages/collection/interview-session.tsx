@@ -801,8 +801,13 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
           </Card>
         )}
 
-        {/* Geofencing: loading overlay while zones or GPS are not yet ready (blocking mode) */}
-        {step === 'questions' && isGeofenceActive && geofenceBlocking && !isInsideZone && (!zonesLoaded || !geofenceHasPosition) && (
+        {/* Geofencing: loading overlay
+            Shows when:
+            a) zones are still fetching (!zonesLoaded), OR
+            b) zones are loaded + interviewer has assignments + GPS not yet confirmed
+            Does NOT show when zonesLoaded=true but myZones=[] (no assignments → no restriction) */}
+        {step === 'questions' && geofenceEnabled && geofenceBlocking &&
+          (!zonesLoaded || (myZones.length > 0 && !geofenceHasPosition)) && (
           <div
             className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-800 text-white p-8 text-center"
             data-testid="overlay-geofence-loading"
@@ -815,8 +820,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
           </div>
         )}
 
-        {/* Geofencing: blocking overlay when confirmed outside zone and blocking is enabled */}
-        {step === 'questions' && isGeofenceActive && geofenceBlocking && zonesLoaded && geofenceHasPosition && !isInsideZone && (
+        {/* Geofencing: blocking overlay — GPS confirmed user is outside their assigned zone */}
+        {step === 'questions' && geofenceEnabled && geofenceBlocking &&
+          zonesLoaded && myZones.length > 0 && geofenceHasPosition && !isInsideZone && (
           <div
             className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-red-700 text-white p-8 text-center"
             data-testid="overlay-geofence-blocked"
