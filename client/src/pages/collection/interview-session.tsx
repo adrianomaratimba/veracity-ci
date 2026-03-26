@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { useUpload } from "@/hooks/use-upload";
@@ -157,35 +157,59 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [gpsTimeoutReached, setGpsTimeoutReached] = useState(false);
 
   const interviewOrgId = (survey as any)?.organizationId || 0;
-  const geofenceNeighborhood = (survey as any)?.geofenceNeighborhood || null;
-  const geofencePolygon = (survey as any)?.geofencePolygon || null;
+  const geofenceEnabled = (survey as any)?.geofenceEnabled ?? false;
   const geofenceBlocking = (survey as any)?.geofenceBlocking ?? false;
+  // Legacy fallback: also check old geofenceNeighborhood / geofencePolygon fields
+  const legacyNeighborhood = (survey as any)?.geofenceNeighborhood || null;
+  const legacyPolygon = (survey as any)?.geofencePolygon || null;
+  const isGeofenceActive = geofenceEnabled || !!(legacyNeighborhood || legacyPolygon);
+
+  // Fetch assigned zone polygons for this survey (when geofenceEnabled)
+  const [myZones, setMyZones] = useState<{ neighborhood: string; polygon: [number,number][] | null }[]>([]);
+  const zonesLoadedRef = useRef(false);
+  const loadMyZones = useCallback(async () => {
+    if (!geofenceEnabled || zonesLoadedRef.current || !surveyId) return;
+    zonesLoadedRef.current = true;
+    try {
+      const res = await fetch(`/api/surveys/${surveyId}/my-zones`, { credentials: 'include' });
+      if (res.ok) setMyZones(await res.json());
+    } catch { /* silent */ }
+  }, [geofenceEnabled, surveyId]);
+
+  useEffect(() => { if (step === 'questions') loadMyZones(); }, [step, loadMyZones]);
+
+  // Build polygon list: zone assignments take priority over legacy survey fields
+  const activePolygons: [number,number][][] = myZones
+    .map(z => z.polygon)
+    .filter((p): p is [number,number][] => !!(p && p.length >= 3));
+  const activeNeighborhood = myZones.length > 0 ? myZones[0].neighborhood : legacyNeighborhood;
 
   // Track if we already sent a violation report for this session
   const violationReportedRef = useRef(false);
 
   // Geofencing - only active during question collection step
   const { isInsideZone, neighborhoodName: geofenceZoneName } = useGeofencing({
-    neighborhoodName: geofenceNeighborhood,
-    polygon: geofencePolygon,
-    enabled: step === 'questions' && !!(geofenceNeighborhood || geofencePolygon),
+    neighborhoodName: activePolygons.length > 0 ? null : activeNeighborhood,
+    polygons: activePolygons.length > 0 ? activePolygons : undefined,
+    polygon: activePolygons.length === 0 ? legacyPolygon : undefined,
+    enabled: step === 'questions' && isGeofenceActive,
   });
 
   // Report geofence violation to server on first exit (once per session)
   useEffect(() => {
-    if (step !== 'questions' || !(geofenceNeighborhood || geofencePolygon) || isInsideZone || violationReportedRef.current) return;
+    if (step !== 'questions' || !isGeofenceActive || isInsideZone || violationReportedRef.current) return;
     violationReportedRef.current = true;
     fetch(`/api/surveys/${surveyId}/geofence-violations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        neighborhood: geofenceNeighborhood,
+        neighborhood: activeNeighborhood || myZones.map(z => z.neighborhood).join(', '),
         latitude: null,
         longitude: null,
       }),
     }).catch(() => { /* silent — don't disrupt collection */ });
-  }, [step, geofenceNeighborhood, geofencePolygon, isInsideZone, surveyId]);
+  }, [step, isGeofenceActive, isInsideZone, surveyId]);
 
   // Real-time location tracking for supervisor monitoring
   useLocationTracking({
@@ -750,7 +774,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         )}
 
         {/* Geofencing: blocking overlay when outside zone and blocking is enabled */}
-        {step === 'questions' && (geofenceNeighborhood || geofencePolygon) && !isInsideZone && geofenceBlocking && (
+        {step === 'questions' && isGeofenceActive && !isInsideZone && geofenceBlocking && (
           <div
             className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-red-700 text-white p-8 text-center"
             data-testid="overlay-geofence-blocked"
@@ -763,7 +787,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         )}
 
         {/* Geofencing alert banner - shown when outside designated zone (warn-only mode) */}
-        {step === 'questions' && (geofenceNeighborhood || geofencePolygon) && !isInsideZone && !geofenceBlocking && (
+        {step === 'questions' && isGeofenceActive && !isInsideZone && !geofenceBlocking && (
           <div
             className="bg-red-600 text-white px-4 py-3 rounded-lg flex items-center gap-3 shadow-lg animate-pulse"
             data-testid="banner-geofence-alert"

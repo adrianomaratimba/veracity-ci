@@ -17,8 +17,15 @@ import { useSurveys, useUpdateSurvey } from "@/hooks/use-surveys";
 import { GEOFENCE_NAMES, extractPolygonFromGeoJSON } from "@/lib/geofences";
 import { apiRequest } from "@/lib/queryClient";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   MapPin, Bell, BellOff, Users, AlertTriangle, ShieldAlert, ShieldCheck,
-  Loader2, Trash2, Plus, RefreshCw, CheckCircle, Upload, Globe
+  Loader2, Trash2, Plus, RefreshCw, CheckCircle, Upload, Globe, Pencil
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -730,6 +737,10 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
   const [populationCount, setPopulationCount] = useState("");
   const [geojsonText, setGeojsonText] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
+  const [editingFence, setEditingFence] = useState<any | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCity, setEditCity] = useState("");
+  const [editPopulation, setEditPopulation] = useState("");
 
   const { data: geofences = [], isLoading } = useQuery({
     queryKey: ['/api/organizations', orgId, 'custom-geofences'],
@@ -782,6 +793,30 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
     },
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingFence) return;
+      await apiRequest("PATCH", `/api/organizations/${orgId}/custom-geofences/${editingFence.id}`, {
+        name: editName.trim(),
+        city: editCity.trim() || null,
+        populationCount: editPopulation ? parseInt(editPopulation) : null,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'custom-geofences'] });
+      setEditingFence(null);
+      toast({ title: "Geocerca atualizada" });
+    },
+    onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+  });
+
+  function openEdit(fence: any) {
+    setEditingFence(fence);
+    setEditName(fence.name || "");
+    setEditCity(fence.city || "");
+    setEditPopulation(fence.populationCount != null ? String(fence.populationCount) : "");
+  }
 
   return (
     <div className="space-y-6">
@@ -877,7 +912,7 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
                   <TableHead>Cidade</TableHead>
                   <TableHead>População</TableHead>
                   <TableHead>Criada em</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-24"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -888,15 +923,25 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
                     <TableCell>{f.populationCount ? f.populationCount.toLocaleString('pt-BR') + ' hab.' : '—'}</TableCell>
                     <TableCell>{formatDate(f.createdAt)}</TableCell>
                     <TableCell>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteMutation.mutate(f.id)}
-                        disabled={deleteMutation.isPending}
-                        data-testid={`button-delete-geofence-${f.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => openEdit(f)}
+                          data-testid={`button-edit-geofence-${f.id}`}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteMutation.mutate(f.id)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-geofence-${f.id}`}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -905,6 +950,56 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingFence} onOpenChange={(open) => { if (!open) setEditingFence(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Geocerca</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Nome *</Label>
+              <Input
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                placeholder="Ex: Centro"
+                data-testid="input-edit-geofence-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Cidade / Município</Label>
+              <Input
+                value={editCity}
+                onChange={e => setEditCity(e.target.value)}
+                placeholder="Ex: Marataízes"
+                data-testid="input-edit-geofence-city"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>População (habitantes)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={editPopulation}
+                onChange={e => setEditPopulation(e.target.value)}
+                placeholder="Ex: 3500"
+                data-testid="input-edit-geofence-population"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingFence(null)}>Cancelar</Button>
+            <Button
+              onClick={() => updateMutation.mutate()}
+              disabled={updateMutation.isPending || !editName.trim()}
+              data-testid="button-save-edit-geofence"
+            >
+              {updateMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</> : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

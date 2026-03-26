@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { isPointInsideGeofence, isPointInsidePolygon } from '@/lib/geofences';
 
 interface GeofencingOptions {
-  neighborhoodName: string | null | undefined;
-  polygon?: [number, number][] | null; // Custom polygon (overrides neighborhoodName lookup)
+  neighborhoodName?: string | null;
+  polygon?: [number, number][] | null;
+  polygons?: [number, number][][] | null;
   enabled?: boolean;
 }
 
@@ -38,13 +39,15 @@ function playBeepAlert() {
 
     setTimeout(() => ctx.close(), 1000);
   } catch {
-    // Web Audio API not available — silent fallback
   }
 }
 
-export function useGeofencing({ neighborhoodName, polygon, enabled = true }: GeofencingOptions): GeofencingState {
-  const hasGeofence = !!(neighborhoodName || (polygon && polygon.length >= 3));
-  
+export function useGeofencing({ neighborhoodName, polygon, polygons, enabled = true }: GeofencingOptions): GeofencingState {
+  const hasMultiPolygons = !!(polygons && polygons.length > 0);
+  const hasSinglePolygon = !!(polygon && polygon.length >= 3);
+  const hasNeighborhood = !!neighborhoodName;
+  const hasGeofence = hasMultiPolygons || hasSinglePolygon || hasNeighborhood;
+
   const [state, setState] = useState<GeofencingState>({
     isInsideZone: true,
     neighborhoodName: neighborhoodName || '',
@@ -57,9 +60,14 @@ export function useGeofencing({ neighborhoodName, polygon, enabled = true }: Geo
   const checkPosition = useCallback((coords: GeolocationCoordinates) => {
     if (!hasGeofence) return;
 
-    const inside = polygon && polygon.length >= 3
-      ? isPointInsidePolygon(coords.longitude, coords.latitude, polygon)
-      : isPointInsideGeofence(coords.longitude, coords.latitude, neighborhoodName!);
+    let inside = false;
+    if (hasMultiPolygons && polygons) {
+      inside = polygons.some(poly => isPointInsidePolygon(coords.longitude, coords.latitude, poly));
+    } else if (hasSinglePolygon && polygon) {
+      inside = isPointInsidePolygon(coords.longitude, coords.latitude, polygon);
+    } else if (hasNeighborhood && neighborhoodName) {
+      inside = isPointInsideGeofence(coords.longitude, coords.latitude, neighborhoodName);
+    }
 
     setState(prev => ({
       ...prev,
@@ -72,7 +80,7 @@ export function useGeofencing({ neighborhoodName, polygon, enabled = true }: Geo
       playBeepAlert();
     }
     wasInsideRef.current = inside;
-  }, [neighborhoodName, polygon, hasGeofence]);
+  }, [neighborhoodName, polygon, polygons, hasGeofence, hasMultiPolygons, hasSinglePolygon, hasNeighborhood]);
 
   useEffect(() => {
     const active = enabled && hasGeofence && !!navigator.geolocation;

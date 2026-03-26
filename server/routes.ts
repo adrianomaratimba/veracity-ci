@@ -3048,6 +3048,30 @@ export async function registerRoutes(
     }
   });
 
+  // GET: fetch the current user's assigned zones (with polygons) for a survey
+  app.get("/api/surveys/:surveyId/my-zones", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      const surveyId = parseInt(req.params.surveyId);
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      const orgId = survey.organizationId;
+      // Get zone assignments for this interviewer + survey
+      const assignments = await storage.getZoneAssignments(orgId, surveyId);
+      const myAssignments = assignments.filter((a: any) => a.interviewerId === userId);
+      if (myAssignments.length === 0) return res.json([]);
+      // Get custom geofences to match polygons by name
+      const orgGeofences = await storage.getCustomGeofences(orgId);
+      const zones = myAssignments.map((a: any) => {
+        const fence = orgGeofences.find((f: any) => f.name === a.neighborhood);
+        return { neighborhood: a.neighborhood, polygon: fence?.polygon || null, populationCount: fence?.populationCount || null };
+      });
+      res.json(zones);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao buscar zonas" });
+    }
+  });
+
   // GET: fetch geofence violations for an org (supervisor/admin view)
   app.get("/api/organizations/:orgId/geofence-violations", isAuthenticated, requireOrgAccess("orgId", "analytics:view"), async (req, res) => {
     try {

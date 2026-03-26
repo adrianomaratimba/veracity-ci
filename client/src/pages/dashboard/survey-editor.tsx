@@ -612,6 +612,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     geofenceCity: null as string | null,
     customGeofenceId: null as number | null,
     samplingPercentage: null as number | null,
+    geofenceEnabled: false,
   });
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
@@ -659,6 +660,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         requireAudio: (survey as any).requireAudio ?? true,
         geofenceNeighborhood: (survey as any).geofenceNeighborhood ?? "",
         geofenceBlocking: (survey as any).geofenceBlocking ?? false,
+        geofenceEnabled: (survey as any).geofenceEnabled ?? false,
         geofenceCity: (survey as any).geofenceCity ?? null,
         customGeofenceId: (survey as any).customGeofenceId ?? null,
         samplingPercentage: (survey as any).samplingPercentage ?? null,
@@ -750,6 +752,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             requireAudio: surveyForm.requireAudio,
             geofenceNeighborhood: surveyForm.geofenceNeighborhood || null,
             geofenceBlocking: surveyForm.geofenceBlocking,
+            geofenceEnabled: surveyForm.geofenceEnabled,
             geofenceCity: surveyForm.geofenceCity ?? null,
             customGeofenceId: surveyForm.customGeofenceId ?? null,
             samplingPercentage: surveyForm.samplingPercentage ?? null,
@@ -777,6 +780,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             requireAudio: surveyForm.requireAudio,
             geofenceNeighborhood: surveyForm.geofenceNeighborhood || null,
             geofenceBlocking: surveyForm.geofenceBlocking,
+            geofenceEnabled: surveyForm.geofenceEnabled,
             geofenceCity: surveyForm.geofenceCity ?? null,
             customGeofenceId: surveyForm.customGeofenceId ?? null,
             samplingPercentage: surveyForm.samplingPercentage ?? null,
@@ -2190,89 +2194,41 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                   </p>
                 </div>
 
-                <div className="space-y-3 pt-4 border-t">
-                  <Label className="text-base font-medium">Geocerca</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Alerta o entrevistador quando ele sair da zona designada para esta pesquisa
-                  </p>
-                  <Select
-                    value={
-                      surveyForm.geofenceCity ? `city:${surveyForm.geofenceCity}`
-                      : surveyForm.customGeofenceId ? `custom:${surveyForm.customGeofenceId}`
-                      : surveyForm.geofenceNeighborhood ? `static:${surveyForm.geofenceNeighborhood}`
-                      : "none"
-                    }
-                    onValueChange={(v) => {
-                      if (v === "none") {
-                        setSurveyForm({ ...surveyForm, geofenceNeighborhood: "", geofenceCity: null, customGeofenceId: null });
-                      } else if (v.startsWith("city:")) {
-                        const city = v.slice(5);
-                        setSurveyForm({ ...surveyForm, geofenceNeighborhood: city, geofenceCity: city, customGeofenceId: null });
-                      } else if (v.startsWith("static:")) {
-                        const name = v.slice(7);
-                        setSurveyForm({ ...surveyForm, geofenceNeighborhood: name, geofenceCity: null, customGeofenceId: null });
-                      } else if (v.startsWith("custom:")) {
-                        const id = parseInt(v.slice(7));
-                        const fence = editorCustomGeofences.find((f: any) => f.id === id);
-                        setSurveyForm({ ...surveyForm, geofenceNeighborhood: fence?.name || "", geofenceCity: null, customGeofenceId: id });
-                      }
-                      setHasChanges(true);
-                    }}
-                  >
-                    <SelectTrigger data-testid="select-geofence-neighborhood">
-                      <SelectValue placeholder="Sem restrição geográfica" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Sem restrição geográfica</SelectItem>
-                      {editorCities.length > 0 && (
-                        <>
-                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Município inteiro</div>
-                          {editorCities.map(city => (
-                            <SelectItem key={`city:${city}`} value={`city:${city}`}>{city} — todos os bairros</SelectItem>
-                          ))}
-                        </>
-                      )}
-                      {GEOFENCE_NAMES.length > 0 && (
-                        <>
-                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bairros predefinidos</div>
-                          {GEOFENCE_NAMES.map(name => (
-                            <SelectItem key={`static:${name}`} value={`static:${name}`}>{name}</SelectItem>
-                          ))}
-                        </>
-                      )}
-                      {editorCustomGeofences.length > 0 && (
-                        <>
-                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bairros individuais</div>
-                          {editorCustomGeofences.map((f: any) => (
-                            <SelectItem key={`custom:${f.id}`} value={`custom:${f.id}`}>{f.name}{f.city ? ` (${f.city})` : ''}</SelectItem>
-                          ))}
-                        </>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {(surveyForm.geofenceNeighborhood || surveyForm.geofenceCity) && (
-                    <>
-                      <p className="text-xs text-blue-600 pl-1">
-                        {surveyForm.geofenceCity
-                          ? <>Geocerca: <strong>{surveyForm.geofenceCity} — município inteiro</strong></>
-                          : <>Geocerca: <strong>{surveyForm.geofenceNeighborhood}</strong></>
-                        }
+                <div className="space-y-4 pt-4 border-t">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="geofence-enabled" className="text-base font-medium">Geocerca ativa</Label>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        Alerta o entrevistador quando ele sair da zona designada para esta pesquisa
                       </p>
-                      <div className="flex items-center justify-between pt-3 border-t border-dashed">
-                        <div>
-                          <Label htmlFor="geofence-blocking" className="font-medium">Bloquear coleta fora do setor</Label>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Se ativado, o entrevistador não poderá coletar respostas enquanto estiver fora do bairro
-                          </p>
-                        </div>
-                        <Switch
-                          id="geofence-blocking"
-                          checked={surveyForm.geofenceBlocking}
-                          onCheckedChange={(v) => { setSurveyForm({ ...surveyForm, geofenceBlocking: v }); setHasChanges(true); }}
-                          data-testid="switch-geofence-blocking"
-                        />
+                    </div>
+                    <Switch
+                      id="geofence-enabled"
+                      checked={surveyForm.geofenceEnabled ?? false}
+                      onCheckedChange={(v) => { setSurveyForm({ ...surveyForm, geofenceEnabled: v }); setHasChanges(true); }}
+                      data-testid="switch-geofence-enabled"
+                    />
+                  </div>
+                  {surveyForm.geofenceEnabled && (
+                    <div className="flex items-center justify-between pl-4 border-l-2 border-primary/20">
+                      <div>
+                        <Label htmlFor="geofence-blocking" className="font-medium">Bloquear coleta fora do setor</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Se ativado, o entrevistador não poderá coletar respostas fora da zona atribuída
+                        </p>
                       </div>
-                    </>
+                      <Switch
+                        id="geofence-blocking"
+                        checked={surveyForm.geofenceBlocking}
+                        onCheckedChange={(v) => { setSurveyForm({ ...surveyForm, geofenceBlocking: v }); setHasChanges(true); }}
+                        data-testid="switch-geofence-blocking"
+                      />
+                    </div>
+                  )}
+                  {surveyForm.geofenceEnabled && (
+                    <p className="text-xs text-blue-600 pl-1">
+                      As zonas de atuação de cada entrevistadora são definidas na aba <strong>Geocerca → Setores</strong>.
+                    </p>
                   )}
                 </div>
 
