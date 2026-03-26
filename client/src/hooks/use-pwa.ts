@@ -12,12 +12,12 @@ function isStandalone(): boolean {
   );
 }
 
-// On iOS every browser (Safari, Chrome, Firefox) uses WebKit and
-// does NOT support beforeinstallprompt — manual "Add to Home Screen" is required.
 function isIOSWithoutInstallPrompt(): boolean {
   const ua = navigator.userAgent;
   return /iphone|ipad|ipod/i.test(ua) && !isStandalone();
 }
+
+const DISMISSED_KEY = 'pwa-install-dismissed';
 
 export function usePWA() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -26,6 +26,9 @@ export function usePWA() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOSSafari, setIsIOSSafari] = useState(false);
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() => {
+    try { return localStorage.getItem(DISMISSED_KEY) === '1'; } catch { return false; }
+  });
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -39,10 +42,9 @@ export function usePWA() {
   }, []);
 
   useEffect(() => {
-    // iOS (Safari, Chrome, Firefox) cannot use beforeinstallprompt — detect separately
     if (isIOSWithoutInstallPrompt()) {
       setIsIOSSafari(true);
-      setIsInstallable(true); // treat as "installable" so button appears
+      setIsInstallable(true);
     }
 
     const handleBeforeInstall = (e: Event) => {
@@ -65,7 +67,6 @@ export function usePWA() {
 
   const installApp = async () => {
     if (isIOSSafari) {
-      // Show manual instructions for iOS
       setShowIOSInstructions(true);
       return false;
     }
@@ -84,6 +85,11 @@ export function usePWA() {
     return outcome === 'accepted';
   };
 
+  const dismissBanner = () => {
+    try { localStorage.setItem(DISMISSED_KEY, '1'); } catch {}
+    setIsDismissed(true);
+  };
+
   const dismissIOSInstructions = () => setShowIOSInstructions(false);
 
   return {
@@ -92,6 +98,8 @@ export function usePWA() {
     isInstalled,
     isIOSSafari,
     showIOSInstructions,
+    isDismissed,
+    dismissBanner,
     dismissIOSInstructions,
     installApp,
   };

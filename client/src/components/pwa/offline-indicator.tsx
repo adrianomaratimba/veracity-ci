@@ -10,6 +10,8 @@ export function OfflineIndicator() {
     isInstalled,
     isIOSSafari,
     showIOSInstructions,
+    isDismissed,
+    dismissBanner,
     dismissIOSInstructions,
     installApp,
   } = usePWA();
@@ -37,15 +39,25 @@ export function OfflineIndicator() {
           </div>
         )}
 
-        {isInstallable && !isInstalled && (
-          <Button
-            onClick={handleInstall}
-            className="gap-2 shadow-lg"
-            data-testid="button-install-pwa"
-          >
-            <Download className="w-4 h-4" />
-            Instalar App
-          </Button>
+        {isInstallable && !isInstalled && !isDismissed && (
+          <div className="flex items-center gap-1 shadow-lg rounded-lg overflow-hidden">
+            <Button
+              onClick={handleInstall}
+              className="gap-2 rounded-r-none"
+              data-testid="button-install-pwa"
+            >
+              <Download className="w-4 h-4" />
+              Instalar App
+            </Button>
+            <button
+              onClick={dismissBanner}
+              className="h-full px-2 bg-primary hover:bg-primary/80 text-primary-foreground flex items-center border-l border-primary-foreground/20"
+              aria-label="Fechar"
+              data-testid="button-dismiss-install-banner"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         )}
 
         {isInstalled && (
@@ -67,7 +79,6 @@ export function OfflineIndicator() {
             className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5 pb-8 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-base text-gray-900">Adicionar à Tela de Início</h3>
               <button
@@ -83,7 +94,6 @@ export function OfflineIndicator() {
               No Safari, siga os passos abaixo para instalar o app na tela inicial do seu iPhone:
             </p>
 
-            {/* Step 1 */}
             <div className="flex items-start gap-3">
               <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</div>
               <div>
@@ -98,7 +108,6 @@ export function OfflineIndicator() {
               </div>
             </div>
 
-            {/* Step 2 */}
             <div className="flex items-start gap-3">
               <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</div>
               <div>
@@ -110,7 +119,6 @@ export function OfflineIndicator() {
               </div>
             </div>
 
-            {/* Step 3 */}
             <div className="flex items-start gap-3">
               <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</div>
               <div>
