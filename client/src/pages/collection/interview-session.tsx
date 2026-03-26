@@ -260,9 +260,10 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
     const handleNewPosition = (position: GeolocationPosition) => {
       const coords = position.coords;
+      const isImprovement = !bestSample || coords.accuracy < bestSample.accuracy;
 
       // Track best (most accurate) sample so far
-      if (!bestSample || coords.accuracy < bestSample.accuracy) {
+      if (isImprovement) {
         bestSample = coords;
         setGpsBestSoFar(coords);
       }
@@ -286,6 +287,10 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         }
         setGpsCoords(coords);
         setGpsAccuracyOk(true);
+      } else if (isImprovement) {
+        // Chip is improving — silently update coords even after auto-accept
+        // so submitted data always reflects the best GPS reading available
+        setGpsCoords(coords);
       }
       // Otherwise keep collecting — acceptAnywayTimeout will fire after 20s
     };
@@ -313,15 +318,18 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     }, 8000);
 
     // After 20s without a good-accuracy fix, accept the best we have automatically
+    // but keep the watch running in background so GPS chip can still warm up
     acceptAnywayTimeoutId = setTimeout(() => {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-      }
       if (bestSample) {
         setGpsCoords(bestSample);
         setGpsAccuracyOk(false);
+        // Keep watchId running — handleNewPosition will keep updating bestSample
+        // and will call setGpsCoords / setGpsAccuracyOk again if accuracy improves
       } else {
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
         setGpsTimeoutReached(true);
       }
     }, 20000);
@@ -709,11 +717,24 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                           : gpsCoords && gpsAccuracyOk
                           ? `Boa precisão: ${gpsCoords.accuracy.toFixed(0)}m`
                           : gpsCoords && !gpsAccuracyOk
-                          ? `Precisão atual: ${gpsCoords.accuracy.toFixed(0)}m (impreciso, mas liberado)`
+                          ? `Precisão: ${gpsCoords.accuracy.toFixed(0)}m (chip GPS não ativo)`
+                          : gpsBestSoFar && gpsBestSoFar.accuracy > 500
+                          ? `Sinal fraco (${gpsBestSoFar.accuracy.toFixed(0)}m) — aguardando chip GPS...`
                           : gpsBestSoFar
                           ? `Aguardando sinal melhor... ${gpsBestSoFar.accuracy.toFixed(0)}m`
                           : "Aguardando sinal GPS..."}
                       </p>
+                      {/* Help text when GPS chip is not engaging (accuracy > 500m) */}
+                      {!skippedGps && !gpsCoords && gpsBestSoFar && gpsBestSoFar.accuracy > 500 && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          💡 Ative o GPS de alta precisão nas configurações do celular e vá para um local a céu aberto.
+                        </p>
+                      )}
+                      {!skippedGps && gpsCoords && !gpsAccuracyOk && gpsCoords.accuracy > 500 && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          💡 Precisão muito baixa. Ative "Alta precisão" no GPS do celular.
+                        </p>
+                      )}
                     </div>
                   </div>
                   {/* No GPS signal at all after 5s — show skip */}
