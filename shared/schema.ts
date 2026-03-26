@@ -127,6 +127,7 @@ export const surveys = pgTable("surveys", {
   requireAudio: boolean("require_audio").default(true),
   geofenceNeighborhood: text("geofence_neighborhood"),
   geofenceBlocking: boolean("geofence_blocking").default(false),
+  customGeofenceId: integer("custom_geofence_id"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -733,6 +734,19 @@ export const geofenceViolations = pgTable("geofence_violations", {
 export const insertGeofenceViolationSchema = createInsertSchema(geofenceViolations).omit({ id: true, createdAt: true });
 export type InsertGeofenceViolation = z.infer<typeof insertGeofenceViolationSchema>;
 export type GeofenceViolation = typeof geofenceViolations.$inferSelect;
+
+// Custom geofences created by organizations
+export const customGeofences = pgTable("custom_geofences", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  city: text("city").notNull(),
+  polygon: jsonb("polygon").notNull(), // Array of [lng, lat] pairs
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertCustomGeofenceSchema = createInsertSchema(customGeofences).omit({ id: true, createdAt: true });
+export type InsertCustomGeofence = z.infer<typeof insertCustomGeofenceSchema>;
+export type CustomGeofence = typeof customGeofences.$inferSelect;
 
 // Chat messages between supervisors and interviewers
 export const messages = pgTable("messages", {

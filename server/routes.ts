@@ -765,7 +765,13 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Acesso negado" });
     }
     
-    res.json(survey);
+    // Include custom geofence polygon if the survey has one
+    let geofencePolygon: any = null;
+    if ((survey as any).customGeofenceId) {
+      const customFence = await storage.getCustomGeofenceById((survey as any).customGeofenceId);
+      if (customFence) geofencePolygon = customFence.polygon;
+    }
+    res.json({ ...survey, geofencePolygon });
   });
 
   app.post(api.surveys.create.path, isAuthenticated, requireOrgAccess("orgId", "surveys:create"), async (req, res) => {
@@ -3045,6 +3051,49 @@ export async function registerRoutes(
     } catch (err) {
       console.error('[geofence-violations/list] error:', err);
       res.status(500).json({ message: "Erro ao buscar violações" });
+    }
+  });
+
+  // --- CUSTOM GEOFENCES ---
+  app.get("/api/organizations/:orgId/custom-geofences", isAuthenticated, requireOrgAccess("orgId", "surveys:view"), async (req, res) => {
+    const orgId = parseInt(req.params.orgId);
+    const geofences = await storage.getCustomGeofences(orgId);
+    res.json(geofences);
+  });
+
+  app.post("/api/organizations/:orgId/custom-geofences", isAuthenticated, requireOrgAccess("orgId", "surveys:*"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.orgId);
+      const { name, city, polygon } = req.body;
+      if (!name?.trim() || !city?.trim() || !polygon?.length) {
+        return res.status(400).json({ message: "Nome, cidade e polígono são obrigatórios" });
+      }
+      const geofence = await storage.createCustomGeofence({ organizationId: orgId, name: name.trim(), city: city.trim(), polygon });
+      res.status(201).json(geofence);
+    } catch (err) {
+      console.error('[custom-geofences/create] error:', err);
+      res.status(500).json({ message: "Erro ao criar geocerca" });
+    }
+  });
+
+  app.patch("/api/organizations/:orgId/custom-geofences/:id", isAuthenticated, requireOrgAccess("orgId", "surveys:*"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { name, city, polygon } = req.body;
+      const geofence = await storage.updateCustomGeofence(id, { name, city, polygon });
+      res.json(geofence);
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao atualizar geocerca" });
+    }
+  });
+
+  app.delete("/api/organizations/:orgId/custom-geofences/:id", isAuthenticated, requireOrgAccess("orgId", "surveys:*"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCustomGeofence(id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao deletar geocerca" });
     }
   });
 

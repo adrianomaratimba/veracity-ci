@@ -22,7 +22,8 @@ import {
   pushSubscriptions, PushSubscription,
   interviewerZoneAssignments, InterviewerZoneAssignment, InsertInterviewerZoneAssignment,
   messages, Message, InsertMessage,
-  userPushSubscriptions, UserPushSubscription
+  userPushSubscriptions, UserPushSubscription,
+  customGeofences, CustomGeofence, InsertCustomGeofence
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
@@ -240,6 +241,13 @@ export interface IStorage {
   saveUserPushSubscription(userId: string, subscription: object): Promise<UserPushSubscription>;
   deleteUserPushSubscription(userId: string): Promise<void>;
   getUserPushSubscriptionByUser(userId: string): Promise<UserPushSubscription | undefined>;
+
+  // Custom Geofences
+  getCustomGeofences(orgId: number): Promise<CustomGeofence[]>;
+  getCustomGeofenceById(id: number): Promise<CustomGeofence | undefined>;
+  createCustomGeofence(data: InsertCustomGeofence): Promise<CustomGeofence>;
+  updateCustomGeofence(id: number, data: Partial<InsertCustomGeofence>): Promise<CustomGeofence>;
+  deleteCustomGeofence(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2110,6 +2118,30 @@ export class DatabaseStorage implements IStorage {
   async getUserPushSubscriptionByUser(userId: string): Promise<UserPushSubscription | undefined> {
     const [row] = await db.select().from(userPushSubscriptions).where(eq(userPushSubscriptions.userId, userId));
     return row;
+  }
+
+  // --- CUSTOM GEOFENCES ---
+  async getCustomGeofences(orgId: number): Promise<CustomGeofence[]> {
+    return db.select().from(customGeofences).where(eq(customGeofences.organizationId, orgId)).orderBy(desc(customGeofences.createdAt));
+  }
+
+  async getCustomGeofenceById(id: number): Promise<CustomGeofence | undefined> {
+    const [row] = await db.select().from(customGeofences).where(eq(customGeofences.id, id));
+    return row;
+  }
+
+  async createCustomGeofence(data: InsertCustomGeofence): Promise<CustomGeofence> {
+    const [row] = await db.insert(customGeofences).values(data).returning();
+    return row;
+  }
+
+  async updateCustomGeofence(id: number, data: Partial<InsertCustomGeofence>): Promise<CustomGeofence> {
+    const [row] = await db.update(customGeofences).set(data).where(eq(customGeofences.id, id)).returning();
+    return row;
+  }
+
+  async deleteCustomGeofence(id: number): Promise<void> {
+    await db.delete(customGeofences).where(eq(customGeofences.id, id));
   }
 }
 

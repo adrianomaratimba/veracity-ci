@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { isPointInsideGeofence } from '@/lib/geofences';
+import { isPointInsideGeofence, isPointInsidePolygon } from '@/lib/geofences';
 
 interface GeofencingOptions {
   neighborhoodName: string | null | undefined;
+  polygon?: [number, number][] | null; // Custom polygon (overrides neighborhoodName lookup)
   enabled?: boolean;
 }
 
@@ -41,7 +42,9 @@ function playBeepAlert() {
   }
 }
 
-export function useGeofencing({ neighborhoodName, enabled = true }: GeofencingOptions): GeofencingState {
+export function useGeofencing({ neighborhoodName, polygon, enabled = true }: GeofencingOptions): GeofencingState {
+  const hasGeofence = !!(neighborhoodName || (polygon && polygon.length >= 3));
+  
   const [state, setState] = useState<GeofencingState>({
     isInsideZone: true,
     neighborhoodName: neighborhoodName || '',
@@ -52,14 +55,16 @@ export function useGeofencing({ neighborhoodName, enabled = true }: GeofencingOp
   const watchIdRef = useRef<number | null>(null);
 
   const checkPosition = useCallback((coords: GeolocationCoordinates) => {
-    if (!neighborhoodName) return;
+    if (!hasGeofence) return;
 
-    const inside = isPointInsideGeofence(coords.longitude, coords.latitude, neighborhoodName);
+    const inside = polygon && polygon.length >= 3
+      ? isPointInsidePolygon(coords.longitude, coords.latitude, polygon)
+      : isPointInsideGeofence(coords.longitude, coords.latitude, neighborhoodName!);
 
     setState(prev => ({
       ...prev,
       isInsideZone: inside,
-      neighborhoodName: neighborhoodName,
+      neighborhoodName: neighborhoodName || '',
       hasPosition: true,
     }));
 
@@ -67,10 +72,10 @@ export function useGeofencing({ neighborhoodName, enabled = true }: GeofencingOp
       playBeepAlert();
     }
     wasInsideRef.current = inside;
-  }, [neighborhoodName]);
+  }, [neighborhoodName, polygon, hasGeofence]);
 
   useEffect(() => {
-    const active = enabled && !!neighborhoodName && !!navigator.geolocation;
+    const active = enabled && hasGeofence && !!navigator.geolocation;
     if (!active) return;
 
     watchIdRef.current = navigator.geolocation.watchPosition(

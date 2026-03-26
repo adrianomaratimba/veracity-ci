@@ -158,6 +158,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
   const interviewOrgId = (survey as any)?.organizationId || 0;
   const geofenceNeighborhood = (survey as any)?.geofenceNeighborhood || null;
+  const geofencePolygon = (survey as any)?.geofencePolygon || null;
   const geofenceBlocking = (survey as any)?.geofenceBlocking ?? false;
 
   // Track if we already sent a violation report for this session
@@ -166,12 +167,13 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   // Geofencing - only active during question collection step
   const { isInsideZone, neighborhoodName: geofenceZoneName } = useGeofencing({
     neighborhoodName: geofenceNeighborhood,
-    enabled: step === 'questions' && !!geofenceNeighborhood,
+    polygon: geofencePolygon,
+    enabled: step === 'questions' && !!(geofenceNeighborhood || geofencePolygon),
   });
 
   // Report geofence violation to server on first exit (once per session)
   useEffect(() => {
-    if (step !== 'questions' || !geofenceNeighborhood || isInsideZone || violationReportedRef.current) return;
+    if (step !== 'questions' || !(geofenceNeighborhood || geofencePolygon) || isInsideZone || violationReportedRef.current) return;
     violationReportedRef.current = true;
     fetch(`/api/surveys/${surveyId}/geofence-violations`, {
       method: 'POST',
@@ -183,7 +185,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         longitude: null,
       }),
     }).catch(() => { /* silent — don't disrupt collection */ });
-  }, [step, geofenceNeighborhood, isInsideZone, surveyId]);
+  }, [step, geofenceNeighborhood, geofencePolygon, isInsideZone, surveyId]);
 
   // Real-time location tracking for supervisor monitoring
   useLocationTracking({
@@ -748,7 +750,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         )}
 
         {/* Geofencing: blocking overlay when outside zone and blocking is enabled */}
-        {step === 'questions' && geofenceNeighborhood && !isInsideZone && geofenceBlocking && (
+        {step === 'questions' && (geofenceNeighborhood || geofencePolygon) && !isInsideZone && geofenceBlocking && (
           <div
             className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-red-700 text-white p-8 text-center"
             data-testid="overlay-geofence-blocked"
@@ -761,7 +763,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         )}
 
         {/* Geofencing alert banner - shown when outside designated zone (warn-only mode) */}
-        {step === 'questions' && geofenceNeighborhood && !isInsideZone && !geofenceBlocking && (
+        {step === 'questions' && (geofenceNeighborhood || geofencePolygon) && !isInsideZone && !geofenceBlocking && (
           <div
             className="bg-red-600 text-white px-4 py-3 rounded-lg flex items-center gap-3 shadow-lg animate-pulse"
             data-testid="banner-geofence-alert"

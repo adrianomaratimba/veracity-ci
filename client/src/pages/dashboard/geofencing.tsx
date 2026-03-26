@@ -7,16 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useSurveys, useUpdateSurvey } from "@/hooks/use-surveys";
-import { GEOFENCE_NAMES } from "@/lib/geofences";
+import { GEOFENCE_NAMES, extractPolygonFromGeoJSON } from "@/lib/geofences";
 import { apiRequest } from "@/lib/queryClient";
 import {
   MapPin, Bell, BellOff, Users, AlertTriangle, ShieldAlert, ShieldCheck,
-  Loader2, Trash2, Plus, RefreshCw, CheckCircle
+  Loader2, Trash2, Plus, RefreshCw, CheckCircle, Upload, Globe
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -33,16 +35,46 @@ function GeofenceConfigTab({ orgId }: { orgId: number }) {
   const updateSurvey = useUpdateSurvey();
   const { toast } = useToast();
 
+  const { data: customGeofences = [] } = useQuery({
+    queryKey: ['/api/organizations', orgId, 'custom-geofences'],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${orgId}/custom-geofences`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!orgId,
+  });
+
   const activeSurveys = surveys.filter((s: any) => s.status !== 'archived' && s.status !== 'draft');
+
+  function getSelectValue(survey: any): string {
+    if (!survey.geofenceNeighborhood) return "none";
+    if (survey.customGeofenceId) return `custom:${survey.customGeofenceId}`;
+    return `static:${survey.geofenceNeighborhood}`;
+  }
 
   async function handleNeighborhoodChange(surveyId: number, value: string) {
     try {
-      await updateSurvey.mutateAsync({
-        id: surveyId,
-        orgId,
-        data: { geofenceNeighborhood: value === "none" ? null : value } as any,
-      });
-      toast({ title: "Bairro atualizado" });
+      if (value === "none") {
+        await updateSurvey.mutateAsync({
+          id: surveyId, orgId,
+          data: { geofenceNeighborhood: null, customGeofenceId: null } as any,
+        });
+      } else if (value.startsWith("static:")) {
+        const name = value.slice(7);
+        await updateSurvey.mutateAsync({
+          id: surveyId, orgId,
+          data: { geofenceNeighborhood: name, customGeofenceId: null } as any,
+        });
+      } else if (value.startsWith("custom:")) {
+        const id = parseInt(value.slice(7));
+        const fence = (customGeofences as any[]).find((f: any) => f.id === id);
+        await updateSurvey.mutateAsync({
+          id: surveyId, orgId,
+          data: { geofenceNeighborhood: fence?.name || null, customGeofenceId: id } as any,
+        });
+      }
+      toast({ title: "Geocerca atualizada" });
     } catch {
       toast({ title: "Erro ao atualizar", variant: "destructive" });
     }
@@ -102,20 +134,35 @@ function GeofenceConfigTab({ orgId }: { orgId: number }) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Bairro de coleta</Label>
+              <Label className="text-sm font-medium">Zona de coleta</Label>
               <Select
-                value={(survey as any).geofenceNeighborhood || "none"}
+                value={getSelectValue(survey)}
                 onValueChange={(v) => handleNeighborhoodChange(survey.id, v)}
                 disabled={updateSurvey.isPending}
               >
                 <SelectTrigger data-testid={`select-neighborhood-${survey.id}`} className="max-w-xs">
-                  <SelectValue placeholder="Sem restrição de bairro" />
+                  <SelectValue placeholder="Sem restrição geográfica" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Sem restrição de bairro</SelectItem>
-                  {GEOFENCE_NAMES.map(name => (
-                    <SelectItem key={name} value={name}>{name}</SelectItem>
-                  ))}
+                  <SelectItem value="none">Sem restrição geográfica</SelectItem>
+                  {GEOFENCE_NAMES.length > 0 && (
+                    <>
+                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bairros predefinidos</div>
+                      {GEOFENCE_NAMES.map(name => (
+                        <SelectItem key={name} value={`static:${name}`}>{name}</SelectItem>
+                      ))}
+                    </>
+                  )}
+                  {(customGeofences as any[]).length > 0 && (
+                    <>
+                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Geocercas personalizadas</div>
+                      {(customGeofences as any[]).map((f: any) => (
+                        <SelectItem key={f.id} value={`custom:${f.id}`}>
+                          <Globe className="w-3 h-3 mr-1 inline" />{f.name}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -562,6 +609,181 @@ function ViolationsTab({ orgId }: { orgId: number }) {
   );
 }
 
+// ---------- Custom Geofences Tab ----------
+
+function CustomGeofencesTab({ orgId }: { orgId: number }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [city, setCity] = useState("");
+  const [geojsonText, setGeojsonText] = useState("");
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  const { data: geofences = [], isLoading } = useQuery({
+    queryKey: ['/api/organizations', orgId, 'custom-geofences'],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${orgId}/custom-geofences`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!orgId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      setParseError(null);
+      const result = extractPolygonFromGeoJSON(geojsonText);
+      if (result.error) {
+        setParseError(result.error);
+        throw new Error(result.error);
+      }
+      const polygon = result.coordinates!;
+      const res = await apiRequest("POST", `/api/organizations/${orgId}/custom-geofences`, {
+        name: name.trim(),
+        city: city.trim() || null,
+        polygon,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'custom-geofences'] });
+      setName("");
+      setCity("");
+      setGeojsonText("");
+      setParseError(null);
+      toast({ title: "Geocerca importada com sucesso" });
+    },
+    onError: (err: any) => {
+      if (!parseError) toast({ title: err.message || "Erro ao importar", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/organizations/${orgId}/custom-geofences/${id}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'custom-geofences'] });
+      toast({ title: "Geocerca removida" });
+    },
+    onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Upload className="w-4 h-4" />
+            Importar Geocerca via GeoJSON
+          </CardTitle>
+          <CardDescription>
+            Importe um polígono GeoJSON para definir uma zona personalizada de coleta. Você pode exportar polígonos de ferramentas como geojson.io.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Nome da geocerca *</Label>
+              <Input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Ex: Zona Sul Marataízes"
+                data-testid="input-geofence-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Cidade / Município</Label>
+              <Input
+                value={city}
+                onChange={e => setCity(e.target.value)}
+                placeholder="Ex: Marataízes"
+                data-testid="input-geofence-city"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label>GeoJSON *</Label>
+            <Textarea
+              value={geojsonText}
+              onChange={e => { setGeojsonText(e.target.value); setParseError(null); }}
+              placeholder='Cole aqui o GeoJSON (Polygon, Feature ou FeatureCollection)...'
+              className="font-mono text-xs h-40 resize-none"
+              data-testid="textarea-geofence-geojson"
+            />
+            {parseError && (
+              <p className="text-xs text-destructive mt-1">{parseError}</p>
+            )}
+          </div>
+
+          <Button
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !name.trim() || !geojsonText.trim()}
+            data-testid="button-import-geofence"
+          >
+            {createMutation.isPending ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</>
+            ) : (
+              <><Upload className="w-4 h-4 mr-2" />Importar Geocerca</>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Geocercas importadas</CardTitle>
+          <CardDescription>Lista de zonas personalizadas disponíveis para atribuição às pesquisas.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : (geofences as any[]).length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Globe className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">Nenhuma geocerca importada ainda.</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Cidade</TableHead>
+                  <TableHead>Pontos</TableHead>
+                  <TableHead>Criada em</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(geofences as any[]).map((f: any) => (
+                  <TableRow key={f.id} data-testid={`row-geofence-${f.id}`}>
+                    <TableCell className="font-medium">{f.name}</TableCell>
+                    <TableCell>{f.city || '—'}</TableCell>
+                    <TableCell>{Array.isArray(f.polygon) ? f.polygon.length : '—'}</TableCell>
+                    <TableCell>{formatDate(f.createdAt)}</TableCell>
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => deleteMutation.mutate(f.id)}
+                        disabled={deleteMutation.isPending}
+                        data-testid={`button-delete-geofence-${f.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ---------- Main Page ----------
 
 export default function GeofencingPage() {
@@ -584,7 +806,7 @@ export default function GeofencingPage() {
         </div>
 
         <Tabs defaultValue="config">
-          <TabsList className="grid grid-cols-4 w-full max-w-xl">
+          <TabsList className="grid grid-cols-5 w-full max-w-2xl">
             <TabsTrigger value="config" data-testid="tab-geofence-config">
               <MapPin className="w-3.5 h-3.5 mr-1.5" />
               Configuração
@@ -601,6 +823,10 @@ export default function GeofencingPage() {
               <AlertTriangle className="w-3.5 h-3.5 mr-1.5" />
               Violações
             </TabsTrigger>
+            <TabsTrigger value="geocercas" data-testid="tab-geofence-custom">
+              <Globe className="w-3.5 h-3.5 mr-1.5" />
+              Geocercas
+            </TabsTrigger>
           </TabsList>
 
           <div className="mt-6">
@@ -615,6 +841,9 @@ export default function GeofencingPage() {
             </TabsContent>
             <TabsContent value="violations">
               <ViolationsTab orgId={orgId} />
+            </TabsContent>
+            <TabsContent value="geocercas">
+              <CustomGeofencesTab orgId={orgId} />
             </TabsContent>
           </div>
         </Tabs>
