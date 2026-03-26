@@ -229,6 +229,7 @@ export interface IStorage {
   getZoneAssignments(orgId: number, surveyId?: number): Promise<(InterviewerZoneAssignment & { interviewerName: string; interviewerEmail: string })[]>;
   upsertZoneAssignment(data: InsertInterviewerZoneAssignment): Promise<InterviewerZoneAssignment>;
   deleteZoneAssignment(id: number): Promise<void>;
+  replaceZoneAssignments(orgId: number, surveyId: number, interviewerId: string, neighborhoods: string[]): Promise<void>;
 
   // Chat Messages
   sendMessage(data: InsertMessage): Promise<Message>;
@@ -2010,6 +2011,20 @@ export class DatabaseStorage implements IStorage {
 
   async deleteZoneAssignment(id: number): Promise<void> {
     await db.delete(interviewerZoneAssignments).where(eq(interviewerZoneAssignments.id, id));
+  }
+
+  async replaceZoneAssignments(orgId: number, surveyId: number, interviewerId: string, neighborhoods: string[]): Promise<void> {
+    await db.delete(interviewerZoneAssignments)
+      .where(and(
+        eq(interviewerZoneAssignments.organizationId, orgId),
+        eq(interviewerZoneAssignments.surveyId, surveyId),
+        eq(interviewerZoneAssignments.interviewerId, interviewerId)
+      ));
+    if (neighborhoods.length > 0) {
+      await db.insert(interviewerZoneAssignments).values(
+        neighborhoods.map(neighborhood => ({ organizationId: orgId, surveyId, interviewerId, neighborhood }))
+      );
+    }
   }
 
   // --- CHAT MESSAGES ---

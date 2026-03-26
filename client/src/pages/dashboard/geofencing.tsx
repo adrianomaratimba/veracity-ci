@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -45,10 +45,16 @@ function GeofenceConfigTab({ orgId }: { orgId: number }) {
     enabled: !!orgId,
   });
 
+  const cities = useMemo(() =>
+    [...new Set((customGeofences as any[]).filter((f: any) => f.city).map((f: any) => f.city as string))],
+    [customGeofences]
+  );
+
   const activeSurveys = surveys.filter((s: any) => s.status !== 'archived' && s.status !== 'draft');
 
   function getSelectValue(survey: any): string {
-    if (!survey.geofenceNeighborhood) return "none";
+    if (!survey.geofenceNeighborhood && !survey.customGeofenceId && !survey.geofenceCity) return "none";
+    if (survey.geofenceCity) return `city:${survey.geofenceCity}`;
     if (survey.customGeofenceId) return `custom:${survey.customGeofenceId}`;
     return `static:${survey.geofenceNeighborhood}`;
   }
@@ -58,20 +64,26 @@ function GeofenceConfigTab({ orgId }: { orgId: number }) {
       if (value === "none") {
         await updateSurvey.mutateAsync({
           id: surveyId, orgId,
-          data: { geofenceNeighborhood: null, customGeofenceId: null } as any,
+          data: { geofenceNeighborhood: null, customGeofenceId: null, geofenceCity: null } as any,
+        });
+      } else if (value.startsWith("city:")) {
+        const city = value.slice(5);
+        await updateSurvey.mutateAsync({
+          id: surveyId, orgId,
+          data: { geofenceNeighborhood: city, customGeofenceId: null, geofenceCity: city } as any,
         });
       } else if (value.startsWith("static:")) {
         const name = value.slice(7);
         await updateSurvey.mutateAsync({
           id: surveyId, orgId,
-          data: { geofenceNeighborhood: name, customGeofenceId: null } as any,
+          data: { geofenceNeighborhood: name, customGeofenceId: null, geofenceCity: null } as any,
         });
       } else if (value.startsWith("custom:")) {
         const id = parseInt(value.slice(7));
         const fence = (customGeofences as any[]).find((f: any) => f.id === id);
         await updateSurvey.mutateAsync({
           id: surveyId, orgId,
-          data: { geofenceNeighborhood: fence?.name || null, customGeofenceId: id } as any,
+          data: { geofenceNeighborhood: fence?.name || null, customGeofenceId: id, geofenceCity: null } as any,
         });
       }
       toast({ title: "Geocerca atualizada" });
@@ -145,6 +157,16 @@ function GeofenceConfigTab({ orgId }: { orgId: number }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sem restrição geográfica</SelectItem>
+                  {cities.length > 0 && (
+                    <>
+                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Município inteiro</div>
+                      {cities.map(city => (
+                        <SelectItem key={`city:${city}`} value={`city:${city}`}>
+                          <Globe className="w-3 h-3 mr-1 inline" />{city} — todos os bairros
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                   {GEOFENCE_NAMES.length > 0 && (
                     <>
                       <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bairros predefinidos</div>
@@ -155,10 +177,10 @@ function GeofenceConfigTab({ orgId }: { orgId: number }) {
                   )}
                   {(customGeofences as any[]).length > 0 && (
                     <>
-                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Geocercas personalizadas</div>
+                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bairros individuais</div>
                       {(customGeofences as any[]).map((f: any) => (
                         <SelectItem key={f.id} value={`custom:${f.id}`}>
-                          <Globe className="w-3 h-3 mr-1 inline" />{f.name}
+                          {f.name}{f.city ? ` (${f.city})` : ''}
                         </SelectItem>
                       ))}
                     </>
@@ -196,12 +218,14 @@ function GeofenceConfigTab({ orgId }: { orgId: number }) {
 function ZoneAssignmentTab({ orgId }: { orgId: number }) {
   const { data: surveys = [] } = useSurveys(orgId);
   const [selectedSurveyId, setSelectedSurveyId] = useState<number | null>(null);
-  const [addInterviewerId, setAddInterviewerId] = useState("");
-  const [addNeighborhood, setAddNeighborhood] = useState("");
+  const [selectedInterviewerId, setSelectedInterviewerId] = useState("");
+  const [checkedZones, setCheckedZones] = useState<string[]>([]);
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const geofencedSurveys = surveys.filter((s: any) => (s as any).geofenceNeighborhood);
+  const geofencedSurveys = surveys.filter((s: any) =>
+    (s as any).geofenceNeighborhood || (s as any).customGeofenceId || (s as any).geofenceCity
+  );
 
   const { data: members = [] } = useQuery({
     queryKey: ['/api/organizations', orgId, 'members'],
@@ -215,7 +239,17 @@ function ZoneAssignmentTab({ orgId }: { orgId: number }) {
 
   const interviewers = members.filter((m: any) => m.role === 'interviewer');
 
-  const { data: assignments = [], isLoading: loadingAssignments } = useQuery({
+  const { data: customGeofences = [] } = useQuery({
+    queryKey: ['/api/organizations', orgId, 'custom-geofences'],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${orgId}/custom-geofences`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!orgId,
+  });
+
+  const { data: assignments = [] } = useQuery({
     queryKey: ['/api/organizations', orgId, 'zone-assignments', selectedSurveyId],
     queryFn: async () => {
       const url = selectedSurveyId
@@ -228,167 +262,244 @@ function ZoneAssignmentTab({ orgId }: { orgId: number }) {
     enabled: !!orgId,
   });
 
-  const addMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedSurveyId || !addInterviewerId || !addNeighborhood) throw new Error("Preencha todos os campos");
-      const res = await apiRequest("POST", `/api/organizations/${orgId}/zone-assignments`, {
-        surveyId: selectedSurveyId,
-        interviewerId: addInterviewerId,
-        neighborhood: addNeighborhood,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'zone-assignments'] });
-      setAddInterviewerId("");
-      setAddNeighborhood("");
-      toast({ title: "Atribuição salva" });
-    },
-    onError: (err: any) => toast({ title: err.message || "Erro", variant: "destructive" }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/organizations/${orgId}/zone-assignments/${id}`);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'zone-assignments'] });
-      toast({ title: "Atribuição removida" });
-    },
-    onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
-  });
-
   const selectedSurvey = geofencedSurveys.find((s: any) => s.id === selectedSurveyId) as any;
+
+  // Determine available zones for the selected survey
+  const availableZones: { id: string; name: string; city?: string; population?: number }[] = useMemo(() => {
+    if (!selectedSurvey) return [];
+    const fences = customGeofences as any[];
+    if (selectedSurvey.geofenceCity) {
+      return fences
+        .filter((f: any) => f.city === selectedSurvey.geofenceCity)
+        .map((f: any) => ({ id: f.name, name: f.name, city: f.city, population: f.populationCount }));
+    }
+    if (selectedSurvey.customGeofenceId) {
+      const thisFence = fences.find((f: any) => f.id === selectedSurvey.customGeofenceId);
+      if (thisFence?.city) {
+        return fences
+          .filter((f: any) => f.city === thisFence.city)
+          .map((f: any) => ({ id: f.name, name: f.name, city: f.city, population: f.populationCount }));
+      }
+      return thisFence ? [{ id: thisFence.name, name: thisFence.name, city: thisFence.city, population: thisFence.populationCount }] : [];
+    }
+    if (selectedSurvey.geofenceNeighborhood) {
+      return GEOFENCE_NAMES.map(name => ({ id: name, name }));
+    }
+    return fences.map((f: any) => ({ id: f.name, name: f.name, city: f.city, population: f.populationCount }));
+  }, [selectedSurvey, customGeofences]);
+
+  // When interviewer changes → load their current assignments for this survey
+  useEffect(() => {
+    if (!selectedInterviewerId || !selectedSurveyId) { setCheckedZones([]); return; }
+    const myAssignments = (assignments as any[])
+      .filter((a: any) => a.interviewerId === selectedInterviewerId)
+      .map((a: any) => a.neighborhood);
+    setCheckedZones(myAssignments);
+  }, [selectedInterviewerId, assignments, selectedSurveyId]);
+
+  const allChecked = availableZones.length > 0 && availableZones.every(z => checkedZones.includes(z.id));
+
+  function toggleAll() {
+    setCheckedZones(allChecked ? [] : availableZones.map(z => z.id));
+  }
+
+  function toggleZone(zoneId: string) {
+    setCheckedZones(prev => prev.includes(zoneId) ? prev.filter(z => z !== zoneId) : [...prev, zoneId]);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedSurveyId || !selectedInterviewerId) throw new Error("Selecione pesquisa e entrevistadora");
+      await apiRequest("PUT", `/api/organizations/${orgId}/zone-assignments/bulk`, {
+        surveyId: selectedSurveyId,
+        interviewerId: selectedInterviewerId,
+        neighborhoods: checkedZones,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'zone-assignments'] });
+      toast({ title: "Atribuições salvas com sucesso" });
+    },
+    onError: (err: any) => toast({ title: err.message || "Erro ao salvar", variant: "destructive" }),
+  });
+
+  // Summary: assignments grouped by interviewer
+  const assignmentsByInterviewer = useMemo(() => {
+    const map = new Map<string, { name: string; zones: string[] }>();
+    for (const a of assignments as any[]) {
+      if (!map.has(a.interviewerId)) {
+        map.set(a.interviewerId, { name: a.interviewerName, zones: [] });
+      }
+      map.get(a.interviewerId)!.zones.push(a.neighborhood);
+    }
+    return [...map.entries()].map(([id, v]) => ({ interviewerId: id, ...v }));
+  }, [assignments]);
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Defina qual entrevistadora trabalha em qual bairro para cada pesquisa com geocerca ativa.
+        Defina quais bairros cada entrevistadora cobre em cada pesquisa. Marque vários bairros de uma vez ou selecione o município inteiro.
       </p>
 
       {geofencedSurveys.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            Nenhuma pesquisa tem bairro configurado. Configure na aba <strong>Configuração</strong> primeiro.
+            Nenhuma pesquisa tem geocerca configurada. Configure na aba <strong>Configuração</strong> primeiro.
           </CardContent>
         </Card>
       ) : (
         <>
-          <div className="flex items-center gap-3">
-            <Label className="shrink-0 text-sm">Pesquisa:</Label>
-            <Select
-              value={selectedSurveyId?.toString() || ""}
-              onValueChange={(v) => setSelectedSurveyId(parseInt(v))}
-            >
-              <SelectTrigger className="max-w-xs" data-testid="select-survey-zone">
-                <SelectValue placeholder="Selecionar pesquisa..." />
-              </SelectTrigger>
-              <SelectContent>
-                {geofencedSurveys.map((s: any) => (
-                  <SelectItem key={s.id} value={s.id.toString()}>
-                    {s.title} ({s.geofenceNeighborhood})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="space-y-1 flex-1 min-w-[200px]">
+              <Label className="text-xs font-semibold">Pesquisa</Label>
+              <Select
+                value={selectedSurveyId?.toString() || ""}
+                onValueChange={(v) => { setSelectedSurveyId(parseInt(v)); setSelectedInterviewerId(""); setCheckedZones([]); }}
+              >
+                <SelectTrigger data-testid="select-survey-zone">
+                  <SelectValue placeholder="Selecionar pesquisa..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {geofencedSurveys.map((s: any) => (
+                    <SelectItem key={s.id} value={s.id.toString()}>
+                      {s.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedSurveyId && (
+              <div className="space-y-1 flex-1 min-w-[200px]">
+                <Label className="text-xs font-semibold">Entrevistadora</Label>
+                <Select
+                  value={selectedInterviewerId}
+                  onValueChange={(v) => setSelectedInterviewerId(v)}
+                >
+                  <SelectTrigger data-testid="select-interviewer-assignment">
+                    <SelectValue placeholder="Selecionar entrevistadora..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {interviewers.map((m: any) => (
+                      <SelectItem key={m.userId} value={m.userId}>
+                        {m.user?.firstName} {m.user?.lastName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
-          {selectedSurveyId && (
-            <>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Nova atribuição</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-end gap-3 flex-wrap">
-                    <div className="space-y-1 flex-1 min-w-[160px]">
-                      <Label className="text-xs">Entrevistadora</Label>
-                      <Select value={addInterviewerId} onValueChange={setAddInterviewerId}>
-                        <SelectTrigger data-testid="select-interviewer-assignment">
-                          <SelectValue placeholder="Selecionar..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {interviewers.map((m: any) => (
-                            <SelectItem key={m.userId} value={m.userId}>
-                              {m.user?.firstName} {m.user?.lastName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1 flex-1 min-w-[140px]">
-                      <Label className="text-xs">Bairro</Label>
-                      <Select value={addNeighborhood} onValueChange={setAddNeighborhood}>
-                        <SelectTrigger data-testid="select-neighborhood-assignment">
-                          <SelectValue placeholder="Bairro..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {GEOFENCE_NAMES.map(name => (
-                            <SelectItem key={name} value={name}>{name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      onClick={() => addMutation.mutate()}
-                      disabled={addMutation.isPending || !addInterviewerId || !addNeighborhood}
-                      data-testid="button-add-zone-assignment"
-                      className="shrink-0"
+          {selectedSurveyId && selectedInterviewerId && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">Selecionar zonas de coleta</CardTitle>
+                  <Badge variant="secondary">{checkedZones.length} selecionado(s)</Badge>
+                </div>
+                {selectedSurvey?.geofenceCity && (
+                  <CardDescription className="text-xs">
+                    <Globe className="w-3 h-3 inline mr-1" />Município: {selectedSurvey.geofenceCity} — {availableZones.length} bairros disponíveis
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {availableZones.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">Nenhum bairro disponível para esta pesquisa.</p>
+                ) : (
+                  <>
+                    {/* Municipality-wide toggle */}
+                    <div
+                      className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${allChecked ? 'border-primary bg-primary/5' : 'border-dashed border-muted-foreground/30 hover:border-primary/50'}`}
+                      onClick={toggleAll}
+                      data-testid="checkbox-municipality-all"
                     >
-                      {addMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
-                      Atribuir
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${allChecked ? 'bg-primary border-primary' : 'border-muted-foreground/50'}`}>
+                        {allChecked && <CheckCircle className="w-3 h-3 text-white" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {selectedSurvey?.geofenceCity ? `${selectedSurvey.geofenceCity} — Município inteiro` : 'Selecionar todos'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{availableZones.length} bairros</p>
+                      </div>
+                    </div>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Atribuições — {selectedSurvey?.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {loadingAssignments ? (
-                    <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
-                  ) : assignments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">Nenhuma atribuição ainda.</p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Entrevistadora</TableHead>
-                          <TableHead>Bairro</TableHead>
-                          <TableHead className="w-12"></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {assignments.map((a: any) => (
-                          <TableRow key={a.id} data-testid={`row-assignment-${a.id}`}>
-                            <TableCell className="font-medium">{a.interviewerName}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="gap-1">
-                                <MapPin className="w-3 h-3" />{a.neighborhood}
+                    {/* Individual zone checkboxes in a grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {availableZones.map(zone => {
+                        const checked = checkedZones.includes(zone.id);
+                        return (
+                          <div
+                            key={zone.id}
+                            className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${checked ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/40'}`}
+                            onClick={() => toggleZone(zone.id)}
+                            data-testid={`checkbox-zone-${zone.id}`}
+                          >
+                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${checked ? 'bg-primary border-primary' : 'border-muted-foreground/40'}`}>
+                              {checked && <CheckCircle className="w-2.5 h-2.5 text-white" />}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium truncate">{zone.name}</p>
+                              {zone.population ? (
+                                <p className="text-xs text-muted-foreground">{zone.population.toLocaleString('pt-BR')} hab.</p>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => saveMutation.mutate()}
+                    disabled={saveMutation.isPending}
+                    data-testid="button-save-zone-assignments"
+                  >
+                    {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                    Salvar atribuições
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Summary table: all current assignments */}
+          {selectedSurveyId && assignmentsByInterviewer.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Resumo de atribuições — {selectedSurvey?.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Entrevistadora</TableHead>
+                      <TableHead>Bairros atribuídos</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {assignmentsByInterviewer.map((a) => (
+                      <TableRow key={a.interviewerId} data-testid={`row-assignment-${a.interviewerId}`}>
+                        <TableCell className="font-medium">{a.name}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {a.zones.map(z => (
+                              <Badge key={z} variant="outline" className="text-xs gap-1">
+                                <MapPin className="w-2.5 h-2.5" />{z}
                               </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => deleteMutation.mutate(a.id)}
-                                disabled={deleteMutation.isPending}
-                                data-testid={`button-delete-assignment-${a.id}`}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           )}
         </>
       )}
@@ -616,6 +727,7 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
+  const [populationCount, setPopulationCount] = useState("");
   const [geojsonText, setGeojsonText] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
 
@@ -641,6 +753,7 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
       const res = await apiRequest("POST", `/api/organizations/${orgId}/custom-geofences`, {
         name: name.trim(),
         city: city.trim() || null,
+        populationCount: populationCount ? parseInt(populationCount) : null,
         polygon,
       });
       return res.json();
@@ -649,6 +762,7 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
       qc.invalidateQueries({ queryKey: ['/api/organizations', orgId, 'custom-geofences'] });
       setName("");
       setCity("");
+      setPopulationCount("");
       setGeojsonText("");
       setParseError(null);
       toast({ title: "Geocerca importada com sucesso" });
@@ -682,13 +796,13 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
               <Label>Nome da geocerca *</Label>
               <Input
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="Ex: Zona Sul Marataízes"
+                placeholder="Ex: Centro"
                 data-testid="input-geofence-name"
               />
             </div>
@@ -699,6 +813,17 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
                 onChange={e => setCity(e.target.value)}
                 placeholder="Ex: Marataízes"
                 data-testid="input-geofence-city"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>População (habitantes)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={populationCount}
+                onChange={e => setPopulationCount(e.target.value)}
+                placeholder="Ex: 3500"
+                data-testid="input-geofence-population"
               />
             </div>
           </div>
@@ -750,7 +875,7 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead>Cidade</TableHead>
-                  <TableHead>Pontos</TableHead>
+                  <TableHead>População</TableHead>
                   <TableHead>Criada em</TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
@@ -760,7 +885,7 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
                   <TableRow key={f.id} data-testid={`row-geofence-${f.id}`}>
                     <TableCell className="font-medium">{f.name}</TableCell>
                     <TableCell>{f.city || '—'}</TableCell>
-                    <TableCell>{Array.isArray(f.polygon) ? f.polygon.length : '—'}</TableCell>
+                    <TableCell>{f.populationCount ? f.populationCount.toLocaleString('pt-BR') + ' hab.' : '—'}</TableCell>
                     <TableCell>{formatDate(f.createdAt)}</TableCell>
                     <TableCell>
                       <Button

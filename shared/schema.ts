@@ -128,6 +128,8 @@ export const surveys = pgTable("surveys", {
   geofenceNeighborhood: text("geofence_neighborhood"),
   geofenceBlocking: boolean("geofence_blocking").default(false),
   customGeofenceId: integer("custom_geofence_id"),
+  geofenceCity: text("geofence_city"),
+  samplingPercentage: doublePrecision("sampling_percentage"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -740,8 +742,9 @@ export const customGeofences = pgTable("custom_geofences", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   name: text("name").notNull(),
-  city: text("city").notNull(),
+  city: text("city"),
   polygon: jsonb("polygon").notNull(), // Array of [lng, lat] pairs
+  populationCount: integer("population_count"), // Number of residents in the area
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertCustomGeofenceSchema = createInsertSchema(customGeofences).omit({ id: true, createdAt: true });

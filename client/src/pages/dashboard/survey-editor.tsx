@@ -608,7 +608,10 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     requireGps: true,
     requireAudio: true,
     geofenceNeighborhood: "",
-    geofenceBlocking: false
+    geofenceBlocking: false,
+    geofenceCity: null as string | null,
+    customGeofenceId: null as number | null,
+    samplingPercentage: null as number | null,
   });
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
@@ -627,6 +630,18 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     enabled: !isNewSurvey,
   });
 
+  // Custom geofences query for the geofence dropdown
+  const { data: editorCustomGeofences = [] } = useQuery<any[]>({
+    queryKey: ['/api/organizations', orgId, 'custom-geofences'],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${orgId}/custom-geofences`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!orgId,
+  });
+  const editorCities = [...new Set(editorCustomGeofences.filter((f: any) => f.city).map((f: any) => f.city as string))];
+
   useEffect(() => {
     if (survey) {
       setSurveyForm({
@@ -643,7 +658,10 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         requireGps: (survey as any).requireGps ?? true,
         requireAudio: (survey as any).requireAudio ?? true,
         geofenceNeighborhood: (survey as any).geofenceNeighborhood ?? "",
-        geofenceBlocking: (survey as any).geofenceBlocking ?? false
+        geofenceBlocking: (survey as any).geofenceBlocking ?? false,
+        geofenceCity: (survey as any).geofenceCity ?? null,
+        customGeofenceId: (survey as any).customGeofenceId ?? null,
+        samplingPercentage: (survey as any).samplingPercentage ?? null,
       });
       if (survey.questions) {
         setQuestions(survey.questions.map(q => ({
@@ -731,8 +749,11 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             requireGps: surveyForm.requireGps,
             requireAudio: surveyForm.requireAudio,
             geofenceNeighborhood: surveyForm.geofenceNeighborhood || null,
-            geofenceBlocking: surveyForm.geofenceBlocking
-          }
+            geofenceBlocking: surveyForm.geofenceBlocking,
+            geofenceCity: surveyForm.geofenceCity ?? null,
+            customGeofenceId: surveyForm.customGeofenceId ?? null,
+            samplingPercentage: surveyForm.samplingPercentage ?? null,
+          } as any
         });
         toast({ title: "Criada", description: "Pesquisa criada com sucesso!" });
         setLocation(`/org/${orgId}/surveys/${newSurvey.id}`);
@@ -755,8 +776,11 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             requireGps: surveyForm.requireGps,
             requireAudio: surveyForm.requireAudio,
             geofenceNeighborhood: surveyForm.geofenceNeighborhood || null,
-            geofenceBlocking: surveyForm.geofenceBlocking
-          }
+            geofenceBlocking: surveyForm.geofenceBlocking,
+            geofenceCity: surveyForm.geofenceCity ?? null,
+            customGeofenceId: surveyForm.customGeofenceId ?? null,
+            samplingPercentage: surveyForm.samplingPercentage ?? null,
+          } as any
         });
         
         // Also save all questions (including logic) when saving the survey
@@ -2167,28 +2191,72 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                 </div>
 
                 <div className="space-y-3 pt-4 border-t">
-                  <Label className="text-base font-medium">Geocerca por Bairro</Label>
+                  <Label className="text-base font-medium">Geocerca</Label>
                   <p className="text-sm text-muted-foreground">
-                    Alerta o entrevistador quando ele sair do bairro designado para esta pesquisa
+                    Alerta o entrevistador quando ele sair da zona designada para esta pesquisa
                   </p>
                   <Select
-                    value={surveyForm.geofenceNeighborhood || "none"}
-                    onValueChange={(v) => { setSurveyForm({ ...surveyForm, geofenceNeighborhood: v === "none" ? "" : v }); setHasChanges(true); }}
+                    value={
+                      surveyForm.geofenceCity ? `city:${surveyForm.geofenceCity}`
+                      : surveyForm.customGeofenceId ? `custom:${surveyForm.customGeofenceId}`
+                      : surveyForm.geofenceNeighborhood ? `static:${surveyForm.geofenceNeighborhood}`
+                      : "none"
+                    }
+                    onValueChange={(v) => {
+                      if (v === "none") {
+                        setSurveyForm({ ...surveyForm, geofenceNeighborhood: "", geofenceCity: null, customGeofenceId: null });
+                      } else if (v.startsWith("city:")) {
+                        const city = v.slice(5);
+                        setSurveyForm({ ...surveyForm, geofenceNeighborhood: city, geofenceCity: city, customGeofenceId: null });
+                      } else if (v.startsWith("static:")) {
+                        const name = v.slice(7);
+                        setSurveyForm({ ...surveyForm, geofenceNeighborhood: name, geofenceCity: null, customGeofenceId: null });
+                      } else if (v.startsWith("custom:")) {
+                        const id = parseInt(v.slice(7));
+                        const fence = editorCustomGeofences.find((f: any) => f.id === id);
+                        setSurveyForm({ ...surveyForm, geofenceNeighborhood: fence?.name || "", geofenceCity: null, customGeofenceId: id });
+                      }
+                      setHasChanges(true);
+                    }}
                   >
                     <SelectTrigger data-testid="select-geofence-neighborhood">
-                      <SelectValue placeholder="Sem restrição de bairro" />
+                      <SelectValue placeholder="Sem restrição geográfica" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Sem restrição de bairro</SelectItem>
-                      {GEOFENCE_NAMES.map(name => (
-                        <SelectItem key={name} value={name}>{name}</SelectItem>
-                      ))}
+                      <SelectItem value="none">Sem restrição geográfica</SelectItem>
+                      {editorCities.length > 0 && (
+                        <>
+                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Município inteiro</div>
+                          {editorCities.map(city => (
+                            <SelectItem key={`city:${city}`} value={`city:${city}`}>{city} — todos os bairros</SelectItem>
+                          ))}
+                        </>
+                      )}
+                      {GEOFENCE_NAMES.length > 0 && (
+                        <>
+                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bairros predefinidos</div>
+                          {GEOFENCE_NAMES.map(name => (
+                            <SelectItem key={`static:${name}`} value={`static:${name}`}>{name}</SelectItem>
+                          ))}
+                        </>
+                      )}
+                      {editorCustomGeofences.length > 0 && (
+                        <>
+                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bairros individuais</div>
+                          {editorCustomGeofences.map((f: any) => (
+                            <SelectItem key={`custom:${f.id}`} value={`custom:${f.id}`}>{f.name}{f.city ? ` (${f.city})` : ''}</SelectItem>
+                          ))}
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
-                  {surveyForm.geofenceNeighborhood && (
+                  {(surveyForm.geofenceNeighborhood || surveyForm.geofenceCity) && (
                     <>
                       <p className="text-xs text-blue-600 pl-1">
-                        Entrevistadores verão um alerta ao sair do bairro: <strong>{surveyForm.geofenceNeighborhood}</strong>
+                        {surveyForm.geofenceCity
+                          ? <>Geocerca: <strong>{surveyForm.geofenceCity} — município inteiro</strong></>
+                          : <>Geocerca: <strong>{surveyForm.geofenceNeighborhood}</strong></>
+                        }
                       </p>
                       <div className="flex items-center justify-between pt-3 border-t border-dashed">
                         <div>
@@ -2205,6 +2273,36 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                         />
                       </div>
                     </>
+                  )}
+                </div>
+
+                <div className="space-y-3 pt-4 border-t">
+                  <Label className="text-base font-medium">Percentual de amostragem por setor</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Quando definido, calcula automaticamente a cota de entrevistas por bairro com base na população cadastrada em cada geocerca.
+                  </p>
+                  <div className="flex items-center gap-2 max-w-xs">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={surveyForm.samplingPercentage ?? ""}
+                      onChange={e => {
+                        const v = e.target.value ? parseFloat(e.target.value) : null;
+                        setSurveyForm({ ...surveyForm, samplingPercentage: v });
+                        setHasChanges(true);
+                      }}
+                      placeholder="Ex: 0.5"
+                      data-testid="input-sampling-percentage"
+                      className="max-w-[120px]"
+                    />
+                    <span className="text-sm text-muted-foreground">% da população</span>
+                  </div>
+                  {surveyForm.samplingPercentage && (
+                    <p className="text-xs text-blue-600 pl-1">
+                      Ex: bairro com 3.000 hab. → cota de {Math.ceil(3000 * surveyForm.samplingPercentage / 100)} entrevistas
+                    </p>
                   )}
                 </div>
 

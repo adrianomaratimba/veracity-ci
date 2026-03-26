@@ -765,13 +765,20 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Acesso negado" });
     }
     
-    // Include custom geofence polygon if the survey has one
+    // Include custom geofence polygon(s) if the survey has them
     let geofencePolygon: any = null;
+    let geofenceCityPolygons: any[] = [];
     if ((survey as any).customGeofenceId) {
       const customFence = await storage.getCustomGeofenceById((survey as any).customGeofenceId);
       if (customFence) geofencePolygon = customFence.polygon;
     }
-    res.json({ ...survey, geofencePolygon });
+    if ((survey as any).geofenceCity) {
+      const cityFences = await storage.getCustomGeofences(survey.organizationId);
+      geofenceCityPolygons = cityFences
+        .filter((f: any) => f.city === (survey as any).geofenceCity)
+        .map((f: any) => ({ id: f.id, name: f.name, polygon: f.polygon, populationCount: f.populationCount }));
+    }
+    res.json({ ...survey, geofencePolygon, geofenceCityPolygons });
   });
 
   app.post(api.surveys.create.path, isAuthenticated, requireOrgAccess("orgId", "surveys:create"), async (req, res) => {
@@ -3061,14 +3068,20 @@ export async function registerRoutes(
     res.json(geofences);
   });
 
-  app.post("/api/organizations/:orgId/custom-geofences", isAuthenticated, requireOrgAccess("orgId", "surveys:*"), async (req, res) => {
+  app.post("/api/organizations/:orgId/custom-geofences", isAuthenticated, requireOrgAccess("orgId", "surveys:edit"), async (req, res) => {
     try {
       const orgId = parseInt(req.params.orgId);
-      const { name, city, polygon } = req.body;
-      if (!name?.trim() || !city?.trim() || !polygon?.length) {
-        return res.status(400).json({ message: "Nome, cidade e polígono são obrigatórios" });
+      const { name, city, polygon, populationCount } = req.body;
+      if (!name?.trim() || !polygon?.length) {
+        return res.status(400).json({ message: "Nome e polígono são obrigatórios" });
       }
-      const geofence = await storage.createCustomGeofence({ organizationId: orgId, name: name.trim(), city: city.trim(), polygon });
+      const geofence = await storage.createCustomGeofence({
+        organizationId: orgId,
+        name: name.trim(),
+        city: city?.trim() || null,
+        polygon,
+        populationCount: populationCount ? parseInt(populationCount) : null,
+      });
       res.status(201).json(geofence);
     } catch (err) {
       console.error('[custom-geofences/create] error:', err);
@@ -3076,24 +3089,43 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/organizations/:orgId/custom-geofences/:id", isAuthenticated, requireOrgAccess("orgId", "surveys:*"), async (req, res) => {
+  app.patch("/api/organizations/:orgId/custom-geofences/:id", isAuthenticated, requireOrgAccess("orgId", "surveys:edit"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { name, city, polygon } = req.body;
-      const geofence = await storage.updateCustomGeofence(id, { name, city, polygon });
+      const { name, city, polygon, populationCount } = req.body;
+      const geofence = await storage.updateCustomGeofence(id, {
+        name, city, polygon,
+        populationCount: populationCount !== undefined ? (populationCount ? parseInt(populationCount) : null) : undefined,
+      });
       res.json(geofence);
     } catch (err) {
       res.status(500).json({ message: "Erro ao atualizar geocerca" });
     }
   });
 
-  app.delete("/api/organizations/:orgId/custom-geofences/:id", isAuthenticated, requireOrgAccess("orgId", "surveys:*"), async (req, res) => {
+  app.delete("/api/organizations/:orgId/custom-geofences/:id", isAuthenticated, requireOrgAccess("orgId", "surveys:edit"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       await storage.deleteCustomGeofence(id);
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ message: "Erro ao deletar geocerca" });
+    }
+  });
+
+  // Replace all zone assignments for a specific interviewer+survey
+  app.put("/api/organizations/:orgId/zone-assignments/bulk", isAuthenticated, requireOrgAccess("orgId", "surveys:edit"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.orgId);
+      const { surveyId, interviewerId, neighborhoods } = req.body;
+      if (!surveyId || !interviewerId || !Array.isArray(neighborhoods)) {
+        return res.status(400).json({ message: "surveyId, interviewerId e neighborhoods são obrigatórios" });
+      }
+      await storage.replaceZoneAssignments(orgId, surveyId, interviewerId, neighborhoods);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[zone-assignments/bulk] error:', err);
+      res.status(500).json({ message: "Erro ao atualizar atribuições" });
     }
   });
 
