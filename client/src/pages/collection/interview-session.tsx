@@ -160,12 +160,12 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const geofenceEnabled = (survey as any)?.geofenceEnabled ?? false;
   const geofenceBlocking = (survey as any)?.geofenceBlocking ?? false;
   // Geofencing is ONLY active when explicitly enabled by the survey settings.
-  // Legacy geofenceNeighborhood / geofencePolygon fields are ignored — they used
-  // hardcoded Pontal/Centro zones that no longer exist in the system.
   const isGeofenceActive = geofenceEnabled;
 
-  // Fetch assigned zone polygons for this survey (when geofenceEnabled)
+  // Fetch assigned zone polygons for this survey (when geofenceEnabled).
+  // Loaded as soon as survey data is available so zones are ready before questions start.
   const [myZones, setMyZones] = useState<{ neighborhood: string; polygon: [number,number][] | null }[]>([]);
+  const [zonesLoaded, setZonesLoaded] = useState(false);
   const zonesLoadedRef = useRef(false);
   const loadMyZones = useCallback(async () => {
     if (!geofenceEnabled || zonesLoadedRef.current || !surveyId) return;
@@ -174,9 +174,13 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       const res = await fetch(`/api/surveys/${surveyId}/my-zones`, { credentials: 'include' });
       if (res.ok) setMyZones(await res.json());
     } catch { /* silent */ }
+    setZonesLoaded(true);
   }, [geofenceEnabled, surveyId]);
 
-  useEffect(() => { if (step === 'questions') loadMyZones(); }, [step, loadMyZones]);
+  // Load zones as soon as survey data is available — NOT when questions start — to prevent race condition
+  useEffect(() => {
+    if (survey && geofenceEnabled) loadMyZones();
+  }, [survey, geofenceEnabled, loadMyZones]);
 
   // Build polygon list from zone assignments (database-driven, no legacy fallback)
   const activePolygons: [number,number][][] = myZones
@@ -187,16 +191,20 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   // Track if we already sent a violation report for this session
   const violationReportedRef = useRef(false);
 
-  // Geofencing - only active during question collection step, only when survey has it enabled
-  const { isInsideZone, neighborhoodName: geofenceZoneName } = useGeofencing({
+  // Geofencing - only active during question collection step, only when survey has it enabled.
+  // In blocking mode, the hook defaults isInsideZone=false until GPS confirms position inside zone.
+  const { isInsideZone, neighborhoodName: geofenceZoneName, hasPosition: geofenceHasPosition } = useGeofencing({
     neighborhoodName: activePolygons.length > 0 ? null : activeNeighborhood,
     polygons: activePolygons.length > 0 ? activePolygons : undefined,
     enabled: step === 'questions' && isGeofenceActive,
+    blockingMode: geofenceBlocking,
   });
 
-  // Report geofence violation to server on first exit (once per session)
+  // Report geofence violation to server on first confirmed exit (once per session).
+  // Only fires after zones AND GPS position are both confirmed — never on the default initial state.
   useEffect(() => {
     if (step !== 'questions' || !isGeofenceActive || isInsideZone || violationReportedRef.current) return;
+    if (!zonesLoaded || !geofenceHasPosition) return; // wait for real confirmation
     violationReportedRef.current = true;
     fetch(`/api/surveys/${surveyId}/geofence-violations`, {
       method: 'POST',
@@ -208,7 +216,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         longitude: null,
       }),
     }).catch(() => { /* silent — don't disrupt collection */ });
-  }, [step, isGeofenceActive, isInsideZone, surveyId]);
+  }, [step, isGeofenceActive, isInsideZone, surveyId, zonesLoaded, geofenceHasPosition]);
 
   // Real-time location tracking for supervisor monitoring
   useLocationTracking({
@@ -793,8 +801,22 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
           </Card>
         )}
 
-        {/* Geofencing: blocking overlay when outside zone and blocking is enabled */}
-        {step === 'questions' && isGeofenceActive && !isInsideZone && geofenceBlocking && (
+        {/* Geofencing: loading overlay while zones or GPS are not yet ready (blocking mode) */}
+        {step === 'questions' && isGeofenceActive && geofenceBlocking && !isInsideZone && (!zonesLoaded || !geofenceHasPosition) && (
+          <div
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-800 text-white p-8 text-center"
+            data-testid="overlay-geofence-loading"
+          >
+            <Loader2 className="w-12 h-12 mb-4 animate-spin opacity-80" />
+            <h2 className="text-xl font-bold mb-2">Verificando localização</h2>
+            <p className="text-sm opacity-75">
+              {!zonesLoaded ? 'Carregando setor designado...' : 'Aguardando sinal GPS para confirmar sua posição...'}
+            </p>
+          </div>
+        )}
+
+        {/* Geofencing: blocking overlay when confirmed outside zone and blocking is enabled */}
+        {step === 'questions' && isGeofenceActive && geofenceBlocking && zonesLoaded && geofenceHasPosition && !isInsideZone && (
           <div
             className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-red-700 text-white p-8 text-center"
             data-testid="overlay-geofence-blocked"
@@ -802,7 +824,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             <AlertTriangle className="w-16 h-16 mb-4 animate-bounce" />
             <h2 className="text-2xl font-bold mb-2">Coleta bloqueada</h2>
             <p className="text-base opacity-90 mb-1">Você está fora do setor designado.</p>
-            <p className="text-sm opacity-75">Retorne ao bairro <strong>{geofenceZoneName}</strong> para continuar a entrevista.</p>
+            <p className="text-sm opacity-75">Retorne ao bairro <strong>{geofenceZoneName || activeNeighborhood}</strong> para continuar a entrevista.</p>
           </div>
         )}
 

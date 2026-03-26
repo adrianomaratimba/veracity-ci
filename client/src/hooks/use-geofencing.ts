@@ -6,6 +6,11 @@ interface GeofencingOptions {
   polygon?: [number, number][] | null;
   polygons?: [number, number][][] | null;
   enabled?: boolean;
+  /**
+   * When true, initial isInsideZone = false (secure default — blocked until GPS confirms inside).
+   * When false (default), initial isInsideZone = true (warn-only, non-blocking behaviour).
+   */
+  blockingMode?: boolean;
 }
 
 interface GeofencingState {
@@ -42,20 +47,41 @@ function playBeepAlert() {
   }
 }
 
-export function useGeofencing({ neighborhoodName, polygon, polygons, enabled = true }: GeofencingOptions): GeofencingState {
+export function useGeofencing({
+  neighborhoodName,
+  polygon,
+  polygons,
+  enabled = true,
+  blockingMode = false,
+}: GeofencingOptions): GeofencingState {
   const hasMultiPolygons = !!(polygons && polygons.length > 0);
   const hasSinglePolygon = !!(polygon && polygon.length >= 3);
   const hasNeighborhood = !!neighborhoodName;
   const hasGeofence = hasMultiPolygons || hasSinglePolygon || hasNeighborhood;
 
+  // In blocking mode the safe default is "outside" (false) — GPS must confirm inside.
+  // In warn-only mode the default is "inside" (true) so there's no false alarm before position arrives.
+  const safeDefault = blockingMode ? false : true;
+
   const [state, setState] = useState<GeofencingState>({
-    isInsideZone: true,
+    isInsideZone: safeDefault,
     neighborhoodName: neighborhoodName || '',
     hasPosition: false,
   });
 
-  const wasInsideRef = useRef<boolean>(true);
+  const wasInsideRef = useRef<boolean>(safeDefault);
   const watchIdRef = useRef<number | null>(null);
+
+  // Reset state whenever blocking mode or fence data changes (e.g. zones loaded async)
+  useEffect(() => {
+    setState({
+      isInsideZone: safeDefault,
+      neighborhoodName: neighborhoodName || '',
+      hasPosition: false,
+    });
+    wasInsideRef.current = safeDefault;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockingMode, hasGeofence]);
 
   const checkPosition = useCallback((coords: GeolocationCoordinates) => {
     if (!hasGeofence) return;
@@ -89,7 +115,7 @@ export function useGeofencing({ neighborhoodName, polygon, polygons, enabled = t
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => checkPosition(position.coords),
       (err) => console.warn('[Geofencing] GPS error:', err.message),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
     );
 
     return () => {
