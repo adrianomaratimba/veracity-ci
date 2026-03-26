@@ -215,6 +215,17 @@ export interface IStorage {
   // Geofence Violations
   createGeofenceViolation(data: InsertGeofenceViolation): Promise<GeofenceViolation>;
   getGeofenceViolations(orgId: number, since?: Date): Promise<(GeofenceViolation & { interviewerName: string; surveyTitle: string })[]>;
+
+  // Push Subscriptions
+  savePushSubscription(userId: string, orgId: number, subscription: object): Promise<PushSubscription>;
+  deletePushSubscription(userId: string, orgId: number): Promise<void>;
+  getOrgPushSubscriptions(orgId: number): Promise<PushSubscription[]>;
+  getUserPushSubscription(userId: string, orgId: number): Promise<PushSubscription | undefined>;
+
+  // Interviewer Zone Assignments
+  getZoneAssignments(orgId: number, surveyId?: number): Promise<(InterviewerZoneAssignment & { interviewerName: string; interviewerEmail: string })[]>;
+  upsertZoneAssignment(data: InsertInterviewerZoneAssignment): Promise<InterviewerZoneAssignment>;
+  deleteZoneAssignment(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1901,6 +1912,82 @@ export class DatabaseStorage implements IStorage {
       interviewerName: [r.interviewerFirstName, r.interviewerLastName].filter(Boolean).join(' ') || r.interviewerId,
       surveyTitle: r.surveyTitle,
     }));
+  }
+
+  // --- PUSH SUBSCRIPTIONS ---
+  async savePushSubscription(userId: string, orgId: number, subscription: object): Promise<PushSubscription> {
+    // Upsert: delete existing first, then insert
+    await db.delete(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.userId, userId), eq(pushSubscriptions.organizationId, orgId)));
+    const [row] = await db.insert(pushSubscriptions)
+      .values({ userId, organizationId: orgId, subscription })
+      .returning();
+    return row;
+  }
+
+  async deletePushSubscription(userId: string, orgId: number): Promise<void> {
+    await db.delete(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.userId, userId), eq(pushSubscriptions.organizationId, orgId)));
+  }
+
+  async getOrgPushSubscriptions(orgId: number): Promise<PushSubscription[]> {
+    return await db.select().from(pushSubscriptions)
+      .where(eq(pushSubscriptions.organizationId, orgId));
+  }
+
+  async getUserPushSubscription(userId: string, orgId: number): Promise<PushSubscription | undefined> {
+    const [row] = await db.select().from(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.userId, userId), eq(pushSubscriptions.organizationId, orgId)));
+    return row;
+  }
+
+  // --- INTERVIEWER ZONE ASSIGNMENTS ---
+  async getZoneAssignments(orgId: number, surveyId?: number): Promise<(InterviewerZoneAssignment & { interviewerName: string; interviewerEmail: string })[]> {
+    const rows = await db.select({
+      id: interviewerZoneAssignments.id,
+      organizationId: interviewerZoneAssignments.organizationId,
+      surveyId: interviewerZoneAssignments.surveyId,
+      interviewerId: interviewerZoneAssignments.interviewerId,
+      neighborhood: interviewerZoneAssignments.neighborhood,
+      createdAt: interviewerZoneAssignments.createdAt,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      email: users.email,
+    })
+    .from(interviewerZoneAssignments)
+    .innerJoin(users, eq(interviewerZoneAssignments.interviewerId, users.id))
+    .where(
+      surveyId
+        ? and(eq(interviewerZoneAssignments.organizationId, orgId), eq(interviewerZoneAssignments.surveyId, surveyId))
+        : eq(interviewerZoneAssignments.organizationId, orgId)
+    );
+
+    return rows.map(r => ({
+      id: r.id,
+      organizationId: r.organizationId,
+      surveyId: r.surveyId,
+      interviewerId: r.interviewerId,
+      neighborhood: r.neighborhood,
+      createdAt: r.createdAt,
+      interviewerName: [r.firstName, r.lastName].filter(Boolean).join(' ') || r.interviewerId,
+      interviewerEmail: r.email || '',
+    }));
+  }
+
+  async upsertZoneAssignment(data: InsertInterviewerZoneAssignment): Promise<InterviewerZoneAssignment> {
+    // Delete existing for same org+survey+interviewer, then insert
+    await db.delete(interviewerZoneAssignments)
+      .where(and(
+        eq(interviewerZoneAssignments.organizationId, data.organizationId),
+        eq(interviewerZoneAssignments.surveyId, data.surveyId),
+        eq(interviewerZoneAssignments.interviewerId, data.interviewerId)
+      ));
+    const [row] = await db.insert(interviewerZoneAssignments).values(data).returning();
+    return row;
+  }
+
+  async deleteZoneAssignment(id: number): Promise<void> {
+    await db.delete(interviewerZoneAssignments).where(eq(interviewerZoneAssignments.id, id));
   }
 }
 

@@ -67,6 +67,7 @@ import ResetPasswordPage from "@/pages/reset-password";
 import ContactPage from "@/pages/contact";
 import PlatformAdminPage from "@/pages/platform-admin";
 import LandingEditorPage from "@/pages/platform/landing-editor";
+import GeofencingPage from "@/pages/dashboard/geofencing";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
 import { setupAutoSync } from "@/lib/syncQueue";
 
@@ -113,6 +114,7 @@ function AuthenticatedRoutes() {
       <Route path="/org/:orgId/portal" component={ViewerPortal} />
       <Route path="/org/:orgId/access" component={AccessControlPage} />
       <Route path="/org/:orgId/supervisor" component={SupervisorDashboard} />
+      <Route path="/org/:orgId/geofencing" component={GeofencingPage} />
       
       {/* Platform Admin (Super Admin) */}
       <Route path="/platform" component={PlatformAdminPage} />

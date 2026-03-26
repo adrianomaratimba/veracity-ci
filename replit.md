@@ -11,6 +11,8 @@ Key capabilities:
 - Role-based access control (Owner, Admin, Coordinator, Interviewer, Viewer)
 - Real-time analytics dashboards with map visualization
 - Geofencing by neighborhood: polygon-based zone validation during collection (Pontal and Centro neighborhoods of Marataízes-ES pre-configured)
+- Geofencing management panel: dedicated admin page `/org/:orgId/geofencing` with config, zone assignments, push notifications, and violations tabs
+- Web Push notifications: VAPID-based push alerts to supervisors when interviewers exit their designated zone
 
 ## User Preferences
 
@@ -144,6 +146,9 @@ The `shared/routes.ts` file defines a typed API contract with:
 - `PUBLIC_OBJECT_SEARCH_PATHS`: Object storage paths configuration
 - `SENDGRID_API_KEY`: SendGrid API key for email delivery
 - `PLATFORM_ADMIN_EMAILS`: Comma-separated list of platform admin emails
+- `VAPID_PUBLIC_KEY`: VAPID public key for Web Push notifications (pre-configured)
+- `VAPID_PRIVATE_KEY`: VAPID private key for Web Push notifications (pre-configured)
+- `VAPID_EMAIL`: Sender email for VAPID (pre-configured as mailto:noreply@dataveracity.com.br)
 
 ## SaaS Features
 

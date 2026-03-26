@@ -24,6 +24,16 @@ import {
   insertInterviewerLocationSchema,
   geofenceViolations
 } from "@shared/schema";
+import webpush from "web-push";
+
+// Configure web-push with VAPID keys
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    process.env.VAPID_EMAIL || 'mailto:noreply@dataveracity.com.br',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+}
 import { 
   calculateHaversineDistance, 
   updateDailyDistanceSummary, 
@@ -2996,6 +3006,28 @@ export async function registerRoutes(
         longitude: longitude ?? null,
         neighborhood,
       });
+
+      // Send push notifications to subscribed admins/coordinators
+      if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+        try {
+          const interviewer = await storage.getUserById(userId);
+          const interviewerName = [interviewer?.firstName, interviewer?.lastName].filter(Boolean).join(' ') || 'Entrevistadora';
+          const subscriptions = await storage.getOrgPushSubscriptions(survey.organizationId);
+          const payload = JSON.stringify({
+            title: '⚠️ Saída de Setor Detectada',
+            body: `${interviewerName} saiu do bairro ${neighborhood} (${survey.title})`,
+            icon: '/icon-192.svg',
+            badge: '/icon-192.svg',
+            data: { surveyId, orgId: survey.organizationId, url: `/org/${survey.organizationId}/geofencing` }
+          });
+          await Promise.allSettled(
+            subscriptions.map(s => webpush.sendNotification(s.subscription as webpush.PushSubscription, payload))
+          );
+        } catch (pushErr) {
+          console.error('[geofence-violations/push] error:', pushErr);
+        }
+      }
+
       res.status(201).json(violation);
     } catch (err) {
       console.error('[geofence-violations/create] error:', err);
@@ -3013,6 +3045,93 @@ export async function registerRoutes(
     } catch (err) {
       console.error('[geofence-violations/list] error:', err);
       res.status(500).json({ message: "Erro ao buscar violações" });
+    }
+  });
+
+  // --- PUSH SUBSCRIPTIONS ---
+  // GET VAPID public key
+  app.get("/api/push/vapid-public-key", isAuthenticated, (req, res) => {
+    res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || null });
+  });
+
+  // POST: subscribe to push notifications
+  app.post("/api/organizations/:orgId/push/subscribe", isAuthenticated, requireOrgAccess("orgId", "analytics:view"), async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = parseInt(req.params.orgId);
+      const { subscription } = req.body;
+      if (!subscription) return res.status(400).json({ message: "subscription required" });
+      const saved = await storage.savePushSubscription(userId, orgId, subscription);
+      res.json({ ok: true, id: saved.id });
+    } catch (err) {
+      console.error('[push/subscribe] error:', err);
+      res.status(500).json({ message: "Erro ao salvar inscrição push" });
+    }
+  });
+
+  // DELETE: unsubscribe from push notifications
+  app.delete("/api/organizations/:orgId/push/subscribe", isAuthenticated, requireOrgAccess("orgId", "analytics:view"), async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = parseInt(req.params.orgId);
+      await storage.deletePushSubscription(userId, orgId);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[push/unsubscribe] error:', err);
+      res.status(500).json({ message: "Erro ao cancelar inscrição push" });
+    }
+  });
+
+  // GET: check if current user has push subscription
+  app.get("/api/organizations/:orgId/push/status", isAuthenticated, requireOrgAccess("orgId", "analytics:view"), async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = parseInt(req.params.orgId);
+      const sub = await storage.getUserPushSubscription(userId, orgId);
+      res.json({ subscribed: !!sub });
+    } catch (err) {
+      res.status(500).json({ message: "Erro" });
+    }
+  });
+
+  // --- ZONE ASSIGNMENTS ---
+  // GET zone assignments for an org (optionally filtered by survey)
+  app.get("/api/organizations/:orgId/zone-assignments", isAuthenticated, requireOrgAccess("orgId", "analytics:view"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.orgId);
+      const surveyId = req.query.surveyId ? parseInt(req.query.surveyId as string) : undefined;
+      const assignments = await storage.getZoneAssignments(orgId, surveyId);
+      res.json(assignments);
+    } catch (err) {
+      console.error('[zone-assignments/list] error:', err);
+      res.status(500).json({ message: "Erro ao buscar atribuições" });
+    }
+  });
+
+  // POST: create/update zone assignment
+  app.post("/api/organizations/:orgId/zone-assignments", isAuthenticated, requireOrgAccess("orgId", "surveys:manage"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.orgId);
+      const { surveyId, interviewerId, neighborhood } = req.body;
+      if (!surveyId || !interviewerId || !neighborhood) {
+        return res.status(400).json({ message: "surveyId, interviewerId e neighborhood são obrigatórios" });
+      }
+      const assignment = await storage.upsertZoneAssignment({ organizationId: orgId, surveyId, interviewerId, neighborhood });
+      res.status(201).json(assignment);
+    } catch (err) {
+      console.error('[zone-assignments/create] error:', err);
+      res.status(500).json({ message: "Erro ao salvar atribuição" });
+    }
+  });
+
+  // DELETE: remove zone assignment
+  app.delete("/api/organizations/:orgId/zone-assignments/:id", isAuthenticated, requireOrgAccess("orgId", "surveys:manage"), async (req, res) => {
+    try {
+      await storage.deleteZoneAssignment(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[zone-assignments/delete] error:', err);
+      res.status(500).json({ message: "Erro ao remover atribuição" });
     }
   });
 

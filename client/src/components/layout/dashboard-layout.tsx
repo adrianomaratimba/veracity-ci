@@ -19,7 +19,8 @@ import {
   Check,
   Radar,
   Crown,
-  BarChart2
+  BarChart2,
+  MapPin
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -107,6 +108,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
         { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
         { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
         { name: 'Supervisor', href: `/org/${orgId}/supervisor`, icon: Radar },
+        { name: 'Geocerca', href: `/org/${orgId}/geofencing`, icon: MapPin },
       ];
     }
     
@@ -117,6 +119,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
       { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
       { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
       { name: 'Supervisor', href: `/org/${orgId}/supervisor`, icon: Radar },
+      { name: 'Geocerca', href: `/org/${orgId}/geofencing`, icon: MapPin },
     ];
     
     // Auditoria - only for admin/owner
