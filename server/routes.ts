@@ -3048,6 +3048,130 @@ export async function registerRoutes(
     }
   });
 
+  // --- CHAT MESSAGES ---
+  // Helper: send push notification to a user if they have a subscription
+  async function sendMessagePush(toUserId: string, fromName: string, content: string, orgId: number) {
+    if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+    try {
+      const sub = await storage.getUserPushSubscriptionByUser(toUserId);
+      if (!sub) return;
+      const payload = JSON.stringify({
+        title: `💬 Mensagem de ${fromName}`,
+        body: content.length > 100 ? content.slice(0, 100) + '…' : content,
+        icon: '/icon-192.svg',
+        badge: '/icon-192.svg',
+        data: { url: `/org/${orgId}/messages` }
+      });
+      await webpush.sendNotification(sub.subscription as webpush.PushSubscription, payload);
+    } catch (err) {
+      console.error('[messages/push] error:', err);
+    }
+  }
+
+  // GET conversations list for current user in org
+  app.get("/api/organizations/:orgId/messages", isAuthenticated, requireOrgAccess("orgId", "surveys:view"), async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = parseInt(req.params.orgId);
+      const conversations = await storage.getConversationList(orgId, userId);
+      res.json(conversations);
+    } catch (err) {
+      console.error('[messages/list] error:', err);
+      res.status(500).json({ message: "Erro ao buscar conversas" });
+    }
+  });
+
+  // GET conversation with specific user
+  app.get("/api/organizations/:orgId/messages/:otherUserId", isAuthenticated, requireOrgAccess("orgId", "surveys:view"), async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = parseInt(req.params.orgId);
+      const otherUserId = req.params.otherUserId;
+      const msgs = await storage.getConversation(orgId, userId, otherUserId);
+      // Mark received messages as read
+      await storage.markMessagesRead(orgId, otherUserId, userId);
+      res.json(msgs);
+    } catch (err) {
+      console.error('[messages/get] error:', err);
+      res.status(500).json({ message: "Erro ao buscar mensagens" });
+    }
+  });
+
+  // POST send message to user
+  app.post("/api/organizations/:orgId/messages/:toUserId", isAuthenticated, requireOrgAccess("orgId", "surveys:view"), async (req, res) => {
+    try {
+      const fromUserId = await getResolvedUserId(req);
+      const orgId = parseInt(req.params.orgId);
+      const toUserId = req.params.toUserId;
+      const { content } = req.body;
+      if (!content?.trim()) return res.status(400).json({ message: "Conteúdo obrigatório" });
+
+      // Verify recipient is member of the org
+      const isMember = await storage.isUserMemberOfOrg(toUserId, orgId);
+      if (!isMember) return res.status(403).json({ message: "Destinatário não é membro desta organização" });
+
+      const msg = await storage.sendMessage({ organizationId: orgId, fromUserId, toUserId, content: content.trim() });
+
+      // Send push notification to recipient
+      const fromUser = await storage.getUserById(fromUserId);
+      const fromName = fromUser ? [fromUser.firstName, fromUser.lastName].filter(Boolean).join(' ') || fromUser.email || 'Alguém' : 'Alguém';
+      await sendMessagePush(toUserId, fromName, content.trim(), orgId);
+
+      res.status(201).json(msg);
+    } catch (err) {
+      console.error('[messages/send] error:', err);
+      res.status(500).json({ message: "Erro ao enviar mensagem" });
+    }
+  });
+
+  // GET unread message count for current user
+  app.get("/api/messages/unread-count", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const count = await storage.getUnreadCount(userId);
+      res.json({ count });
+    } catch (err) {
+      res.status(500).json({ count: 0 });
+    }
+  });
+
+  // --- PERSONAL PUSH SUBSCRIPTIONS (for message notifications) ---
+  // Subscribe (any authenticated user)
+  app.post("/api/push/personal/subscribe", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const { subscription } = req.body;
+      if (!subscription) return res.status(400).json({ message: "subscription required" });
+      await storage.saveUserPushSubscription(userId, subscription);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[push/personal/subscribe] error:', err);
+      res.status(500).json({ message: "Erro ao salvar inscrição push" });
+    }
+  });
+
+  // Unsubscribe
+  app.delete("/api/push/personal/subscribe", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      await storage.deleteUserPushSubscription(userId);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: "Erro" });
+    }
+  });
+
+  // Status
+  app.get("/api/push/personal/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const sub = await storage.getUserPushSubscriptionByUser(userId);
+      res.json({ subscribed: !!sub, publicKey: process.env.VAPID_PUBLIC_KEY || null });
+    } catch (err) {
+      res.status(500).json({ subscribed: false, publicKey: null });
+    }
+  });
+
   // --- PUSH SUBSCRIPTIONS ---
   // GET VAPID public key
   app.get("/api/push/vapid-public-key", isAuthenticated, (req, res) => {

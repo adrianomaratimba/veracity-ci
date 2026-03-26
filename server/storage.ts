@@ -20,7 +20,9 @@ import {
   interviewerLocations, InterviewerLocation, dailyDistanceSummary,
   geofenceViolations, GeofenceViolation, InsertGeofenceViolation,
   pushSubscriptions, PushSubscription,
-  interviewerZoneAssignments, InterviewerZoneAssignment, InsertInterviewerZoneAssignment
+  interviewerZoneAssignments, InterviewerZoneAssignment, InsertInterviewerZoneAssignment,
+  messages, Message, InsertMessage,
+  userPushSubscriptions, UserPushSubscription
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
@@ -226,6 +228,18 @@ export interface IStorage {
   getZoneAssignments(orgId: number, surveyId?: number): Promise<(InterviewerZoneAssignment & { interviewerName: string; interviewerEmail: string })[]>;
   upsertZoneAssignment(data: InsertInterviewerZoneAssignment): Promise<InterviewerZoneAssignment>;
   deleteZoneAssignment(id: number): Promise<void>;
+
+  // Chat Messages
+  sendMessage(data: InsertMessage): Promise<Message>;
+  getConversation(orgId: number, userId1: string, userId2: string, limit?: number): Promise<(Message & { fromName: string; toName: string })[]>;
+  getConversationList(orgId: number, userId: string): Promise<{ otherUserId: string; otherUserName: string; lastMessage: string; lastAt: Date; unreadCount: number }[]>;
+  markMessagesRead(orgId: number, fromUserId: string, toUserId: string): Promise<void>;
+  getUnreadCount(toUserId: string): Promise<number>;
+
+  // Personal Push Subscriptions (for messages)
+  saveUserPushSubscription(userId: string, subscription: object): Promise<UserPushSubscription>;
+  deleteUserPushSubscription(userId: string): Promise<void>;
+  getUserPushSubscriptionByUser(userId: string): Promise<UserPushSubscription | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1988,6 +2002,114 @@ export class DatabaseStorage implements IStorage {
 
   async deleteZoneAssignment(id: number): Promise<void> {
     await db.delete(interviewerZoneAssignments).where(eq(interviewerZoneAssignments.id, id));
+  }
+
+  // --- CHAT MESSAGES ---
+  async sendMessage(data: InsertMessage): Promise<Message> {
+    const [msg] = await db.insert(messages).values(data).returning();
+    return msg;
+  }
+
+  async getConversation(orgId: number, userId1: string, userId2: string, limit = 100): Promise<(Message & { fromName: string; toName: string })[]> {
+    const rows = await db.select().from(messages)
+      .where(
+        and(
+          eq(messages.organizationId, orgId),
+          sql`((${messages.fromUserId} = ${userId1} AND ${messages.toUserId} = ${userId2}) OR (${messages.fromUserId} = ${userId2} AND ${messages.toUserId} = ${userId1}))`
+        )
+      )
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+
+    // Fetch user names
+    const userIds = [...new Set(rows.flatMap(r => [r.fromUserId, r.toUserId]))];
+    const userMap: Record<string, string> = {};
+    for (const uid of userIds) {
+      const u = await this.getUserById(uid);
+      userMap[uid] = u ? [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || uid : uid;
+    }
+
+    return rows.reverse().map(r => ({
+      ...r,
+      fromName: userMap[r.fromUserId] || r.fromUserId,
+      toName: userMap[r.toUserId] || r.toUserId,
+    }));
+  }
+
+  async getConversationList(orgId: number, userId: string): Promise<{ otherUserId: string; otherUserName: string; lastMessage: string; lastAt: Date; unreadCount: number }[]> {
+    // Get all unique conversation partners for this user
+    const rows = await db.execute(sql`
+      SELECT
+        CASE WHEN from_user_id = ${userId} THEN to_user_id ELSE from_user_id END AS other_user_id,
+        MAX(created_at) as last_at,
+        (SELECT content FROM messages m2 WHERE organization_id = ${orgId} AND (
+          (m2.from_user_id = ${userId} AND m2.to_user_id = CASE WHEN messages.from_user_id = ${userId} THEN messages.to_user_id ELSE messages.from_user_id END) OR
+          (m2.to_user_id = ${userId} AND m2.from_user_id = CASE WHEN messages.from_user_id = ${userId} THEN messages.to_user_id ELSE messages.from_user_id END)
+        ) ORDER BY created_at DESC LIMIT 1) as last_message,
+        COUNT(*) FILTER (WHERE to_user_id = ${userId} AND read_at IS NULL) as unread_count
+      FROM messages
+      WHERE organization_id = ${orgId} AND (from_user_id = ${userId} OR to_user_id = ${userId})
+      GROUP BY other_user_id
+      ORDER BY last_at DESC
+    `);
+
+    const result = [];
+    for (const row of rows.rows as any[]) {
+      const otherUser = await this.getUserById(row.other_user_id);
+      result.push({
+        otherUserId: row.other_user_id,
+        otherUserName: otherUser ? [otherUser.firstName, otherUser.lastName].filter(Boolean).join(' ') || otherUser.email || row.other_user_id : row.other_user_id,
+        lastMessage: row.last_message || '',
+        lastAt: new Date(row.last_at),
+        unreadCount: parseInt(row.unread_count || '0'),
+      });
+    }
+    return result;
+  }
+
+  async markMessagesRead(orgId: number, fromUserId: string, toUserId: string): Promise<void> {
+    await db.update(messages)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          eq(messages.organizationId, orgId),
+          eq(messages.fromUserId, fromUserId),
+          eq(messages.toUserId, toUserId),
+          sql`${messages.readAt} IS NULL`
+        )
+      );
+  }
+
+  async getUnreadCount(toUserId: string): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(messages)
+      .where(and(eq(messages.toUserId, toUserId), sql`${messages.readAt} IS NULL`));
+    return Number(row?.count || 0);
+  }
+
+  // --- PERSONAL PUSH SUBSCRIPTIONS ---
+  async saveUserPushSubscription(userId: string, subscription: object): Promise<UserPushSubscription> {
+    const existing = await db.select().from(userPushSubscriptions).where(eq(userPushSubscriptions.userId, userId));
+    if (existing.length > 0) {
+      const [row] = await db.update(userPushSubscriptions)
+        .set({ subscription, updatedAt: new Date() })
+        .where(eq(userPushSubscriptions.userId, userId))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(userPushSubscriptions)
+      .values({ userId, subscription })
+      .returning();
+    return row;
+  }
+
+  async deleteUserPushSubscription(userId: string): Promise<void> {
+    await db.delete(userPushSubscriptions).where(eq(userPushSubscriptions.userId, userId));
+  }
+
+  async getUserPushSubscriptionByUser(userId: string): Promise<UserPushSubscription | undefined> {
+    const [row] = await db.select().from(userPushSubscriptions).where(eq(userPushSubscriptions.userId, userId));
+    return row;
   }
 }
 

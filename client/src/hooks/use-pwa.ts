@@ -53,7 +53,7 @@ export function usePWA() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
 
-    if (standalone) {
+    if (isStandalone()) {
       setIsInstalled(true);
       setIsInstallable(false);
     }

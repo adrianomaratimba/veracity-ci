@@ -20,7 +20,8 @@ import {
   Radar,
   Crown,
   BarChart2,
-  MapPin
+  MapPin,
+  MessageSquare
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,19 @@ interface DashboardLayoutProps {
   orgId?: string;
 }
 
+function useUnreadMessageCount() {
+  return useQuery<{ count: number }>({
+    queryKey: ['/api/messages/unread-count'],
+    queryFn: async () => {
+      const res = await fetch('/api/messages/unread-count', { credentials: 'include' });
+      if (!res.ok) return { count: 0 };
+      return res.json();
+    },
+    refetchInterval: 15000,
+    staleTime: 10000,
+  });
+}
+
 function usePlatformAdminCheck() {
   return useQuery<{ isAdmin: boolean }>({
     queryKey: ['/api/admin/check'],
@@ -71,6 +85,8 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
   
   const isPlatformAdmin = adminCheck?.isAdmin || false;
   const currentOrg = organizations?.find(org => org.id === parseInt(orgId || '0'));
+  const { data: unreadData } = useUnreadMessageCount();
+  const unreadCount = unreadData?.count || 0;
   
   const handleOrgChange = (newOrgId: number) => {
     setLocation(`/org/${newOrgId}/dashboard`);
@@ -88,6 +104,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
       return [
         { name: 'Minhas Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
         { name: 'Meu Desempenho', href: '/collect/my-performance', icon: BarChart2 },
+        { name: 'Mensagens', href: `/org/${orgId}/messages`, icon: MessageSquare, badge: true },
       ];
     }
     
@@ -108,6 +125,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
         { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
         { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
         { name: 'Supervisor', href: `/org/${orgId}/supervisor`, icon: Radar },
+        { name: 'Mensagens', href: `/org/${orgId}/messages`, icon: MessageSquare, badge: true },
         { name: 'Geocerca', href: `/org/${orgId}/geofencing`, icon: MapPin },
       ];
     }
@@ -115,10 +133,11 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
     // ================================================================
     // OWNER & ADMIN - Full navigation access
     // ================================================================
-    const items = [
+    const items: { name: string; href: string; icon: any; badge?: boolean }[] = [
       { name: 'Visão Geral', href: `/org/${orgId}/dashboard`, icon: LayoutDashboard },
       { name: 'Pesquisas', href: `/org/${orgId}/surveys`, icon: FileText },
       { name: 'Supervisor', href: `/org/${orgId}/supervisor`, icon: Radar },
+      { name: 'Mensagens', href: `/org/${orgId}/messages`, icon: MessageSquare, badge: true },
       { name: 'Geocerca', href: `/org/${orgId}/geofencing`, icon: MapPin },
     ];
     
@@ -211,6 +230,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
           <div className="space-y-1 flex-1">
             {navigation.map((item) => {
               const isActive = location === item.href;
+              const showBadge = item.badge && unreadCount > 0;
               return (
                 <Link key={item.name} href={item.href}>
                   <div className={cn(
@@ -220,7 +240,12 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}>
                     <item.icon className={cn("w-5 h-5", isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
-                    {item.name}
+                    <span className="flex-1">{item.name}</span>
+                    {showBadge && (
+                      <span className="bg-primary text-primary-foreground text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shrink-0">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
                   </div>
                 </Link>
               );

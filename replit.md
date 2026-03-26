@@ -2,17 +2,7 @@
 
 ## Overview
 
-Veracity is a multi-tenant SaaS platform for managing electoral surveys with anti-fraud capabilities. The platform enables organizations to conduct professional electoral research with GPS tracking, audio recording verification, and comprehensive analytics dashboards. Built for LGPD compliance and designed to match the quality standards of major polling institutions like IBOPE/Datafolha.
-
-Key capabilities:
-- Multi-tenant organization management with subscription plans (Basic, Pro, Enterprise)
-- Survey creation and field data collection via PWA for interviewers
-- Anti-fraud measures including mandatory GPS capture and audio recording
-- Role-based access control (Owner, Admin, Coordinator, Interviewer, Viewer)
-- Real-time analytics dashboards with map visualization
-- Geofencing by neighborhood: polygon-based zone validation during collection (Pontal and Centro neighborhoods of Marataízes-ES pre-configured)
-- Geofencing management panel: dedicated admin page `/org/:orgId/geofencing` with config, zone assignments, push notifications, and violations tabs
-- Web Push notifications: VAPID-based push alerts to supervisors when interviewers exit their designated zone
+Veracity is a multi-tenant SaaS platform designed for managing electoral surveys with robust anti-fraud capabilities, including GPS tracking and audio recording verification. It aims to provide comprehensive analytics dashboards and ensure LGPD compliance, meeting high-quality standards for professional electoral research. The platform supports multi-tenant organization management with various subscription plans, survey creation, field data collection via a PWA for interviewers, and role-based access control. Key features include real-time analytics with map visualization, geofencing for zone validation, and web push notifications for supervisors regarding interviewer activities.
 
 ## User Preferences
 
@@ -26,216 +16,57 @@ Preferred communication style: Simple, everyday language.
 - **UI/Interface**: Portuguese (Brazil) - all user-facing text in Portuguese
 - **Internal Code**: English - all database values, enums, variable names, queries
 - **Translation Layer**: `shared/i18n/labels.ts` provides mappings from English values to Portuguese labels
-  - Status: draft, active, paused, completed, archived
-  - Question Types: single_choice, multiple_choice, text, number, scale, date, boolean
-  - Survey Types: electoral, opinion, market, census
-  - Roles: owner, admin, coordinator, interviewer, viewer
 
 ## System Architecture
 
 ### Frontend Architecture
-- **Framework**: React 18 with TypeScript
-- **Routing**: Wouter (lightweight alternative to React Router)
-- **State Management**: TanStack Query for server state, React hooks for local state
-- **UI Components**: shadcn/ui component library built on Radix UI primitives
-- **Styling**: Tailwind CSS with custom design tokens for a professional navy/slate palette
-- **Build Tool**: Vite with React plugin
-- **Key Libraries**: 
-  - Recharts for data visualization
-  - React-Leaflet for map displays
-  - Framer Motion for animations
-  - Uppy for file uploads
+The frontend is built with React 18 and TypeScript, using Wouter for routing and TanStack Query for server state management. UI components are sourced from shadcn/ui (based on Radix UI), styled with Tailwind CSS for a professional navy/slate palette. Vite is used as the build tool. Key libraries include Recharts for data visualization, React-Leaflet for maps, Framer Motion for animations, and Uppy for file uploads.
 
 ### Backend Architecture
-- **Runtime**: Node.js with Express
-- **Language**: TypeScript with ES modules
-- **API Design**: RESTful endpoints with Zod schema validation
-- **Authentication**: Replit Auth (OpenID Connect) with Passport.js
-- **Session Management**: PostgreSQL-backed sessions via connect-pg-simple
+The backend is a Node.js application using Express, written in TypeScript with ES modules. It features RESTful API endpoints with Zod schema validation. Authentication is handled via Replit Auth (OpenID Connect) with Passport.js, and session management is PostgreSQL-backed using connect-pg-simple.
 
 ### Data Storage
-- **Database**: PostgreSQL via Drizzle ORM
-- **Schema Location**: `shared/schema.ts` defines all tables
-- **Object Storage**: Google Cloud Storage integration for file uploads (audio recordings, attachments)
-- **Key Tables**: organizations, organization_members, surveys, questions, responses, answers, users, sessions
+PostgreSQL is the primary database, managed with Drizzle ORM. The schema is defined in `shared/schema.ts`. Google Cloud Storage is integrated for object storage of file uploads like audio recordings and attachments. Key tables include organizations, surveys, responses, and users.
 
 ### Authentication & Authorization
-- **Auth Providers**: Hybrid system supporting both:
-  - Replit Auth (OIDC-based) for existing users
-  - Native email/password authentication for public registration
-- **Native Auth Features**:
-  - Password hashing with bcrypt (12 salt rounds)
-  - Email verification tokens
-  - Password reset functionality
-  - Auto-acceptance of pending invitations on registration/login
-- **Member Addition Flow**:
-  - Admins add members directly by email (no invitation emails)
-  - Users are created with `authProvider='pending'` status
-  - Users can complete setup via:
-    1. Password reset flow (sets up password-based auth)
-    2. Replit Auth login (links to their Replit account)
-  - `replit_user_id` column maps Replit external IDs to internal UUIDs
-- **Session Storage**: PostgreSQL with 7-day TTL
-- **RBAC System** (`shared/rbac.ts`):
-  - Roles: owner, admin, coordinator, interviewer, viewer (stored in English)
-  - Permission matrix:
-    - Owner/Admin: Full access (org:*, surveys:*, members:*, analytics:*)
-    - Coordinator: Manage surveys and see analytics (surveys:*, analytics:view)
-    - Interviewer: Submit responses only (responses:submit, surveys:view)
-    - Viewer: Read-only access (surveys:view, analytics:view)
-  - Middleware: `server/middleware/org-access.ts` enforces permissions
-  - Users without organization see "Aguardando Acesso" page
-- **Tenant Isolation**: All data queries filtered by organization_id
-- **Key Auth Files**:
-  - `server/auth-service.ts`: Native authentication service
-  - `server/replit_integrations/auth/storage.ts`: Replit Auth user storage with identity mapping
-  - `server/replit_integrations/auth/routes.ts`: Auth endpoints
-  - `client/src/pages/auth.tsx`: Login/register UI
+The system supports both Replit Auth (OIDC-based) and native email/password authentication. Native auth includes bcrypt hashing, email verification, and password reset. A robust Role-Based Access Control (RBAC) system, defined in `shared/rbac.ts`, enforces permissions for roles like Owner, Admin, Coordinator, Interviewer, and Viewer. All data queries are tenant-isolated by `organization_id`.
 
 ### Project Structure
-```
-client/           # React frontend application
-  src/
-    components/   # UI components (shadcn/ui + custom)
-    hooks/        # React Query hooks for data fetching
-    pages/        # Route components
-    lib/          # Utilities
-server/           # Express backend
-  replit_integrations/  # Auth and object storage modules
-shared/           # Shared types, schemas, and route definitions
-  models/         # Database models
-  schema.ts       # Drizzle schema definitions
-  routes.ts       # API contract with Zod validation
-migrations/       # Drizzle migration files
-```
+The project is organized into `client/` (React frontend), `server/` (Express backend), `shared/` (common types, schemas, and routes), and `migrations/` (Drizzle migration files). An API contract pattern using `shared/routes.ts` ensures type-safe API calls.
 
-### API Contract Pattern
-The `shared/routes.ts` file defines a typed API contract with:
-- Path definitions with parameter placeholders
-- Input/output Zod schemas
-- HTTP method specifications
-- This enables type-safe API calls from the frontend
+### SaaS Features
+- **Subscription Plans**: Configurable basic, professional, and enterprise plans with varying limits on surveys, interviews, and users. Plans are stored dynamically in the database.
+- **White Label**: Organizations can customize branding with custom logos, color schemes, and domain names.
+- **Custom Domains**: Supports automatic subdomains and custom domains for Enterprise plans, with DNS verification.
+- **Geofencing**: Allows defining polygon-based geographical zones for surveys. Interviewers receive real-time alerts and push notifications when they exit designated areas, with an optional blocking mode to prevent data collection outside the zone. Violations are logged.
+- **Messaging System**: Provides real-time chat between supervisors/coordinators and interviewers, including push notifications for new messages.
 
 ## External Dependencies
 
 ### Cloud Services
-- **Replit Auth**: OpenID Connect authentication provider
-- **Google Cloud Storage**: Object storage for file uploads (audio recordings, documents)
-- **PostgreSQL**: Primary database (provisioned via Replit)
-- **SendGrid**: Email delivery service (primary provider)
-  - Used for password reset emails and welcome emails
-  - Configured via `SENDGRID_API_KEY` secret
-  - From address: `noreply@dataveracity.com.br`
-  - Falls back to Resend if SendGrid fails
+- **Replit Auth**: OpenID Connect authentication.
+- **Google Cloud Storage**: Object storage for files.
+- **PostgreSQL**: Primary database.
+- **SendGrid**: Email delivery for password resets and welcome emails, with Resend as a fallback.
 
 ### Key NPM Packages
-- **drizzle-orm** / **drizzle-kit**: Database ORM and migrations
-- **@tanstack/react-query**: Server state management
-- **zod**: Runtime schema validation
-- **passport** / **openid-client**: Authentication handling
-- **@uppy/core** / **@uppy/aws-s3**: File upload management
-- **recharts**: Chart visualizations
-- **react-leaflet** / **leaflet**: Map visualizations
-- **express-session** / **connect-pg-simple**: Session management
+- **drizzle-orm** / **drizzle-kit**: ORM and migrations.
+- **@tanstack/react-query**: Server state management.
+- **zod**: Runtime schema validation.
+- **passport** / **openid-client**: Authentication.
+- **@uppy/core** / **@uppy/aws-s3**: File uploads.
+- **recharts**: Chart visualizations.
+- **react-leaflet** / **leaflet**: Map visualizations.
+- **express-session** / **connect-pg-simple**: Session management.
 
 ### Environment Variables Required
-- `DATABASE_URL`: PostgreSQL connection string
-- `SESSION_SECRET`: Secret for session encryption
-- `ISSUER_URL`: OIDC issuer (defaults to Replit)
-- `REPL_ID`: Replit deployment identifier
-- `PUBLIC_OBJECT_SEARCH_PATHS`: Object storage paths configuration
-- `SENDGRID_API_KEY`: SendGrid API key for email delivery
-- `PLATFORM_ADMIN_EMAILS`: Comma-separated list of platform admin emails
-- `VAPID_PUBLIC_KEY`: VAPID public key for Web Push notifications (pre-configured)
-- `VAPID_PRIVATE_KEY`: VAPID private key for Web Push notifications (pre-configured)
-- `VAPID_EMAIL`: Sender email for VAPID (pre-configured as mailto:noreply@dataveracity.com.br)
-
-## SaaS Features
-
-### Subscription Plans
-- **Básico**: 1 survey, 100 interviews/month, 5 users
-- **Profissional**: Multiple surveys, 1000 interviews/month, 20 users
-- **Enterprise**: Unlimited surveys, unlimited interviews, custom SLA
-
-### White Label (Branding)
-- Custom logo upload per organization (stored in object storage)
-- Primary and secondary color customization
-- Custom branding name to replace "Veracity"
-- Option to hide Veracity branding entirely
-- Settings page: `/org/:orgId/settings` -> "Marca" tab
-
-### Custom Domains
-- Automatic subdomain: `{org-slug}.veracity.app` displayed in settings
-- Custom domain support (Enterprise plan only) - fully implemented
-  - Add/remove/verify custom domains via Settings > Dominios tab
-  - DNS verification via CNAME to `proxy.veracity.app`
-  - Database table: `organization_domains`
-- API endpoints: GET/POST/DELETE `/api/organizations/:id/domains`
-
-### Subscription Plan Management
-- Plans stored in `subscription_plans` database table (dynamic, not hardcoded)
-- Default plans: basic, pro, enterprise with configurable limits
-- Plan editor accessible only to platform admins
-  - Admin check via `PLATFORM_ADMIN_EMAILS` env var (comma-separated emails)
-  - Settings > Plano tab shows editor for admins only
-- API endpoints: GET `/api/plans` (public), PATCH `/api/plans/:planId` (admin only)
-- Admin verification: GET `/api/admin/check` returns `{ isAdmin: boolean }`
-
-### Platform Admin Features (Super Admin Panel)
-Platform admins are identified by the `PLATFORM_ADMIN_EMAILS` environment variable.
-
-- **Super Admin Panel**: Accessible at `/platform` route
-  - Shows in sidebar only for platform admins (Crown icon)
-  - Two tabs: Organizações (Organizations) and Usuários (Users)
-  
-- **Organization Management**:
-  - List all organizations with member count and owner email
-  - Create new organizations with owner email and plan type
-  - Delete organizations permanently (cascade deletes all data)
-  - API endpoints:
-    - GET `/api/platform/organizations` - list all orgs
-    - POST `/api/platform/organizations` - create org with owner
-    - DELETE `/api/platform/organizations/:id` - hard delete with cascade
-    - POST `/api/platform/organizations/:id/members` - add member
-
-- **User Management**:
-  - List all platform users with their organization memberships
-  - View user roles across all organizations
-  - Reset any user's password without email
-  - Delete users permanently
-  - API endpoints:
-    - GET `/api/platform/users` - list all users with memberships
-    - DELETE `/api/platform/users/:userId` - delete user
-    - POST `/api/admin/users/:userId/reset-password` - reset password
-    - GET `/api/admin/check` - verify if current user is platform admin
-
-- **Note**: Super Admin panel manages only the development database. Production database is separate and cannot be accessed directly from code.
-
-### Geofencing by Neighborhood
-- **Purpose**: Alert interviewers in real time when they leave their designated collection zone
-- **Algorithm**: Point-in-polygon using `@turf/boolean-point-in-polygon` (GeoJSON-native, tree-shakeable Turf package)
-- **Polygon data**: Static file `client/src/lib/geofences.ts` with GeoJSON-format coordinates
-  - Currently configured: Pontal and Centro (Marataízes-ES)
-  - Adding new neighborhoods: add entry to `GEOFENCES` object with `[longitude, latitude]` coordinate pairs
-- **Hook**: `client/src/hooks/use-geofencing.ts` — watches GPS via `watchPosition`, returns `{ isInsideZone, neighborhoodName }`
-- **Audio alert**: Web Audio API beep fires once when interviewer crosses zone boundary outward
-- **Survey settings** (two fields on `surveys` table):
-  - `geofenceNeighborhood` (text nullable) — which neighborhood to enforce; set per survey in editor Settings tab
-  - `geofenceBlocking` (boolean, default false) — if true, shows full-screen block overlay and prevents collection outside zone
-- **DB columns**: migrations `0010_add_geofence_neighborhood.sql` and `0011_add_geofence_blocking_and_violations.sql`
-- **Violation logging**: `geofence_violations` table — records each first exit per session (surveId, organizationId, interviewerId, neighborhood, lat/lng, createdAt)
-  - Backend: POST `/api/surveys/:surveyId/geofence-violations` (called by interviewer app)
-  - Backend: GET `/api/organizations/:orgId/geofence-violations?since=` (supervisor dashboard)
-- **Supervisor notifications**:
-  - Overview page polls every 30s for new violations
-  - Toast notification fires when a new violation arrives after page load
-  - Card "Saídas de Setor Detectadas" shows recent violation history with interviewer name, neighborhood, survey, and timestamp
-- **Blocking mode**: when `geofenceBlocking=true` and interviewer is outside zone, a full-screen red overlay prevents any answer input until they return
-
-### Pending Implementations
-- **Stripe Integration**: Payment processing for subscriptions is NOT yet configured. User declined Replit integration setup. When ready, configure Stripe API keys as secrets and implement:
-  - Checkout sessions for new subscriptions
-  - Webhook handlers for subscription events
-  - Customer portal for self-service billing
-  - Use fields: `stripeCustomerId`, `stripeSubscriptionId`, `billingStatus` in organizations table
-  - Connect `stripePriceId` in subscription_plans table to Stripe prices
+- `DATABASE_URL`
+- `SESSION_SECRET`
+- `ISSUER_URL`
+- `REPL_ID`
+- `PUBLIC_OBJECT_SEARCH_PATHS`
+- `SENDGRID_API_KEY`
+- `PLATFORM_ADMIN_EMAILS`
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_EMAIL`

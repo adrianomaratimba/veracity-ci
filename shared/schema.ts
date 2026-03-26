@@ -734,6 +734,29 @@ export const insertGeofenceViolationSchema = createInsertSchema(geofenceViolatio
 export type InsertGeofenceViolation = z.infer<typeof insertGeofenceViolationSchema>;
 export type GeofenceViolation = typeof geofenceViolations.$inferSelect;
 
+// Chat messages between supervisors and interviewers
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  fromUserId: varchar("from_user_id").references(() => users.id).notNull(),
+  toUserId: varchar("to_user_id").references(() => users.id).notNull(),
+  content: text("content").notNull(),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true, readAt: true });
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+export type Message = typeof messages.$inferSelect;
+
+// Personal push subscriptions (for chat message notifications — any user)
+export const userPushSubscriptions = pgTable("user_push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  subscription: jsonb("subscription").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type UserPushSubscription = typeof userPushSubscriptions.$inferSelect;
+
 // Push subscriptions for web push notifications
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),
