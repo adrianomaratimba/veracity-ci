@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { useUpload } from "@/hooks/use-upload";
@@ -151,12 +151,32 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
   const interviewOrgId = (survey as any)?.organizationId || 0;
   const geofenceNeighborhood = (survey as any)?.geofenceNeighborhood || null;
+  const geofenceBlocking = (survey as any)?.geofenceBlocking ?? false;
+
+  // Track if we already sent a violation report for this session
+  const violationReportedRef = useRef(false);
 
   // Geofencing - only active during question collection step
   const { isInsideZone, neighborhoodName: geofenceZoneName } = useGeofencing({
     neighborhoodName: geofenceNeighborhood,
     enabled: step === 'questions' && !!geofenceNeighborhood,
   });
+
+  // Report geofence violation to server on first exit (once per session)
+  useEffect(() => {
+    if (step !== 'questions' || !geofenceNeighborhood || isInsideZone || violationReportedRef.current) return;
+    violationReportedRef.current = true;
+    fetch(`/api/surveys/${surveyId}/geofence-violations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        neighborhood: geofenceNeighborhood,
+        latitude: null,
+        longitude: null,
+      }),
+    }).catch(() => { /* silent — don't disrupt collection */ });
+  }, [step, geofenceNeighborhood, isInsideZone, surveyId]);
 
   // Real-time location tracking for supervisor monitoring
   useLocationTracking({
@@ -679,8 +699,21 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
           </Card>
         )}
 
-        {/* Geofencing alert banner - shown when outside designated zone during collection */}
-        {step === 'questions' && geofenceNeighborhood && !isInsideZone && (
+        {/* Geofencing: blocking overlay when outside zone and blocking is enabled */}
+        {step === 'questions' && geofenceNeighborhood && !isInsideZone && geofenceBlocking && (
+          <div
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-red-700 text-white p-8 text-center"
+            data-testid="overlay-geofence-blocked"
+          >
+            <AlertTriangle className="w-16 h-16 mb-4 animate-bounce" />
+            <h2 className="text-2xl font-bold mb-2">Coleta bloqueada</h2>
+            <p className="text-base opacity-90 mb-1">Você está fora do setor designado.</p>
+            <p className="text-sm opacity-75">Retorne ao bairro <strong>{geofenceZoneName}</strong> para continuar a entrevista.</p>
+          </div>
+        )}
+
+        {/* Geofencing alert banner - shown when outside designated zone (warn-only mode) */}
+        {step === 'questions' && geofenceNeighborhood && !isInsideZone && !geofenceBlocking && (
           <div
             className="bg-red-600 text-white px-4 py-3 rounded-lg flex items-center gap-3 shadow-lg animate-pulse"
             data-testid="banner-geofence-alert"

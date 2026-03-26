@@ -5,11 +5,26 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { Plus, Users, FileText, Activity, AlertTriangle, ShieldAlert, ArrowRight } from "lucide-react";
+import { Plus, Users, FileText, Activity, AlertTriangle, ShieldAlert, ArrowRight, MapPinOff } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { getSurveyStatusLabel } from "@shared/i18n/labels";
-import { useMemo } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import { hasPermission, type UserRole } from "@shared/rbac";
+import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+
+interface GeofenceViolation {
+  id: number;
+  surveyId: number;
+  organizationId: number;
+  interviewerId: string;
+  latitude: number | null;
+  longitude: number | null;
+  neighborhood: string;
+  createdAt: string;
+  interviewerName: string;
+  surveyTitle: string;
+}
 
 export default function DashboardOverview({ params }: { params: { orgId: string } }) {
   const orgId = parseInt(params.orgId);
@@ -19,11 +34,13 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
   const { data: responses, isLoading: responsesLoading } = useOrgResponses(orgId);
   const { data: currentMember } = useCurrentMember(orgId);
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
 
   const userRole = (currentMember?.role as UserRole) || 'viewer';
   const canCreateSurvey = hasPermission(userRole, 'surveys:create');
   const canAudit = hasPermission(userRole, 'responses:audit');
   const canManageSurvey = hasPermission(userRole, 'surveys:edit');
+  const canViewAnalytics = hasPermission(userRole, 'analytics:view');
 
   const suspiciousResponses = useMemo(() => {
     if (!responses) return [];
@@ -34,6 +51,40 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
     if (!responses) return 0;
     return responses.filter(r => r.status === 'suspicious').length;
   }, [responses]);
+
+  // Geofence violations polling
+  const { data: violations = [] } = useQuery<GeofenceViolation[]>({
+    queryKey: ['/api/organizations', orgId, 'geofence-violations'],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${orgId}/geofence-violations`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: canViewAnalytics && !!orgId,
+    refetchInterval: 30000,
+    staleTime: 20000,
+  });
+
+  // Track "page load" timestamp to detect new violations that arrive after load
+  const pageLoadedAt = useRef(new Date().toISOString());
+  const notifiedViolationIds = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!canViewAnalytics || violations.length === 0) return;
+    const newOnes = violations.filter(
+      v => v.createdAt > pageLoadedAt.current && !notifiedViolationIds.current.has(v.id)
+    );
+    newOnes.forEach(v => {
+      notifiedViolationIds.current.add(v.id);
+      toast({
+        title: "Saída de setor detectada",
+        description: `${v.interviewerName} saiu do bairro ${v.neighborhood} (${v.surveyTitle})`,
+        variant: "destructive",
+      });
+    });
+  }, [violations, canViewAnalytics, toast]);
+
+  const recentViolations = violations.slice(0, 5);
 
   if (orgLoading || surveysLoading || statsLoading) return <LoadingScreen message="Carregando Painel..." />; 
   if (!org) return <div>Organização não encontrada</div>;
@@ -150,6 +201,46 @@ export default function DashboardOverview({ params }: { params: { orgId: string 
                 >
                   Ver todas as {suspiciousCount} entrevistas <ArrowRight className="w-4 h-4" />
                 </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {canViewAnalytics && recentViolations.length > 0 && (
+          <Card className="border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                <MapPinOff className="w-5 h-5" />
+                Saídas de Setor Detectadas
+              </CardTitle>
+              <CardDescription>
+                {violations.length} ocorrência{violations.length > 1 ? 's' : ''} de entrevistadores fora do bairro designado
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {recentViolations.map((v) => (
+                  <div
+                    key={v.id}
+                    className="flex items-center justify-between p-3 bg-white dark:bg-background rounded-lg border"
+                    data-testid={`row-geofence-violation-${v.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <MapPinOff className="w-4 h-4 text-red-500 shrink-0" />
+                      <div>
+                        <p className="font-medium text-sm">{v.interviewerName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Bairro: <strong>{v.neighborhood}</strong> · {v.surveyTitle} · {new Date(v.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {violations.length > 5 && (
+                <p className="text-xs text-muted-foreground mt-3 text-center">
+                  Exibindo 5 de {violations.length} ocorrências
+                </p>
               )}
             </CardContent>
           </Card>

@@ -126,6 +126,7 @@ export const surveys = pgTable("surveys", {
   requireGps: boolean("require_gps").default(true),
   requireAudio: boolean("require_audio").default(true),
   geofenceNeighborhood: text("geofence_neighborhood"),
+  geofenceBlocking: boolean("geofence_blocking").default(false),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -717,3 +718,18 @@ export type InterviewerLocation = typeof interviewerLocations.$inferSelect;
 export const insertDailyDistanceSummarySchema = createInsertSchema(dailyDistanceSummary).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertDailyDistanceSummary = z.infer<typeof insertDailyDistanceSummarySchema>;
 export type DailyDistanceSummary = typeof dailyDistanceSummary.$inferSelect;
+
+export const geofenceViolations = pgTable("geofence_violations", {
+  id: serial("id").primaryKey(),
+  surveyId: integer("survey_id").references(() => surveys.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  interviewerId: varchar("interviewer_id").references(() => users.id).notNull(),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  neighborhood: text("neighborhood").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertGeofenceViolationSchema = createInsertSchema(geofenceViolations).omit({ id: true, createdAt: true });
+export type InsertGeofenceViolation = z.infer<typeof insertGeofenceViolationSchema>;
+export type GeofenceViolation = typeof geofenceViolations.$inferSelect;

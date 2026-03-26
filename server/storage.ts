@@ -17,7 +17,8 @@ import {
   organizationDomains, OrganizationDomain, InsertOrganizationDomain,
   subscriptionPlans, SubscriptionPlan,
   landingPageConfig, LandingPageConfig, InsertLandingPageConfig,
-  interviewerLocations, InterviewerLocation, dailyDistanceSummary
+  interviewerLocations, InterviewerLocation, dailyDistanceSummary,
+  geofenceViolations, GeofenceViolation, InsertGeofenceViolation
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
@@ -208,6 +209,10 @@ export interface IStorage {
   // Landing Page CMS
   getLandingPageConfig(): Promise<LandingPageConfig | undefined>;
   upsertLandingPageConfig(data: Partial<InsertLandingPageConfig>, updatedBy?: string): Promise<LandingPageConfig>;
+
+  // Geofence Violations
+  createGeofenceViolation(data: InsertGeofenceViolation): Promise<GeofenceViolation>;
+  getGeofenceViolations(orgId: number, since?: Date): Promise<(GeofenceViolation & { interviewerName: string; surveyTitle: string })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1849,6 +1854,51 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return created;
     }
+  }
+
+  // --- GEOFENCE VIOLATIONS ---
+  async createGeofenceViolation(data: InsertGeofenceViolation): Promise<GeofenceViolation> {
+    const [violation] = await db.insert(geofenceViolations).values(data).returning();
+    return violation;
+  }
+
+  async getGeofenceViolations(orgId: number, since?: Date): Promise<(GeofenceViolation & { interviewerName: string; surveyTitle: string })[]> {
+    const rows = await db.select({
+      id: geofenceViolations.id,
+      surveyId: geofenceViolations.surveyId,
+      organizationId: geofenceViolations.organizationId,
+      interviewerId: geofenceViolations.interviewerId,
+      latitude: geofenceViolations.latitude,
+      longitude: geofenceViolations.longitude,
+      neighborhood: geofenceViolations.neighborhood,
+      createdAt: geofenceViolations.createdAt,
+      interviewerFirstName: users.firstName,
+      interviewerLastName: users.lastName,
+      surveyTitle: surveys.title,
+    })
+    .from(geofenceViolations)
+    .innerJoin(users, eq(geofenceViolations.interviewerId, users.id))
+    .innerJoin(surveys, eq(geofenceViolations.surveyId, surveys.id))
+    .where(
+      since
+        ? and(eq(geofenceViolations.organizationId, orgId), sql`${geofenceViolations.createdAt} > ${since}`)
+        : eq(geofenceViolations.organizationId, orgId)
+    )
+    .orderBy(desc(geofenceViolations.createdAt))
+    .limit(50);
+
+    return rows.map(r => ({
+      id: r.id,
+      surveyId: r.surveyId,
+      organizationId: r.organizationId,
+      interviewerId: r.interviewerId,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      neighborhood: r.neighborhood,
+      createdAt: r.createdAt,
+      interviewerName: [r.interviewerFirstName, r.interviewerLastName].filter(Boolean).join(' ') || r.interviewerId,
+      surveyTitle: r.surveyTitle,
+    }));
   }
 }
 

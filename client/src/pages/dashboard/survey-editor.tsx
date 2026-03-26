@@ -607,7 +607,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     shuffleQuestions: false,
     requireGps: true,
     requireAudio: true,
-    geofenceNeighborhood: ""
+    geofenceNeighborhood: "",
+    geofenceBlocking: false
   });
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
@@ -641,7 +642,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         shuffleQuestions: (survey as any).shuffleQuestions ?? false,
         requireGps: (survey as any).requireGps ?? true,
         requireAudio: (survey as any).requireAudio ?? true,
-        geofenceNeighborhood: (survey as any).geofenceNeighborhood ?? ""
+        geofenceNeighborhood: (survey as any).geofenceNeighborhood ?? "",
+        geofenceBlocking: (survey as any).geofenceBlocking ?? false
       });
       if (survey.questions) {
         setQuestions(survey.questions.map(q => ({
@@ -728,7 +730,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             shuffleQuestions: surveyForm.shuffleQuestions,
             requireGps: surveyForm.requireGps,
             requireAudio: surveyForm.requireAudio,
-            geofenceNeighborhood: surveyForm.geofenceNeighborhood || null
+            geofenceNeighborhood: surveyForm.geofenceNeighborhood || null,
+            geofenceBlocking: surveyForm.geofenceBlocking
           }
         });
         toast({ title: "Criada", description: "Pesquisa criada com sucesso!" });
@@ -751,7 +754,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             shuffleQuestions: surveyForm.shuffleQuestions,
             requireGps: surveyForm.requireGps,
             requireAudio: surveyForm.requireAudio,
-            geofenceNeighborhood: surveyForm.geofenceNeighborhood || null
+            geofenceNeighborhood: surveyForm.geofenceNeighborhood || null,
+            geofenceBlocking: surveyForm.geofenceBlocking
           }
         });
         
@@ -2182,9 +2186,25 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                     </SelectContent>
                   </Select>
                   {surveyForm.geofenceNeighborhood && (
-                    <p className="text-xs text-blue-600 pl-1">
-                      Entrevistadores verão um alerta ao sair do bairro: <strong>{surveyForm.geofenceNeighborhood}</strong>
-                    </p>
+                    <>
+                      <p className="text-xs text-blue-600 pl-1">
+                        Entrevistadores verão um alerta ao sair do bairro: <strong>{surveyForm.geofenceNeighborhood}</strong>
+                      </p>
+                      <div className="flex items-center justify-between pt-3 border-t border-dashed">
+                        <div>
+                          <Label htmlFor="geofence-blocking" className="font-medium">Bloquear coleta fora do setor</Label>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Se ativado, o entrevistador não poderá coletar respostas enquanto estiver fora do bairro
+                          </p>
+                        </div>
+                        <Switch
+                          id="geofence-blocking"
+                          checked={surveyForm.geofenceBlocking}
+                          onCheckedChange={(v) => { setSurveyForm({ ...surveyForm, geofenceBlocking: v }); setHasChanges(true); }}
+                          data-testid="switch-geofence-blocking"
+                        />
+                      </div>
+                    </>
                   )}
                 </div>
 

@@ -21,7 +21,8 @@ import {
   surveys,
   interviewerLocations,
   dailyDistanceSummary,
-  insertInterviewerLocationSchema
+  insertInterviewerLocationSchema,
+  geofenceViolations
 } from "@shared/schema";
 import { 
   calculateHaversineDistance, 
@@ -2971,6 +2972,47 @@ export async function registerRoutes(
     } catch (err) {
       console.error('[analytics/trend] error:', err);
       res.status(500).json({ message: "Erro ao buscar tendência" });
+    }
+  });
+
+  // --- GEOFENCE VIOLATIONS ---
+  // POST: record a geofence violation from an interviewer
+  app.post("/api/surveys/:surveyId/geofence-violations", isAuthenticated, async (req, res) => {
+    try {
+      const surveyId = parseInt(req.params.surveyId);
+      const userId = await getResolvedUserId(req);
+      const { latitude, longitude, neighborhood } = req.body;
+
+      if (!neighborhood) return res.status(400).json({ message: "neighborhood required" });
+
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Survey not found" });
+
+      const violation = await storage.createGeofenceViolation({
+        surveyId,
+        organizationId: survey.organizationId,
+        interviewerId: userId,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+        neighborhood,
+      });
+      res.status(201).json(violation);
+    } catch (err) {
+      console.error('[geofence-violations/create] error:', err);
+      res.status(500).json({ message: "Erro ao registrar violação" });
+    }
+  });
+
+  // GET: fetch geofence violations for an org (supervisor/admin view)
+  app.get("/api/organizations/:orgId/geofence-violations", isAuthenticated, requireOrgAccess("orgId", "analytics:view"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.orgId);
+      const since = req.query.since ? new Date(req.query.since as string) : undefined;
+      const violations = await storage.getGeofenceViolations(orgId, since);
+      res.json(violations);
+    } catch (err) {
+      console.error('[geofence-violations/list] error:', err);
+      res.status(500).json({ message: "Erro ao buscar violações" });
     }
   });
 

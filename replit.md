@@ -214,10 +214,18 @@ Platform admins are identified by the `PLATFORM_ADMIN_EMAILS` environment variab
   - Adding new neighborhoods: add entry to `GEOFENCES` object with `[longitude, latitude]` coordinate pairs
 - **Hook**: `client/src/hooks/use-geofencing.ts` — watches GPS via `watchPosition`, returns `{ isInsideZone, neighborhoodName }`
 - **Audio alert**: Web Audio API beep fires once when interviewer crosses zone boundary outward
-- **Survey settings**: `geofenceNeighborhood` field (nullable text) on `surveys` table — set per survey in editor Settings tab
-- **DB column**: `surveys.geofence_neighborhood` — migration `0010_add_geofence_neighborhood.sql`
-- **Collection integration**: Alert banner shown in `interview-session.tsx` only during active question collection (not during GPS check or submit steps)
-- **Non-blocking**: Geofencing only warns, never blocks the interview
+- **Survey settings** (two fields on `surveys` table):
+  - `geofenceNeighborhood` (text nullable) — which neighborhood to enforce; set per survey in editor Settings tab
+  - `geofenceBlocking` (boolean, default false) — if true, shows full-screen block overlay and prevents collection outside zone
+- **DB columns**: migrations `0010_add_geofence_neighborhood.sql` and `0011_add_geofence_blocking_and_violations.sql`
+- **Violation logging**: `geofence_violations` table — records each first exit per session (surveId, organizationId, interviewerId, neighborhood, lat/lng, createdAt)
+  - Backend: POST `/api/surveys/:surveyId/geofence-violations` (called by interviewer app)
+  - Backend: GET `/api/organizations/:orgId/geofence-violations?since=` (supervisor dashboard)
+- **Supervisor notifications**:
+  - Overview page polls every 30s for new violations
+  - Toast notification fires when a new violation arrives after page load
+  - Card "Saídas de Setor Detectadas" shows recent violation history with interviewer name, neighborhood, survey, and timestamp
+- **Blocking mode**: when `geofenceBlocking=true` and interviewer is outside zone, a full-screen red overlay prevents any answer input until they return
 
 ### Pending Implementations
 - **Stripe Integration**: Payment processing for subscriptions is NOT yet configured. User declined Replit integration setup. When ready, configure Stripe API keys as secrets and implement:
