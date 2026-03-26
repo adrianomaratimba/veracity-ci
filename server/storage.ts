@@ -18,7 +18,9 @@ import {
   subscriptionPlans, SubscriptionPlan,
   landingPageConfig, LandingPageConfig, InsertLandingPageConfig,
   interviewerLocations, InterviewerLocation, dailyDistanceSummary,
-  geofenceViolations, GeofenceViolation, InsertGeofenceViolation
+  geofenceViolations, GeofenceViolation, InsertGeofenceViolation,
+  pushSubscriptions, PushSubscription,
+  interviewerZoneAssignments, InterviewerZoneAssignment, InsertInterviewerZoneAssignment
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";

@@ -45,3 +45,6 @@ integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_object_storag
 
 [userenv.shared]
 PLATFORM_ADMIN_EMAILS = "contato@maratimba.com,adriano@maratimba.com"
+VAPID_PUBLIC_KEY = "BCS9MEgrUERLVV_NNXllnqiSK_o5YyBEj0sw2yHD8adugLj6RdFWWCSL9z6pwCTBwwhgynuxt8c0QUJgz0hPq9M"
+VAPID_PRIVATE_KEY = "mBQ2GmG1Oa2ThDbVpZ3zyQxCRfx9z7edadMLgfNv4do"
+VAPID_EMAIL = "mailto:noreply@dataveracity.com.br"

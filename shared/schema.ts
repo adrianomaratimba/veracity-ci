@@ -733,3 +733,26 @@ export const geofenceViolations = pgTable("geofence_violations", {
 export const insertGeofenceViolationSchema = createInsertSchema(geofenceViolations).omit({ id: true, createdAt: true });
 export type InsertGeofenceViolation = z.infer<typeof insertGeofenceViolationSchema>;
 export type GeofenceViolation = typeof geofenceViolations.$inferSelect;
+
+// Push subscriptions for web push notifications
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  subscription: jsonb("subscription").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+
+// Interviewer zone assignments (per survey, per neighborhood)
+export const interviewerZoneAssignments = pgTable("interviewer_zone_assignments", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  surveyId: integer("survey_id").references(() => surveys.id).notNull(),
+  interviewerId: varchar("interviewer_id").references(() => users.id).notNull(),
+  neighborhood: text("neighborhood").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertInterviewerZoneAssignmentSchema = createInsertSchema(interviewerZoneAssignments).omit({ id: true, createdAt: true });
+export type InsertInterviewerZoneAssignment = z.infer<typeof insertInterviewerZoneAssignmentSchema>;
+export type InterviewerZoneAssignment = typeof interviewerZoneAssignments.$inferSelect;
