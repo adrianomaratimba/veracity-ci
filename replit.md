@@ -208,7 +208,7 @@ Platform admins are identified by the `PLATFORM_ADMIN_EMAILS` environment variab
 
 ### Geofencing by Neighborhood
 - **Purpose**: Alert interviewers in real time when they leave their designated collection zone
-- **Algorithm**: Ray casting (point-in-polygon) implemented in pure TypeScript — no external libraries, works offline
+- **Algorithm**: Point-in-polygon using `@turf/boolean-point-in-polygon` (GeoJSON-native, tree-shakeable Turf package)
 - **Polygon data**: Static file `client/src/lib/geofences.ts` with GeoJSON-format coordinates
   - Currently configured: Pontal and Centro (Marataízes-ES)
   - Adding new neighborhoods: add entry to `GEOFENCES` object with `[longitude, latitude]` coordinate pairs
