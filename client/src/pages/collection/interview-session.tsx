@@ -133,7 +133,14 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [step, setStep] = useState<Step>('permissions');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [gpsCoords, setGpsCoords] = useState<GeolocationCoordinates | null>(null);
+  const [gpsBestSoFar, setGpsBestSoFar] = useState<GeolocationCoordinates | null>(null);
+  const [gpsAccuracyOk, setGpsAccuracyOk] = useState(false);
+  const [gpsShowAcceptImprecise, setGpsShowAcceptImprecise] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
+
+  // Accuracy threshold in meters — accept as "good enough"
+  const GPS_ACCURACY_THRESHOLD = 150;
+
   const [answers, setAnswers] = useState<Record<number, any>>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -208,14 +215,10 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     };
   }, []);
 
-  // GPS capture with high accuracy and multiple samples
+  // GPS capture with high accuracy — waits for a good signal before enabling the start button
   useEffect(() => {
-    // Check if GPS is required for this survey
     const requireGps = (survey as any)?.requireGps ?? true;
-    if (!requireGps) {
-      // GPS not required - skip capture
-      return;
-    }
+    if (!requireGps) return;
 
     if (!navigator.geolocation) {
       setGpsError("Geolocalização não é suportada por este navegador.");
@@ -223,74 +226,85 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       return;
     }
 
-    let samples: GeolocationCoordinates[] = [];
+    let bestSample: GeolocationCoordinates | null = null;
     let watchId: number | null = null;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let skipOptionTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let noSignalTimeoutId: ReturnType<typeof setTimeout> | null = null;       // 5s – show "sem GPS" skip
+    let showImpreciseTimeoutId: ReturnType<typeof setTimeout> | null = null;  // 8s – show "accept imprecise" option
+    let acceptAnywayTimeoutId: ReturnType<typeof setTimeout> | null = null;   // 20s – auto-accept imprecise
 
-    const selectBestSample = () => {
-      if (samples.length === 0) return;
-      // Select sample with lowest accuracy (most precise)
-      const best = samples.reduce((a, b) => (a.accuracy < b.accuracy ? a : b));
-      setGpsCoords(best);
+    const handleNewPosition = (position: GeolocationPosition) => {
+      const coords = position.coords;
+
+      // Track best (most accurate) sample so far
+      if (!bestSample || coords.accuracy < bestSample.accuracy) {
+        bestSample = coords;
+        setGpsBestSoFar(coords);
+      }
+
+      // Cancel the "no GPS signal" timeout as we have at least one reading
+      if (noSignalTimeoutId !== null) {
+        clearTimeout(noSignalTimeoutId);
+        noSignalTimeoutId = null;
+        setGpsTimeoutReached(false);
+      }
+
+      // If accuracy is good enough, accept immediately
+      if (coords.accuracy <= GPS_ACCURACY_THRESHOLD) {
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+        if (acceptAnywayTimeoutId !== null) {
+          clearTimeout(acceptAnywayTimeoutId);
+          acceptAnywayTimeoutId = null;
+        }
+        setGpsCoords(coords);
+        setGpsAccuracyOk(true);
+      }
+      // Otherwise keep collecting — acceptAnywayTimeout will fire after 20s
     };
 
-    // Use watchPosition with high accuracy to collect multiple samples
     watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        samples.push(position.coords);
-        // Update with current best reading
-        if (samples.length === 1) {
-          setGpsCoords(position.coords);
-          // GPS acquired - no need for skip option
-          setGpsTimeoutReached(false);
-        } else {
-          selectBestSample();
-        }
-      },
+      handleNewPosition,
       (err) => {
-        // Only show error if we have no samples after timeout
-        if (samples.length === 0) {
+        if (!bestSample) {
           setGpsError("Erro ao obter localização. Verifique as permissões.");
         }
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 
-    // After 5 seconds without GPS, show skip option
-    skipOptionTimeoutId = setTimeout(() => {
-      if (samples.length === 0) {
-        setGpsTimeoutReached(true);
-      }
+    // After 5s with no signal at all, show "Continuar sem GPS" option
+    noSignalTimeoutId = setTimeout(() => {
+      if (!bestSample) setGpsTimeoutReached(true);
     }, 5000);
 
-    // Stop collecting after 10 seconds and use best sample
-    timeoutId = setTimeout(() => {
+    // After 8s with imprecise signal, show "Usar GPS atual" button
+    showImpreciseTimeoutId = setTimeout(() => {
+      if (!bestSample || bestSample.accuracy > GPS_ACCURACY_THRESHOLD) {
+        setGpsShowAcceptImprecise(true);
+      }
+    }, 8000);
+
+    // After 20s without a good-accuracy fix, accept the best we have automatically
+    acceptAnywayTimeoutId = setTimeout(() => {
       if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
       }
-      selectBestSample();
-      // If still no GPS after 10 seconds, keep showing skip option
-      if (samples.length === 0) {
+      if (bestSample) {
+        setGpsCoords(bestSample);
+        setGpsAccuracyOk(false);
+      } else {
         setGpsTimeoutReached(true);
       }
-    }, 10000);
+    }, 20000);
 
     return () => {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId);
-      }
-      if (skipOptionTimeoutId !== null) {
-        clearTimeout(skipOptionTimeoutId);
-      }
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (noSignalTimeoutId !== null) clearTimeout(noSignalTimeoutId);
+      if (showImpreciseTimeoutId !== null) clearTimeout(showImpreciseTimeoutId);
+      if (acceptAnywayTimeoutId !== null) clearTimeout(acceptAnywayTimeoutId);
     };
   }, [survey]);
 
@@ -623,7 +637,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         </div>
         <div className="flex items-center gap-2 text-xs opacity-80 mt-1 flex-wrap">
           {isRecording && <span className="flex items-center gap-1 text-red-300 animate-pulse"><Mic className="w-3 h-3" /> GRAVANDO</span>}
-          {gpsCoords && <span className="flex items-center gap-1 text-green-300"><MapPin className="w-3 h-3" /> GPS Ativo</span>}
+          {gpsCoords && gpsAccuracyOk && <span className="flex items-center gap-1 text-green-300"><MapPin className="w-3 h-3" /> GPS Ativo</span>}
+          {gpsCoords && !gpsAccuracyOk && <span className="flex items-center gap-1 text-orange-300"><MapPin className="w-3 h-3" /> GPS Impreciso</span>}
+          {gpsBestSoFar && !gpsCoords && <span className="flex items-center gap-1 text-blue-300"><MapPin className="w-3 h-3" /> GPS Aguardando</span>}
           {skippedGps && !gpsCoords && <span className="flex items-center gap-1 text-yellow-300"><MapPin className="w-3 h-3" /> Sem GPS</span>}
           {!isOnline && <span className="flex items-center gap-1 text-yellow-300"><WifiOff className="w-3 h-3" /> Modo Offline</span>}
         </div>
@@ -642,28 +658,60 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
             <div className="space-y-3 text-left">
               {((survey as any)?.requireGps ?? true) && (
-                <div className="flex items-center gap-3 p-3 bg-white border rounded-lg">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${gpsCoords ? 'bg-green-100 text-green-600' : skippedGps ? 'bg-yellow-100 text-yellow-600' : 'bg-red-100 text-red-600'}`}>
-                    {gpsCoords ? <CheckCircle className="w-5 h-5" /> : skippedGps ? <MapPin className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3 p-3 bg-white border rounded-lg">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      skippedGps ? 'bg-yellow-100 text-yellow-600'
+                      : gpsCoords && gpsAccuracyOk ? 'bg-green-100 text-green-600'
+                      : gpsCoords && !gpsAccuracyOk ? 'bg-orange-100 text-orange-600'
+                      : gpsBestSoFar ? 'bg-blue-100 text-blue-600'
+                      : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {skippedGps ? <MapPin className="w-5 h-5" /> 
+                       : gpsCoords && gpsAccuracyOk ? <CheckCircle className="w-5 h-5" />
+                       : gpsCoords && !gpsAccuracyOk ? <MapPin className="w-5 h-5" />
+                       : gpsBestSoFar ? <Loader2 className="w-5 h-5 animate-spin" />
+                       : <Loader2 className="w-5 h-5 animate-spin" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">Localização GPS</p>
+                      <p className="text-xs text-muted-foreground">
+                        {skippedGps
+                          ? "Entrevista sem GPS"
+                          : gpsError
+                          ? gpsError
+                          : gpsCoords && gpsAccuracyOk
+                          ? `Boa precisão: ${gpsCoords.accuracy.toFixed(0)}m`
+                          : gpsCoords && !gpsAccuracyOk
+                          ? `Precisão atual: ${gpsCoords.accuracy.toFixed(0)}m (impreciso, mas liberado)`
+                          : gpsBestSoFar
+                          ? `Aguardando sinal melhor... ${gpsBestSoFar.accuracy.toFixed(0)}m`
+                          : "Aguardando sinal GPS..."}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">Localização GPS</p>
-                    <p className="text-xs text-muted-foreground">
-                      {skippedGps 
-                        ? "Entrevista sem GPS" 
-                        : gpsError || (gpsCoords ? `Precisão: ${gpsCoords.accuracy.toFixed(0)}m` : "Aguardando sinal...")}
-                    </p>
-                  </div>
-                  {/* Show skip GPS button after 5 seconds timeout */}
-                  {!gpsCoords && !skippedGps && gpsTimeoutReached && (
-                    <Button 
-                      size="sm" 
+                  {/* No GPS signal at all after 5s — show skip */}
+                  {!gpsCoords && !gpsBestSoFar && !skippedGps && gpsTimeoutReached && (
+                    <Button
+                      size="sm"
                       variant="outline"
-                      className="shrink-0 border-yellow-500 text-yellow-600 hover:bg-yellow-50"
+                      className="w-full border-yellow-500 text-yellow-600 hover:bg-yellow-50"
                       onClick={handleSkipGps}
                       data-testid="button-skip-gps"
                     >
                       Continuar sem GPS
+                    </Button>
+                  )}
+                  {/* Has signal but imprecise after 8s — show "proceed anyway" */}
+                  {!gpsCoords && gpsBestSoFar && !skippedGps && gpsShowAcceptImprecise && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full border-orange-400 text-orange-600 hover:bg-orange-50"
+                      onClick={() => { setGpsCoords(gpsBestSoFar); setGpsAccuracyOk(false); }}
+                      data-testid="button-accept-imprecise-gps"
+                    >
+                      Usar GPS atual ({gpsBestSoFar.accuracy.toFixed(0)}m)
                     </Button>
                   )}
                 </div>
