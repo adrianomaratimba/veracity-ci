@@ -10,6 +10,7 @@ Key capabilities:
 - Anti-fraud measures including mandatory GPS capture and audio recording
 - Role-based access control (Owner, Admin, Coordinator, Interviewer, Viewer)
 - Real-time analytics dashboards with map visualization
+- Geofencing by neighborhood: polygon-based zone validation during collection (Pontal and Centro neighborhoods of Marataízes-ES pre-configured)
 
 ## User Preferences
 
@@ -204,6 +205,19 @@ Platform admins are identified by the `PLATFORM_ADMIN_EMAILS` environment variab
     - GET `/api/admin/check` - verify if current user is platform admin
 
 - **Note**: Super Admin panel manages only the development database. Production database is separate and cannot be accessed directly from code.
+
+### Geofencing by Neighborhood
+- **Purpose**: Alert interviewers in real time when they leave their designated collection zone
+- **Algorithm**: Ray casting (point-in-polygon) implemented in pure TypeScript — no external libraries, works offline
+- **Polygon data**: Static file `client/src/lib/geofences.ts` with GeoJSON-format coordinates
+  - Currently configured: Pontal and Centro (Marataízes-ES)
+  - Adding new neighborhoods: add entry to `GEOFENCES` object with `[longitude, latitude]` coordinate pairs
+- **Hook**: `client/src/hooks/use-geofencing.ts` — watches GPS via `watchPosition`, returns `{ isInsideZone, neighborhoodName }`
+- **Audio alert**: Web Audio API beep fires once when interviewer crosses zone boundary outward
+- **Survey settings**: `geofenceNeighborhood` field (nullable text) on `surveys` table — set per survey in editor Settings tab
+- **DB column**: `surveys.geofence_neighborhood` — migration `0010_add_geofence_neighborhood.sql`
+- **Collection integration**: Alert banner shown in `interview-session.tsx` only during active question collection (not during GPS check or submit steps)
+- **Non-blocking**: Geofencing only warns, never blocks the interview
 
 ### Pending Implementations
 - **Stripe Integration**: Payment processing for subscriptions is NOT yet configured. User declined Replit integration setup. When ready, configure Stripe API keys as secrets and implement:

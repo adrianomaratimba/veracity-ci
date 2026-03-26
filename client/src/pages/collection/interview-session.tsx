@@ -6,6 +6,7 @@ import { useSubmitResponse } from "@/hooks/use-responses";
 import { useSurvey } from "@/hooks/use-surveys";
 import { useLocationTracking } from "@/hooks/use-location-tracking";
 import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
+import { useGeofencing } from "@/hooks/use-geofencing";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle, WifiOff, Cloud, Square, Play } from "lucide-react";
@@ -149,7 +150,14 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [gpsTimeoutReached, setGpsTimeoutReached] = useState(false);
 
   const interviewOrgId = (survey as any)?.organizationId || 0;
-  
+  const geofenceNeighborhood = (survey as any)?.geofenceNeighborhood || null;
+
+  // Geofencing - only active during question collection step
+  const { isInsideZone, neighborhoodName: geofenceZoneName } = useGeofencing({
+    neighborhoodName: geofenceNeighborhood,
+    enabled: step === 'questions' && !!geofenceNeighborhood,
+  });
+
   // Real-time location tracking for supervisor monitoring
   useLocationTracking({
     orgId: interviewOrgId,
@@ -669,6 +677,21 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               </p>
             )}
           </Card>
+        )}
+
+        {/* Geofencing alert banner - shown when outside designated zone during collection */}
+        {step === 'questions' && geofenceNeighborhood && !isInsideZone && (
+          <div
+            className="bg-red-600 text-white px-4 py-3 rounded-lg flex items-center gap-3 shadow-lg animate-pulse"
+            data-testid="banner-geofence-alert"
+            role="alert"
+          >
+            <AlertTriangle className="w-5 h-5 shrink-0" />
+            <div>
+              <p className="font-bold text-sm">Você saiu do setor!</p>
+              <p className="text-xs opacity-90">Retorne ao bairro: <strong>{geofenceZoneName}</strong></p>
+            </div>
+          </div>
         )}
 
         {step === 'questions' && shuffledQuestions.length > 0 && (

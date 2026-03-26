@@ -125,6 +125,7 @@ export const surveys = pgTable("surveys", {
   shuffleQuestions: boolean("shuffle_questions").default(false),
   requireGps: boolean("require_gps").default(true),
   requireAudio: boolean("require_audio").default(true),
+  geofenceNeighborhood: text("geofence_neighborhood"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   createdAt: timestamp("created_at").defaultNow(),

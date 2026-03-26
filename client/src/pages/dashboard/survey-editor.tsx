@@ -27,6 +27,7 @@ import { buildUrl, api } from "@shared/routes";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { apiRequest } from "@/lib/queryClient";
 import { useUpload } from "@/hooks/use-upload";
+import { GEOFENCE_NAMES } from "@/lib/geofences";
 
 interface QuestionOption {
   text: string;
@@ -605,7 +606,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     status: "draft",
     shuffleQuestions: false,
     requireGps: true,
-    requireAudio: true
+    requireAudio: true,
+    geofenceNeighborhood: ""
   });
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
@@ -638,7 +640,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         status: survey.status || "draft",
         shuffleQuestions: (survey as any).shuffleQuestions ?? false,
         requireGps: (survey as any).requireGps ?? true,
-        requireAudio: (survey as any).requireAudio ?? true
+        requireAudio: (survey as any).requireAudio ?? true,
+        geofenceNeighborhood: (survey as any).geofenceNeighborhood ?? ""
       });
       if (survey.questions) {
         setQuestions(survey.questions.map(q => ({
@@ -724,7 +727,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             endDate: surveyForm.endDate ? new Date(surveyForm.endDate) : null,
             shuffleQuestions: surveyForm.shuffleQuestions,
             requireGps: surveyForm.requireGps,
-            requireAudio: surveyForm.requireAudio
+            requireAudio: surveyForm.requireAudio,
+            geofenceNeighborhood: surveyForm.geofenceNeighborhood || null
           }
         });
         toast({ title: "Criada", description: "Pesquisa criada com sucesso!" });
@@ -746,7 +750,8 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             quotas: quotas,
             shuffleQuestions: surveyForm.shuffleQuestions,
             requireGps: surveyForm.requireGps,
-            requireAudio: surveyForm.requireAudio
+            requireAudio: surveyForm.requireAudio,
+            geofenceNeighborhood: surveyForm.geofenceNeighborhood || null
           }
         });
         
@@ -2155,6 +2160,32 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                   <p className="text-xs text-muted-foreground pl-10">
                     Grava o audio como evidencia de auditoria
                   </p>
+                </div>
+
+                <div className="space-y-3 pt-4 border-t">
+                  <Label className="text-base font-medium">Geocerca por Bairro</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Alerta o entrevistador quando ele sair do bairro designado para esta pesquisa
+                  </p>
+                  <Select
+                    value={surveyForm.geofenceNeighborhood || "none"}
+                    onValueChange={(v) => { setSurveyForm({ ...surveyForm, geofenceNeighborhood: v === "none" ? "" : v }); setHasChanges(true); }}
+                  >
+                    <SelectTrigger data-testid="select-geofence-neighborhood">
+                      <SelectValue placeholder="Sem restrição de bairro" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem restrição de bairro</SelectItem>
+                      {GEOFENCE_NAMES.map(name => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {surveyForm.geofenceNeighborhood && (
+                    <p className="text-xs text-blue-600 pl-1">
+                      Entrevistadores verão um alerta ao sair do bairro: <strong>{surveyForm.geofenceNeighborhood}</strong>
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex justify-end pt-4 border-t">
