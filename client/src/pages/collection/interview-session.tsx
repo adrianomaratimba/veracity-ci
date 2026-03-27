@@ -231,6 +231,34 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     }).catch(() => { /* silent — don't disrupt collection */ });
   }, [step, isGeofenceActive, isInsideZone, surveyId, zonesLoaded, geofenceHasPosition]);
 
+  // Periodic out-of-zone reminder — fires every 30 s while interviewer is outside assigned zone
+  // during active collection (questions or submit step).
+  useEffect(() => {
+    const activeStep = step === 'questions' || step === 'submit';
+    if (!activeStep || !isGeofenceActive || !geofenceBlocking) return;
+    if (!zonesLoaded || myZones.length === 0 || !geofenceHasPosition) return;
+    if (isInsideZone) return; // inside zone — no reminder needed
+
+    // Fire immediately so first alert appears right when violation is confirmed
+    toast({
+      title: "⚠️ Fora do setor",
+      description: `Você está fora de ${activeNeighborhood || 'seu setor designado'}. Retorne ao bairro.`,
+      variant: "destructive",
+      duration: 8000,
+    });
+
+    const interval = setInterval(() => {
+      toast({
+        title: "⚠️ Fora do setor",
+        description: `Você está fora de ${activeNeighborhood || 'seu setor designado'}. Retorne ao bairro.`,
+        variant: "destructive",
+        duration: 8000,
+      });
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [step, isGeofenceActive, geofenceBlocking, zonesLoaded, myZones.length, geofenceHasPosition, isInsideZone, activeNeighborhood]);
+
   // Real-time location tracking for supervisor monitoring
   useLocationTracking({
     orgId: interviewOrgId,
