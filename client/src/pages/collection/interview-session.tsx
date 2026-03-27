@@ -238,9 +238,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   }, [step, isGeofenceActive, isInsideZone, surveyId, zonesLoaded, geofenceHasPosition]);
 
   // Periodic out-of-zone reminder — fires every 30 s while interviewer is outside assigned zone
-  // during active collection (questions or submit step).
+  // during active question collection only (not submit — submit step does not watch GPS).
   useEffect(() => {
-    const activeStep = step === 'questions' || step === 'submit';
+    const activeStep = step === 'questions';
     if (!activeStep || !isGeofenceActive || !geofenceBlocking) return;
     if (!zonesLoaded || myZones.length === 0 || !geofenceHasPosition) return;
     if (isInsideZone) return; // inside zone — no reminder needed
@@ -615,24 +615,15 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     if (requireAudio && !audioBlob) return;
     if (requireGps && !gpsCoords && !skippedGps) return;
 
-    // Client-side geofence gate at submit time (belt-and-suspenders before server check)
-    if (geofenceBlocking && isGeofenceActive && zonesLoaded && myZones.length > 0) {
-      if (skippedGps) {
-        toast({
-          title: "Coleta bloqueada",
-          description: "GPS é obrigatório para esta pesquisa com geocerca ativa.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!isInsideZone) {
-        toast({
-          title: "Coleta bloqueada",
-          description: `Você está fora do setor designado (${activeNeighborhood}). Retorne ao bairro para continuar.`,
-          variant: "destructive",
-        });
-        return;
-      }
+    // Client-side geofence gate at submit time — only blocks if no zone is assigned at all.
+    // GPS-position check is intentionally removed here: isInsideZone from the hook can be stale
+    // (disabled during submit step) and GPS drift causes false positives. The server is the
+    // authoritative geofence validator for the final submission.
+    if (geofenceBlocking && isGeofenceActive && zonesLoaded && myZones.length === 0) {
+      const msg = "Você não possui setor atribuído. Contacte o coordenador.";
+      setSubmitError(msg);
+      toast({ title: "Coleta bloqueada", description: msg, variant: "destructive" });
+      return;
     }
 
     if (!isOnline) {
@@ -692,7 +683,12 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         setStep('success');
       },
       onError: async (error: Error) => {
-        if (error instanceof ApiError && (error.code === "GEOFENCE_OUTSIDE_ZONE" || error.code === "GEOFENCE_NO_GPS")) {
+        if (error instanceof ApiError && (
+          error.code === "GEOFENCE_OUTSIDE_ZONE" ||
+          error.code === "GEOFENCE_NO_GPS" ||
+          error.code === "GEOFENCE_NO_ASSIGNMENT"
+        )) {
+          setSubmitError(error.message);
           toast({
             title: "Coleta bloqueada",
             description: error.message,
@@ -1232,6 +1228,19 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               </div>
             </div>
 
+            {submitError && (
+              <div
+                className="flex items-start gap-3 p-4 bg-red-50 border border-red-300 rounded-lg"
+                data-testid="alert-submit-geofence-error"
+              >
+                <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-semibold text-red-700 text-sm">Envio bloqueado</p>
+                  <p className="text-red-600 text-xs mt-0.5">{submitError}</p>
+                </div>
+              </div>
+            )}
+
             <Button 
               className="w-full h-12 text-lg" 
               onClick={handleSubmit}
@@ -1249,6 +1258,15 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                   Enviar Entrevista
                 </>
               )}
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="w-full text-muted-foreground"
+              onClick={() => setLocation('/')}
+              data-testid="button-back-from-submit"
+            >
+              ← Voltar
             </Button>
           </Card>
         )}
