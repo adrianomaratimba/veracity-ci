@@ -7,6 +7,7 @@ import { useSurvey } from "@/hooks/use-surveys";
 import { useLocationTracking } from "@/hooks/use-location-tracking";
 import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 import { useGeofencing } from "@/hooks/use-geofencing";
+import { isPointInsidePolygon } from "@/lib/geofences";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle, WifiOff, Cloud, Square, Play } from "lucide-react";
@@ -187,6 +188,18 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     .map(z => z.polygon)
     .filter((p): p is [number,number][] => !!(p && p.length >= 3));
   const activeNeighborhood = myZones.length > 0 ? myZones[0].neighborhood : null;
+
+  // Zone check at the GPS step — computed from already-acquired gpsCoords + loaded zone polygons.
+  // True when: geofence blocking is active, zones are loaded, interviewer has assignments, GPS is
+  // available, AND the GPS position is OUTSIDE all assigned polygons.
+  // Used to block "Iniciar Entrevista" and show a warning BEFORE any question is answered.
+  const gpsZoneBlocked: boolean =
+    geofenceBlocking &&
+    isGeofenceActive &&
+    zonesLoaded &&
+    myZones.length > 0 &&
+    !!gpsCoords &&
+    !activePolygons.some(poly => isPointInsidePolygon(gpsCoords.longitude, gpsCoords.latitude, poly));
 
   // Track if we already sent a violation report for this session
   const violationReportedRef = useRef(false);
@@ -386,6 +399,16 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     
     // Only check GPS if required and not skipped
     if (requireGps && !gpsCoords && !skippedGps) return;
+
+    // Final zone guard — prevents start if GPS confirms interviewer is outside assigned zone
+    if (gpsZoneBlocked) {
+      toast({
+        title: "Coleta bloqueada",
+        description: `Você está fora do setor designado (${activeNeighborhood}). Retorne ao bairro para iniciar a entrevista.`,
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Only start recording if audio is required
     if (requireAudio) {
@@ -812,11 +835,29 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               )}
             </div>
 
+            {/* Zone blocked warning — shown immediately when GPS confirms outside assigned zone */}
+            {gpsZoneBlocked && (
+              <div
+                className="flex items-start gap-3 p-4 bg-red-50 border border-red-300 rounded-lg"
+                data-testid="alert-zone-blocked"
+              >
+                <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-red-700 text-sm">Fora do setor designado</p>
+                  <p className="text-red-600 text-xs mt-0.5">
+                    Você está fora de <strong>{activeNeighborhood}</strong>.
+                    Retorne ao bairro para poder iniciar a entrevista.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <Button 
               size="lg" 
               className="w-full" 
               onClick={handleStartInterview}
-              disabled={((survey as any)?.requireGps ?? true) && !gpsCoords && !skippedGps}
+              disabled={(((survey as any)?.requireGps ?? true) && !gpsCoords && !skippedGps) || gpsZoneBlocked}
+              data-testid="button-start-interview"
             >
               Iniciar Entrevista
             </Button>
