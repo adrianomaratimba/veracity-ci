@@ -907,6 +907,15 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 Esta entrevista será marcada como "Sem GPS" no painel do supervisor.
               </p>
             )}
+
+            <Button
+              variant="ghost"
+              className="w-full text-muted-foreground"
+              onClick={() => setLocation('/')}
+              data-testid="button-back-home"
+            >
+              ← Voltar
+            </Button>
           </Card>
         )}
 
