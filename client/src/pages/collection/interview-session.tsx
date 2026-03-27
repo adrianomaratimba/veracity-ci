@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { useUpload } from "@/hooks/use-upload";
-import { useSubmitResponse } from "@/hooks/use-responses";
+import { useSubmitResponse, ApiError } from "@/hooks/use-responses";
 import { useSurvey } from "@/hooks/use-surveys";
 import { useLocationTracking } from "@/hooks/use-location-tracking";
 import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
@@ -558,6 +558,26 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     if (requireAudio && !audioBlob) return;
     if (requireGps && !gpsCoords && !skippedGps) return;
 
+    // Client-side geofence gate at submit time (belt-and-suspenders before server check)
+    if (geofenceBlocking && isGeofenceActive && zonesLoaded && myZones.length > 0) {
+      if (skippedGps) {
+        toast({
+          title: "Coleta bloqueada",
+          description: "GPS é obrigatório para esta pesquisa com geocerca ativa.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!isInsideZone) {
+        toast({
+          title: "Coleta bloqueada",
+          description: `Você está fora do setor designado (${activeNeighborhood}). Retorne ao bairro para continuar.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     if (!isOnline) {
       await saveOffline();
       return;
@@ -615,6 +635,14 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         setStep('success');
       },
       onError: async (error: Error) => {
+        if (error instanceof ApiError && (error.code === "GEOFENCE_OUTSIDE_ZONE" || error.code === "GEOFENCE_NO_GPS")) {
+          toast({
+            title: "Coleta bloqueada",
+            description: error.message,
+            variant: "destructive",
+          });
+          return;
+        }
         toast({
           title: "Erro de conexão",
           description: "Salvando entrevista localmente para envio posterior...",
@@ -806,7 +834,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
             a) zones are still fetching (!zonesLoaded), OR
             b) zones are loaded + interviewer has assignments + GPS not yet confirmed
             Does NOT show when zonesLoaded=true but myZones=[] (no assignments → no restriction) */}
-        {step === 'questions' && geofenceEnabled && geofenceBlocking &&
+        {(step === 'questions' || step === 'submit') && geofenceEnabled && geofenceBlocking &&
           (!zonesLoaded || (myZones.length > 0 && !geofenceHasPosition)) && (
           <div
             className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-800 text-white p-8 text-center"
@@ -821,7 +849,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         )}
 
         {/* Geofencing: blocking overlay — GPS confirmed user is outside their assigned zone */}
-        {step === 'questions' && geofenceEnabled && geofenceBlocking &&
+        {(step === 'questions' || step === 'submit') && geofenceEnabled && geofenceBlocking &&
           zonesLoaded && myZones.length > 0 && geofenceHasPosition && !isInsideZone && (
           <div
             className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-red-700 text-white p-8 text-center"
