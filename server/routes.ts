@@ -3106,7 +3106,7 @@ export async function registerRoutes(
   // GET: fetch the current user's assigned zones (with polygons) for a survey
   app.get("/api/surveys/:surveyId/my-zones", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.id;
+      const userId = getUserId(req);
       const surveyId = parseInt(req.params.surveyId);
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
