@@ -193,12 +193,18 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   // True when: geofence blocking is active, zones are loaded, interviewer has assignments, GPS is
   // available, AND the GPS position is OUTSIDE all assigned polygons.
   // Used to block "Iniciar Entrevista" and show a warning BEFORE any question is answered.
+  // Default: blocked everywhere. Only allowed when GPS is inside an assigned zone.
+  // If no zone is assigned at all, block immediately (no GPS check needed).
   const gpsZoneBlocked: boolean =
     geofenceBlocking &&
     isGeofenceActive &&
-    zonesLoaded &&
-    myZones.length > 0 &&
-    !!gpsCoords &&
+    zonesLoaded && (
+      myZones.length === 0 ||
+      (!!gpsCoords && !activePolygons.some(poly => isPointInsidePolygon(gpsCoords.longitude, gpsCoords.latitude, poly)))
+    );
+  // Two different block reasons for distinct UI messages
+  const noZoneAssigned = geofenceBlocking && isGeofenceActive && zonesLoaded && myZones.length === 0;
+  const outsideAssignedZone = geofenceBlocking && isGeofenceActive && zonesLoaded && myZones.length > 0 && !!gpsCoords &&
     !activePolygons.some(poly => isPointInsidePolygon(gpsCoords.longitude, gpsCoords.latitude, poly));
 
   // Track if we already sent a violation report for this session
@@ -871,8 +877,25 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               </div>
             )}
 
-            {/* Zone blocked warning — shown immediately when GPS confirms outside assigned zone */}
-            {gpsZoneBlocked && (
+            {/* No zone assignment — blocked everywhere */}
+            {noZoneAssigned && (
+              <div
+                className="flex items-start gap-3 p-4 bg-red-50 border border-red-300 rounded-lg"
+                data-testid="alert-no-zone-assigned"
+              >
+                <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-red-700 text-sm">Sem setor atribuído</p>
+                  <p className="text-red-600 text-xs mt-0.5">
+                    Você não possui nenhum setor de coleta para esta pesquisa.
+                    Contacte o coordenador para receber uma área designada.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Outside assigned zone warning — GPS confirmed outside polygon */}
+            {outsideAssignedZone && (
               <div
                 className="flex items-start gap-3 p-4 bg-red-50 border border-red-300 rounded-lg"
                 data-testid="alert-zone-blocked"
