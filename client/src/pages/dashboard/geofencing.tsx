@@ -859,6 +859,11 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
     enabled: !!orgId,
   });
 
+  const existingCities = useMemo(() =>
+    [...new Set((geofences as any[]).map((f: any) => f.city).filter(Boolean))].sort() as string[],
+    [geofences]
+  );
+
   const createMutation = useMutation({
     mutationFn: async () => {
       setParseError(null);
@@ -1002,8 +1007,12 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
                 value={city}
                 onChange={e => setCity(e.target.value)}
                 placeholder="Ex: Marataízes"
+                list="geofence-cities-list"
                 data-testid="input-geofence-city"
               />
+              <datalist id="geofence-cities-list">
+                {existingCities.map((c) => <option key={c} value={c} />)}
+              </datalist>
             </div>
             <div className="space-y-1">
               <Label>População (habitantes)</Label>
@@ -1138,6 +1147,7 @@ function CustomGeofencesTab({ orgId }: { orgId: number }) {
                   value={editCity}
                   onChange={e => setEditCity(e.target.value)}
                   placeholder="Ex: Marataízes"
+                  list="geofence-cities-list"
                   data-testid="input-edit-geofence-city"
                 />
               </div>
