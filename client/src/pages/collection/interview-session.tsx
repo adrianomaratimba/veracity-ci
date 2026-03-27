@@ -863,6 +863,14 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               )}
             </div>
 
+            {/* Waiting for zone data to load — shown when GPS is ready but zones still fetching */}
+            {geofenceBlocking && isGeofenceActive && !zonesLoaded && gpsCoords && (
+              <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600" data-testid="alert-zones-loading">
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                Verificando setor designado...
+              </div>
+            )}
+
             {/* Zone blocked warning — shown immediately when GPS confirms outside assigned zone */}
             {gpsZoneBlocked && (
               <div
@@ -884,7 +892,11 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               size="lg" 
               className="w-full" 
               onClick={handleStartInterview}
-              disabled={(((survey as any)?.requireGps ?? true) && !gpsCoords && !skippedGps) || gpsZoneBlocked}
+              disabled={
+                (((survey as any)?.requireGps ?? true) && !gpsCoords && !skippedGps) ||
+                (geofenceBlocking && isGeofenceActive && !zonesLoaded) ||
+                gpsZoneBlocked
+              }
               data-testid="button-start-interview"
             >
               Iniciar Entrevista
