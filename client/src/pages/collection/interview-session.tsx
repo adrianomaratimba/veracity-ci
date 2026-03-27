@@ -615,16 +615,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     if (requireAudio && !audioBlob) return;
     if (requireGps && !gpsCoords && !skippedGps) return;
 
-    // Client-side geofence gate at submit time — only blocks if no zone is assigned at all.
-    // GPS-position check is intentionally removed here: isInsideZone from the hook can be stale
-    // (disabled during submit step) and GPS drift causes false positives. The server is the
-    // authoritative geofence validator for the final submission.
-    if (geofenceBlocking && isGeofenceActive && zonesLoaded && myZones.length === 0) {
-      const msg = "Você não possui setor atribuído. Contacte o coordenador.";
-      setSubmitError(msg);
-      toast({ title: "Coleta bloqueada", description: msg, variant: "destructive" });
-      return;
-    }
+    // Geofence is enforced at interview START only (GPS zone check before first question).
+    // No zone check at submit time — GPS drifts during a long interview and could falsely
+    // block a valid submission from someone who was correctly inside their zone when they began.
 
     if (!isOnline) {
       await saveOffline();

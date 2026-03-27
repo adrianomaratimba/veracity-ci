@@ -1455,55 +1455,11 @@ export async function registerRoutes(
         }
       }
 
-      // SERVER-SIDE GEOFENCE ENFORCEMENT
-      // If the survey has blocking enabled, validate that the GPS coordinates are inside the
-      // interviewer's assigned zone. This check cannot be bypassed client-side.
-      if (survey.geofenceEnabled && survey.geofenceBlocking) {
-        const deviceInfoAny = (responseMeta.deviceInfo as any) || {};
-        const skippedGps = deviceInfoAny.noGps === true;
-
-        if (skippedGps) {
-          console.log(`[Geofence] Blocked: interviewer ${interviewerId} skipped GPS on blocking survey ${surveyId}`);
-          return res.status(403).json({
-            message: "Coleta bloqueada: GPS é obrigatório para esta pesquisa com geocerca ativa.",
-            code: "GEOFENCE_NO_GPS",
-          });
-        }
-
-        const lat = responseMeta.latitude ?? 0;
-        const lng = responseMeta.longitude ?? 0;
-
-        const assignments = await storage.getZoneAssignments(survey.organizationId, surveyId);
-        const myAssignments = assignments.filter((a: any) => a.interviewerId === interviewerId);
-
-        // Default: blocked everywhere. No assignment = cannot collect at all.
-        if (myAssignments.length === 0) {
-          console.log(`[Geofence] Blocked: interviewer ${interviewerId} has no zone assignment for survey ${surveyId}`);
-          return res.status(403).json({
-            message: "Coleta bloqueada: você não possui setor atribuído para esta pesquisa. Contacte o coordenador.",
-            code: "GEOFENCE_NO_ASSIGNMENT",
-          });
-        }
-
-        const orgGeofences = await storage.getCustomGeofences(survey.organizationId);
-        const isInside = myAssignments.some((a: any) => {
-          const fence = orgGeofences.find((f: any) => f.name === a.neighborhood);
-          if (!fence?.polygon || !Array.isArray(fence.polygon) || fence.polygon.length < 3) return false;
-          return isCoordInsidePolygon(lng, lat, fence.polygon as [number, number][]);
-        });
-
-        if (!isInside) {
-          const assignedZones = myAssignments.map((a: any) => a.neighborhood).join(", ");
-          console.log(`[Geofence] Blocked: interviewer ${interviewerId} at (${lat},${lng}) is outside assigned zones [${assignedZones}] for survey ${surveyId}`);
-          return res.status(403).json({
-            message: `Coleta bloqueada: você está fora do setor designado (${assignedZones}). Retorne ao seu bairro para continuar.`,
-            code: "GEOFENCE_OUTSIDE_ZONE",
-            assignedZones,
-          });
-        }
-
-        console.log(`[Geofence] Allowed: interviewer ${interviewerId} at (${lat},${lng}) is inside zone for survey ${surveyId}`);
-      }
+      // GEOFENCE NOTE: Zone validation is enforced client-side at interview START only.
+      // The GPS position check is intentionally NOT repeated here at submit time because:
+      // 1. GPS drift during a long interview can place the device outside the polygon
+      // 2. The interviewer already passed the zone check before answering any questions
+      // 3. Blocking at submit would discard a completed, valid interview unfairly
 
       // Backend Validation Logic for Fraud Detection
       let status = "valid";
