@@ -49,17 +49,21 @@ export async function getTwilioFromNumber() {
  */
 export async function sendWhatsAppMessage(toPhone: string, message: string): Promise<boolean> {
   try {
+    console.log('[WhatsApp] Getting Twilio credentials...');
     const client = await getTwilioClient();
     const from = await getTwilioFromNumber();
     const fromWA = from ? `whatsapp:${from}` : 'whatsapp:+14155238886'; // Twilio sandbox fallback
-    await client.messages.create({
+    console.log(`[WhatsApp] Sending from ${fromWA} to whatsapp:${toPhone}`);
+    const msg = await client.messages.create({
       from: fromWA,
       to: `whatsapp:${toPhone}`,
       body: message,
     });
+    console.log(`[WhatsApp] Message sent successfully. SID: ${msg.sid}, Status: ${msg.status}`);
     return true;
-  } catch (err) {
-    console.error('[WhatsApp] Failed to send message:', err);
+  } catch (err: any) {
+    console.error('[WhatsApp] Failed to send message:', err?.message || err);
+    if (err?.code) console.error('[WhatsApp] Twilio error code:', err.code, err.moreInfo);
     return false;
   }
 }

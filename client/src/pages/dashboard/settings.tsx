@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, CreditCard, Bell, Shield, Save, Check, AlertTriangle, Palette, Globe, Upload, Copy, ExternalLink, Layers, Plus, Pencil, Trash2, GripVertical, Key } from "lucide-react";
+import { Building2, CreditCard, Bell, Shield, Save, Check, AlertTriangle, Palette, Globe, Upload, Copy, ExternalLink, Layers, Plus, Pencil, Trash2, GripVertical, Key, Send } from "lucide-react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -403,6 +403,24 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
     },
     onError: () => {
       toast({ title: "Erro", description: "Falha ao salvar numero WhatsApp", variant: "destructive" });
+    }
+  });
+
+  const testWhatsApp = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/organizations/${orgId}/test-whatsapp`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Erro");
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({ title: "✅ Enviado!", description: data.message });
+    },
+    onError: (err: Error) => {
+      toast({ title: "❌ Falha no envio", description: err.message, variant: "destructive" });
     }
   });
 
@@ -1276,7 +1294,7 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                     <p className="text-sm text-muted-foreground mb-3">
                       Numero para alertas automáticos: saída de geocerca, cota atingida e entrevistadoras paradas (30 min). Formato E.164 — ex: +5527999999999
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <Input
                         placeholder="+5527999999999"
                         value={whatsappPhone}
@@ -1291,6 +1309,15 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                       >
                         <Save className="w-4 h-4 mr-2" />
                         {updateWhatsApp.isPending ? "Salvando..." : "Salvar"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => testWhatsApp.mutate()}
+                        disabled={testWhatsApp.isPending || !whatsappPhone}
+                        data-testid="button-test-whatsapp"
+                      >
+                        <Send className="w-4 h-4 mr-2" />
+                        {testWhatsApp.isPending ? "Enviando..." : "Testar"}
                       </Button>
                     </div>
                   </div>

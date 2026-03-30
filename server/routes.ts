@@ -3144,7 +3144,7 @@ export async function registerRoutes(
         const voteRows = await db.execute(sql`
           SELECT ra.value, COUNT(*) as cnt
           FROM responses r
-          JOIN response_answers ra ON ra.response_id = r.id
+          JOIN answers ra ON ra.response_id = r.id
           JOIN questions q ON q.id = ra.question_id
           WHERE r.survey_id = ${row.id}
             AND r.status != 'invalid'
@@ -3158,7 +3158,7 @@ export async function registerRoutes(
           const top = voteRows.rows[0] as any;
           const tvResult = await db.execute(sql`
             SELECT COUNT(*) as cnt FROM responses r
-            JOIN response_answers ra ON ra.response_id = r.id
+            JOIN answers ra ON ra.response_id = r.id
             JOIN questions q ON q.id = ra.question_id
             WHERE r.survey_id = ${row.id} AND r.status != 'invalid' AND q.is_vote_intention = true
           `);
@@ -3176,6 +3176,30 @@ export async function registerRoutes(
     } catch (err) {
       console.error('[state-map-data] error:', err);
       res.status(500).json({ message: "Erro ao buscar dados do mapa" });
+    }
+  });
+
+  // --- TEST WHATSAPP ---
+  app.post("/api/organizations/:orgId/test-whatsapp", isAuthenticated, requireOrgAccess("orgId", "org:manage"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.orgId);
+      const org = await storage.getOrganization(orgId);
+      if (!org?.whatsappPhone) {
+        return res.status(400).json({ message: "Nenhum número de WhatsApp configurado para esta organização." });
+      }
+      console.log('[WhatsApp/test] Attempting to send test message to', org.whatsappPhone);
+      const ok = await sendWhatsAppMessage(
+        org.whatsappPhone,
+        `✅ *Teste VotoAudit*\nConexão com WhatsApp funcionando corretamente!\nOrganização: ${org.name}`
+      );
+      if (ok) {
+        res.json({ success: true, message: "Mensagem de teste enviada com sucesso!" });
+      } else {
+        res.status(500).json({ success: false, message: "Falha ao enviar mensagem. Verifique os logs do servidor." });
+      }
+    } catch (err) {
+      console.error('[WhatsApp/test] error:', err);
+      res.status(500).json({ message: "Erro ao enviar mensagem de teste" });
     }
   });
 
