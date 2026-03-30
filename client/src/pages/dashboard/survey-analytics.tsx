@@ -43,7 +43,8 @@ import {
   Play,
   Download,
   FileSpreadsheet,
-  BarChart3
+  BarChart3,
+  Activity
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -215,6 +216,8 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
     });
     const accuracyDistribution = Object.entries(accuracyBuckets).map(([range, count]) => ({ range, count }));
 
+    const realtimeMOE = total >= 2 ? Math.round((98 / Math.sqrt(total)) * 10) / 10 : null;
+
     return {
       totalResponses: total,
       validResponses: valid,
@@ -226,7 +229,8 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
       hourlyData,
       interviewerStats,
       statusDistribution,
-      accuracyDistribution
+      accuracyDistribution,
+      realtimeMOE
     };
   }, [responses, survey, interviewersList]);
 
@@ -301,7 +305,7 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total</CardTitle>
@@ -377,6 +381,23 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
                 <span className="text-2xl font-bold" data-testid="text-avg-accuracy">{analytics.averageAccuracy}m</span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">Média geral</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Margem Atual</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-purple-500" />
+                <span className="text-2xl font-bold text-purple-600" data-testid="text-realtime-moe">
+                  {analytics.realtimeMOE != null ? `±${analytics.realtimeMOE}%` : 'N/D'}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {analytics.realtimeMOE != null ? 'IC 95%, p=50%' : 'Amostras insuficientes'}
+              </p>
             </CardContent>
           </Card>
         </div>

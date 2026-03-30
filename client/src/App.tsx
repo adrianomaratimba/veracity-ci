@@ -69,6 +69,7 @@ import PlatformAdminPage from "@/pages/platform-admin";
 import LandingEditorPage from "@/pages/platform/landing-editor";
 import GeofencingPage from "@/pages/dashboard/geofencing";
 import MessagesPage from "@/pages/dashboard/messages";
+import PublicReportPage from "@/pages/public-report";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
 import { setupAutoSync } from "@/lib/syncQueue";
 
@@ -127,6 +128,9 @@ function AuthenticatedRoutes() {
       <Route path="/collect/my-performance" component={MyPerformance} />
       <Route path="/collect/:surveyId" component={InterviewSession} />
       
+      {/* Public shared report (no auth required) */}
+      <Route path="/r/:token" component={PublicReportPage} />
+      
       {/* Fallback */}
       <Route path="/:rest*" component={NotFound} />
     </Switch>
@@ -145,6 +149,7 @@ function Router() {
         <Route path="/contact" component={ContactPage} />
         <Route path="/verify-email" component={VerifyEmailPage} />
         <Route path="/reset-password" component={ResetPasswordPage} />
+        <Route path="/r/:token" component={PublicReportPage} />
         <Route component={AuthPage} /> 
       </Switch>
     );

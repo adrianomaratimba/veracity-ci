@@ -1,16 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentMember } from "@/hooks/use-organizations";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Slider } from "@/components/ui/slider";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -49,12 +52,20 @@ import {
   Target,
   Clock,
   Activity,
-  Layers
+  Layers,
+  Share2,
+  Copy,
+  Trash2,
+  Link2,
+  Plus,
+  RotateCcw,
+  Sliders
 } from "lucide-react";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { hasPermission, isInterviewerRole, isViewerRole, type UserRole } from "@shared/rbac";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 const CHART_COLORS = [
   '#93c5fd',
@@ -588,8 +599,15 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   
   const { data: currentMember, isLoading: memberLoading } = useCurrentMember(orgId);
   
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("overview");
   const [visibleCandidates, setVisibleCandidates] = useState<Set<string>>(new Set());
+  const [simValues, setSimValues] = useState<Record<string, number>>({});
+  const [simInitialized, setSimInitialized] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [newLinkLabel, setNewLinkLabel] = useState('');
+  const [newLinkExpiry, setNewLinkExpiry] = useState('30');
+  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     neighborhood: "all",
     ageRange: "all",
@@ -676,6 +694,48 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       return res.json();
     },
     enabled: activeTab === "interviewers" && !!surveyId
+  });
+
+  interface PublicLinkRow {
+    id: number;
+    token: string;
+    label: string | null;
+    expires_at: string | null;
+    created_at: string;
+  }
+
+  const { data: publicLinks, refetch: refetchLinks } = useQuery<PublicLinkRow[]>({
+    queryKey: ['/api/surveys', surveyId, 'public-links'],
+    queryFn: async () => {
+      const res = await fetch(`/api/surveys/${surveyId}/public-links`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: showShareDialog && !!surveyId,
+  });
+
+  const createLinkMutation = useMutation({
+    mutationFn: async (data: { label: string; expiresInDays: number | null }) => {
+      return apiRequest('POST', `/api/surveys/${surveyId}/public-links`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/surveys', surveyId, 'public-links'] });
+      refetchLinks();
+      setNewLinkLabel('');
+      toast({ title: "Link criado!", description: "O link público foi gerado com sucesso." });
+    },
+    onError: () => toast({ title: "Erro", description: "Não foi possível criar o link.", variant: "destructive" })
+  });
+
+  const deleteLinkMutation = useMutation({
+    mutationFn: async (token: string) => {
+      return apiRequest('DELETE', `/api/public-links/${token}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/surveys', surveyId, 'public-links'] });
+      refetchLinks();
+      toast({ title: "Link removido" });
+    },
   });
 
   const userRole = (currentMember?.role as UserRole) || 'viewer';
@@ -789,6 +849,24 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     }
   }, [allCandidates]);
 
+  // T004: Initialize simulator values from real data
+  useEffect(() => {
+    if (voteIntentionQuestion && !simInitialized) {
+      const initial: Record<string, number> = {};
+      voteIntentionQuestion.results.forEach(r => { initial[r.option] = r.percentage; });
+      setSimValues(initial);
+      setSimInitialized(true);
+    }
+  }, [voteIntentionQuestion, simInitialized]);
+
+  const resetSimulator = useCallback(() => {
+    if (voteIntentionQuestion) {
+      const initial: Record<string, number> = {};
+      voteIntentionQuestion.results.forEach(r => { initial[r.option] = r.percentage; });
+      setSimValues(initial);
+    }
+  }, [voteIntentionQuestion]);
+
   const toggleCandidate = useCallback((candidate: string) => {
     setVisibleCandidates(prev => {
       const next = new Set(prev);
@@ -833,168 +911,261 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     });
   }, [timelineData, voteIntentionQuestion]);
 
-  const exportToPDF = useCallback(() => {
-    // Guard: check permission for viewers
+  const exportToPDF = useCallback(async () => {
     if (isViewer && (!viewerSettings || !viewerSettings.allowPdfExport)) {
       toast({ title: "Sem permissão", description: "Você não tem permissão para exportar PDF", variant: "destructive" });
       return;
     }
-    
     if (!aggregatedData) {
       toast({ title: "Sem dados", description: "Não há dados para exportar", variant: "destructive" });
       return;
     }
 
-    toast({ title: "Gerando PDF...", description: "O relatório será baixado em instantes." });
+    setIsPdfGenerating(true);
+    toast({ title: "Gerando PDF...", description: "Aguarde, montando o relatório completo." });
 
     try {
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      let yPos = 20;
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 14;
+      const realtimeMOE = aggregatedData.totalResponses >= 2
+        ? Math.round((98 / Math.sqrt(aggregatedData.totalResponses)) * 10) / 10
+        : aggregatedData.survey.marginOfError || 2;
 
-      doc.setFontSize(18);
+      const addFooter = (pageNum: number, total: number) => {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(150, 150, 150);
+        doc.text(`Página ${pageNum} de ${total}`, pageW / 2, pageH - 8, { align: 'center' });
+        doc.text('Documento gerado por VotoAudit • Confidencial', pageW / 2, pageH - 4, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+      };
+
+      // === CAPA ===
+      doc.setFillColor(30, 58, 95);
+      doc.rect(0, 0, pageW, 80, 'F');
+      doc.setFillColor(37, 99, 235);
+      doc.rect(0, 74, pageW, 6, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("RELATORIO DE PESQUISA", pageWidth / 2, yPos, { align: "center" });
-      yPos += 10;
+      doc.text("RELATÓRIO DE PESQUISA DE OPINIÃO", pageW / 2, 28, { align: 'center' });
 
-      doc.setFontSize(14);
-      doc.setFont("helvetica", "normal");
-      doc.text(aggregatedData.survey.title, pageWidth / 2, yPos, { align: "center" });
-      yPos += 15;
+      doc.setFontSize(20);
+      const titleLines = doc.splitTextToSize(aggregatedData.survey.title.toUpperCase(), pageW - 40);
+      doc.text(titleLines, pageW / 2, 42, { align: 'center' });
 
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      
-      const infoLines = [
-        `Localidade: ${aggregatedData.survey.location || 'Nao especificada'}`,
-        `Total de Entrevistas: ${aggregatedData.totalResponses}`,
-        `Margem de Erro: +/- ${aggregatedData.survey.marginOfError || 2}%`,
-        `Periodo: ${aggregatedData.survey.startDate ? new Date(aggregatedData.survey.startDate).toLocaleDateString('pt-BR') : 'N/A'} a ${aggregatedData.survey.endDate ? new Date(aggregatedData.survey.endDate).toLocaleDateString('pt-BR') : 'N/A'}`,
-        `Data do Relatorio: ${new Date().toLocaleDateString('pt-BR')} as ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-      ];
-      
-      infoLines.forEach(line => {
-        doc.text(line, 14, yPos);
-        yPos += 6;
-      });
-      yPos += 5;
-
-      if (voteIntentionQuestion && voteIntentionQuestion.results.length > 0) {
+      if (aggregatedData.survey.location) {
         doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text("INTENCAO DE VOTO", 14, yPos);
-        yPos += 8;
+        doc.setFont("helvetica", "normal");
+        doc.text(aggregatedData.survey.location, pageW / 2, 62, { align: 'center' });
+      }
 
-        const tableData = voteIntentionQuestion.results.map((r, idx) => [
-          String(idx + 1),
-          r.option,
-          String(r.count),
-          `${r.percentage}%`
+      doc.setTextColor(0, 0, 0);
+      let yPos = 96;
+
+      // === FICHA TÉCNICA ===
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 58, 95);
+      doc.text("FICHA TÉCNICA", margin, yPos);
+      doc.setDrawColor(30, 58, 95);
+      doc.setLineWidth(0.5);
+      doc.line(margin, yPos + 2, pageW - margin, yPos + 2);
+      yPos += 10;
+      doc.setTextColor(0, 0, 0);
+
+      const techData: string[][] = [
+        ['Pesquisa', aggregatedData.survey.title],
+        ['Localidade', aggregatedData.survey.location || 'Não especificada'],
+        ['Universo', `${aggregatedData.survey.targetSample || 'N/A'} entrevistas planejadas`],
+        ['Realizadas', `${aggregatedData.totalResponses} (${aggregatedData.validResponses} válidas)`],
+        ['Margem de Erro', `±${realtimeMOE}% (IC 95%)`],
+        ['Método', 'Entrevista presencial com GPS e áudio'],
+        ['Período', aggregatedData.collectionPeriod
+          ? `${new Date(aggregatedData.collectionPeriod.start).toLocaleDateString('pt-BR')} a ${new Date(aggregatedData.collectionPeriod.end).toLocaleDateString('pt-BR')}`
+          : 'Em andamento'],
+        ['Data do relatório', `${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`],
+      ];
+
+      autoTable(doc, {
+        startY: yPos,
+        body: techData,
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 50, textColor: [80, 80, 80] },
+          1: { cellWidth: pageW - margin * 2 - 50 }
+        },
+        margin: { left: margin, right: margin }
+      });
+      yPos = (doc as any).lastAutoTable.finalY + 14;
+
+      // === RESULTADO PRINCIPAL (INTENÇÃO DE VOTO) ===
+      if (voteIntentionQuestion && voteIntentionQuestion.results.length > 0) {
+        if (yPos > pageH - 80) { doc.addPage(); yPos = 20; }
+
+        doc.setFontSize(13);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(30, 58, 95);
+        const qLabel = voteIntentionQuestion.questionText.length > 80
+          ? voteIntentionQuestion.questionText.substring(0, 77) + '...'
+          : voteIntentionQuestion.questionText;
+        doc.text(qLabel, margin, yPos);
+        doc.setDrawColor(30, 58, 95);
+        doc.line(margin, yPos + 2, pageW - margin, yPos + 2);
+        yPos += 10;
+        doc.setTextColor(0, 0, 0);
+
+        const sortedResults = [...voteIntentionQuestion.results].sort((a, b) => b.percentage - a.percentage);
+        const mainTableData = sortedResults.map((r, idx) => [
+          String(idx + 1), r.option, String(r.count), `${r.percentage}%`
         ]);
 
         autoTable(doc, {
           startY: yPos,
-          head: [['#', 'Candidato/Opcao', 'Votos', 'Percentual']],
-          body: tableData,
+          head: [['#', 'Candidato / Opção', 'Votos', '%']],
+          body: mainTableData,
           theme: 'striped',
-          headStyles: { 
-            fillColor: [30, 58, 95],
-            fontSize: 10,
-            fontStyle: 'bold'
-          },
-          styles: {
-            fontSize: 9,
-            cellPadding: 3
-          },
+          headStyles: { fillColor: [30, 58, 95], fontSize: 10, fontStyle: 'bold', textColor: [255, 255, 255] },
+          alternateRowStyles: { fillColor: [239, 246, 255] },
+          styles: { fontSize: 10, cellPadding: 4 },
           columnStyles: {
-            0: { cellWidth: 15, halign: 'center' },
-            1: { cellWidth: 80 },
-            2: { cellWidth: 30, halign: 'center' },
-            3: { cellWidth: 35, halign: 'center' }
-          }
+            0: { cellWidth: 12, halign: 'center' },
+            1: { cellWidth: pageW - margin * 2 - 60 },
+            2: { cellWidth: 22, halign: 'center' },
+            3: { cellWidth: 22, halign: 'center', fontStyle: 'bold' }
+          },
+          margin: { left: margin, right: margin }
         });
-
-        yPos = (doc as any).lastAutoTable.finalY + 15;
+        yPos = (doc as any).lastAutoTable.finalY + 16;
       }
 
-      const otherQuestions = filteredQuestionResults.filter(q => 
-        q.questionId !== voteIntentionQuestion?.questionId
+      // === DEMAIS QUESTÕES ===
+      const otherQuestions = filteredQuestionResults.filter(q =>
+        q.questionId !== voteIntentionQuestion?.questionId && q.results.length > 0
       );
 
-      otherQuestions.forEach(question => {
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
+      otherQuestions.forEach((question, qi) => {
+        if (yPos > pageH - 70) { doc.addPage(); yPos = 20; }
 
         doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
-        const questionText = question.questionText.length > 80 
-          ? question.questionText.substring(0, 77) + '...' 
+        doc.setTextColor(30, 58, 95);
+        const qText = question.questionText.length > 90
+          ? question.questionText.substring(0, 87) + '...'
           : question.questionText;
-        doc.text(questionText, 14, yPos);
-        yPos += 8;
+        const qLines = doc.splitTextToSize(`${qi + 2}. ${qText}`, pageW - margin * 2);
+        doc.text(qLines, margin, yPos);
+        doc.setDrawColor(200, 200, 200);
+        doc.line(margin, yPos + qLines.length * 4 + 1, pageW - margin, yPos + qLines.length * 4 + 1);
+        yPos += qLines.length * 4 + 8;
+        doc.setTextColor(0, 0, 0);
 
-        const qTableData = question.results.slice(0, 10).map((r, idx) => [
+        const qData = question.results.slice(0, 12).map((r, idx) => [
           String(idx + 1),
-          r.option.length > 40 ? r.option.substring(0, 37) + '...' : r.option,
+          r.option.length > 50 ? r.option.substring(0, 47) + '...' : r.option,
           String(r.count),
           `${r.percentage}%`
         ]);
 
         autoTable(doc, {
           startY: yPos,
-          head: [['#', 'Opcao', 'Qtd', '%']],
-          body: qTableData,
+          head: [['#', 'Opção', 'N', '%']],
+          body: qData,
           theme: 'grid',
-          headStyles: { 
-            fillColor: [100, 116, 139],
-            fontSize: 9,
-            fontStyle: 'bold'
-          },
-          styles: {
-            fontSize: 8,
-            cellPadding: 2
-          },
+          headStyles: { fillColor: [100, 116, 139], fontSize: 8, fontStyle: 'bold', textColor: [255, 255, 255] },
+          styles: { fontSize: 8, cellPadding: 2 },
           columnStyles: {
-            0: { cellWidth: 12, halign: 'center' },
-            1: { cellWidth: 100 },
-            2: { cellWidth: 20, halign: 'center' },
-            3: { cellWidth: 20, halign: 'center' }
-          }
+            0: { cellWidth: 10, halign: 'center' },
+            1: { cellWidth: pageW - margin * 2 - 42 },
+            2: { cellWidth: 16, halign: 'center' },
+            3: { cellWidth: 16, halign: 'center' }
+          },
+          margin: { left: margin, right: margin }
         });
-
         yPos = (doc as any).lastAutoTable.finalY + 12;
       });
 
-      const pageCount = doc.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.text(
-          `Pagina ${i} de ${pageCount}`,
-          pageWidth / 2,
-          doc.internal.pageSize.getHeight() - 10,
-          { align: 'center' }
-        );
-        doc.text(
-          'Documento gerado automaticamente - Veracity',
-          pageWidth / 2,
-          doc.internal.pageSize.getHeight() - 5,
-          { align: 'center' }
-        );
+      // === DEMOGRÁFICOS ===
+      const demo = aggregatedData.demographics;
+      if (demo && (demo.gender?.length || demo.age?.length || demo.neighborhood?.length)) {
+        doc.addPage();
+        let dy = 20;
+        doc.setFontSize(13);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(30, 58, 95);
+        doc.text("PERFIL DOS ENTREVISTADOS", margin, dy);
+        doc.setDrawColor(30, 58, 95);
+        doc.line(margin, dy + 2, pageW - margin, dy + 2);
+        dy += 12;
+        doc.setTextColor(0, 0, 0);
+
+        if (demo.gender?.length) {
+          doc.setFontSize(10); doc.setFont("helvetica", "bold");
+          doc.text("Sexo", margin, dy); dy += 5;
+          autoTable(doc, {
+            startY: dy,
+            head: [['Categoria', 'N', '%']],
+            body: demo.gender.map(g => [g.value, String(g.count), `${g.percentage}%`]),
+            theme: 'striped',
+            headStyles: { fillColor: [100, 116, 139], fontSize: 8 },
+            styles: { fontSize: 8, cellPadding: 2 },
+            margin: { left: margin, right: margin }
+          });
+          dy = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        if (demo.age?.length) {
+          doc.setFontSize(10); doc.setFont("helvetica", "bold");
+          doc.text("Faixa Etária", margin, dy); dy += 5;
+          autoTable(doc, {
+            startY: dy,
+            head: [['Faixa', 'N', '%']],
+            body: demo.age.map(a => [a.range, String(a.count), `${a.percentage}%`]),
+            theme: 'striped',
+            headStyles: { fillColor: [100, 116, 139], fontSize: 8 },
+            styles: { fontSize: 8, cellPadding: 2 },
+            margin: { left: margin, right: margin }
+          });
+          dy = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        if (demo.neighborhood?.length) {
+          doc.setFontSize(10); doc.setFont("helvetica", "bold");
+          doc.text("Bairro / Zona", margin, dy); dy += 5;
+          autoTable(doc, {
+            startY: dy,
+            head: [['Bairro', 'N', '%']],
+            body: demo.neighborhood.map(n => [n.name, String(n.count), `${n.percentage}%`]),
+            theme: 'striped',
+            headStyles: { fillColor: [100, 116, 139], fontSize: 8 },
+            styles: { fontSize: 8, cellPadding: 2 },
+            margin: { left: margin, right: margin }
+          });
+        }
       }
 
-      const fileName = `relatorio_${aggregatedData.survey.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
-      doc.save(fileName);
+      // === RODAPÉ EM TODAS AS PÁGINAS ===
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        addFooter(i, totalPages);
+      }
 
-      toast({ title: "PDF Gerado!", description: "Relatorio exportado com sucesso." });
+      const safeTitle = aggregatedData.survey.title.replace(/[^a-zA-Z0-9]/g, '_');
+      const date = new Date().toISOString().split('T')[0];
+      doc.save(`relatorio_${safeTitle}_${date}.pdf`);
+      toast({ title: "Relatório gerado!", description: "PDF baixado com sucesso." });
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
       toast({ title: "Erro", description: "Falha ao gerar o PDF", variant: "destructive" });
+    } finally {
+      setIsPdfGenerating(false);
     }
-  }, [aggregatedData, voteIntentionQuestion, toast, isViewer, viewerSettings]);
+  }, [aggregatedData, voteIntentionQuestion, filteredQuestionResults, toast, isViewer, viewerSettings]);
 
   const exportToExcel = useCallback(() => {
     // Guard: check permission for viewers
@@ -1185,6 +1356,11 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   
   const completionRate = survey.targetSample ? Math.min(100, Math.round((totalResponses / survey.targetSample) * 100)) : 100;
 
+  // T001: Real-time margin of error — 95% CI, p=0.5 (worst case), formula: MOE = 98/√n
+  const realtimeMOE = totalResponses >= 2
+    ? Math.round((98 / Math.sqrt(totalResponses)) * 10) / 10
+    : null;
+
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       'draft': 'Rascunho',
@@ -1311,6 +1487,12 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {!isViewer && (
+                <Button variant="outline" size="sm" onClick={() => setShowShareDialog(true)} data-testid="button-share-results">
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Compartilhar
+                </Button>
+              )}
               {canExportExcel && (
                 <Button variant="outline" onClick={exportToExcel} data-testid="button-download-excel">
                   <FileSpreadsheet className="w-4 h-4 mr-2" />
@@ -1318,9 +1500,18 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 </Button>
               )}
               {canExportPdf && (
-                <Button onClick={exportToPDF} data-testid="button-download-pdf">
-                  <Download className="w-4 h-4 mr-2" />
-                  PDF
+                <Button onClick={exportToPDF} disabled={isPdfGenerating} data-testid="button-download-pdf">
+                  {isPdfGenerating ? (
+                    <>
+                      <RotateCcw className="w-4 h-4 mr-2 animate-spin" />
+                      Gerando...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      PDF
+                    </>
+                  )}
                 </Button>
               )}
             </div>
@@ -1366,6 +1557,12 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 <TabsTrigger value="report" data-testid="tab-report" className="text-xs sm:text-sm">
                   <FileText className="w-4 h-4 mr-1 hidden sm:inline" />
                   Relatório
+                </TabsTrigger>
+              )}
+              {voteIntentionQuestion && !isViewer && (
+                <TabsTrigger value="simulator" data-testid="tab-simulator" className="text-xs sm:text-sm">
+                  <Sliders className="w-4 h-4 mr-1 hidden sm:inline" />
+                  Simulador
                 </TabsTrigger>
               )}
             </TabsList>
@@ -1419,18 +1616,20 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Margem de Erro
+                      Margem Atual
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center gap-2">
                       <Activity className="w-5 h-5 text-blue-600" />
                       <span className="text-2xl font-bold text-blue-600" data-testid="text-margin-error">
-                        ±{survey.marginOfError || 2}%
+                        {realtimeMOE != null ? `±${realtimeMOE}%` : 'N/D'}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      nível de confiança 95%
+                      {realtimeMOE != null
+                        ? `IC 95% • meta ±${survey.marginOfError || 2}%`
+                        : 'Amostras insuficientes'}
                     </p>
                   </CardContent>
                 </Card>
@@ -2031,9 +2230,247 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {/* T004: Simulador "e se" */}
+            {voteIntentionQuestion && !isViewer && (
+              <TabsContent value="simulator" className="mt-6">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <Sliders className="w-5 h-5 text-primary" />
+                          Simulador "E Se..."
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          Ajuste os percentuais abaixo para simular cenários eleitorais hipotéticos.
+                          Os valores reais aparecem como referência.
+                        </CardDescription>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={resetSimulator} data-testid="button-reset-simulator">
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Redefinir
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {voteIntentionQuestion.results
+                      .sort((a, b) => b.percentage - a.percentage)
+                      .map((r, i) => {
+                        const simVal = simValues[r.option] ?? r.percentage;
+                        const diff = Math.round((simVal - r.percentage) * 10) / 10;
+                        return (
+                          <div key={r.option} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-3 h-3 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                                />
+                                <span className="font-medium text-sm">{r.option}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-muted-foreground">
+                                  Real: {r.percentage}%
+                                </span>
+                                <span
+                                  className="text-sm font-bold min-w-[52px] text-right"
+                                  style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}
+                                  data-testid={`text-sim-value-${r.option}`}
+                                >
+                                  {simVal.toFixed(1)}%
+                                  {diff !== 0 && (
+                                    <span className={`ml-1 text-xs ${diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                      ({diff > 0 ? '+' : ''}{diff})
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                            <Slider
+                              min={0}
+                              max={100}
+                              step={0.5}
+                              value={[simVal]}
+                              onValueChange={([v]) =>
+                                setSimValues(prev => ({ ...prev, [r.option]: v }))
+                              }
+                              data-testid={`slider-sim-${r.option}`}
+                            />
+                            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-300"
+                                style={{
+                                  width: `${simVal}%`,
+                                  backgroundColor: CHART_COLORS[i % CHART_COLORS.length]
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                    {/* Soma total */}
+                    <div className="border-t pt-4">
+                      {(() => {
+                        const total = Object.values(simValues).reduce((s, v) => s + v, 0);
+                        const rounded = Math.round(total * 10) / 10;
+                        const diff = Math.abs(rounded - 100);
+                        const isOver = rounded > 100;
+                        const isUnder = rounded < 100;
+                        return (
+                          <div className={`flex items-center justify-between p-3 rounded-lg ${diff > 0.5 ? 'bg-orange-50 dark:bg-orange-950/20' : 'bg-green-50 dark:bg-green-950/20'}`}>
+                            <span className="text-sm font-medium">Total simulado</span>
+                            <span className={`font-bold text-lg ${diff > 0.5 ? 'text-orange-600' : 'text-green-600'}`}>
+                              {rounded.toFixed(1)}%
+                              {diff > 0.5 && (
+                                <span className="text-xs font-normal ml-2">
+                                  {isOver ? `(${diff.toFixed(1)}% excedente)` : `(faltam ${diff.toFixed(1)}%)`}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Gráfico comparativo */}
+                    <div className="pt-2">
+                      <h4 className="text-sm font-medium mb-3 text-muted-foreground">Comparativo: Real vs Simulado</h4>
+                      <div style={{ height: Math.max(200, voteIntentionQuestion.results.length * 48) }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={voteIntentionQuestion.results
+                              .sort((a, b) => b.percentage - a.percentage)
+                              .map(r => ({
+                                name: r.option.length > 20 ? r.option.substring(0, 18) + '…' : r.option,
+                                real: r.percentage,
+                                simulado: Math.round((simValues[r.option] ?? r.percentage) * 10) / 10,
+                              }))}
+                            layout="vertical"
+                            margin={{ top: 0, right: 60, left: 10, bottom: 0 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.4} />
+                            <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} />
+                            <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 12 }} />
+                            <Tooltip formatter={(v: number) => `${v}%`} />
+                            <Bar dataKey="real" name="Real" fill="#94a3b8" radius={[0, 2, 2, 0]} />
+                            <Bar dataKey="simulado" name="Simulado" fill="#2563eb" radius={[0, 2, 2, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </div>
+
+      {/* T005: Share Dialog */}
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="w-5 h-5" />
+              Links Públicos de Acesso
+            </DialogTitle>
+            <DialogDescription>
+              Crie links para que clientes visualizem os resultados sem precisar de conta.
+              Os dados são somente leitura e podem ter prazo de validade.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            {/* Create new link */}
+            <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+              <h4 className="text-sm font-semibold">Criar novo link</h4>
+              <div className="space-y-2">
+                <input
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                  placeholder="Nome / identificador do link (opcional)"
+                  value={newLinkLabel}
+                  onChange={e => setNewLinkLabel(e.target.value)}
+                  data-testid="input-link-label"
+                />
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                  value={newLinkExpiry}
+                  onChange={e => setNewLinkExpiry(e.target.value)}
+                  data-testid="select-link-expiry"
+                >
+                  <option value="7">Expira em 7 dias</option>
+                  <option value="30">Expira em 30 dias</option>
+                  <option value="90">Expira em 90 dias</option>
+                  <option value="0">Sem expiração</option>
+                </select>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => createLinkMutation.mutate({
+                  label: newLinkLabel,
+                  expiresInDays: newLinkExpiry === '0' ? null : parseInt(newLinkExpiry)
+                })}
+                disabled={createLinkMutation.isPending}
+                data-testid="button-create-link"
+              >
+                {createLinkMutation.isPending ? (
+                  <RotateCcw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4 mr-2" />
+                )}
+                Gerar link
+              </Button>
+            </div>
+
+            {/* Existing links */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold">Links ativos</h4>
+              {!publicLinks || publicLinks.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">
+                  Nenhum link criado ainda. Gere um link acima para compartilhar os resultados.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {publicLinks.map(link => {
+                    const fullUrl = `${window.location.origin}/r/${link.token}`;
+                    return (
+                      <div key={link.token} className="flex items-center gap-2 border rounded-lg p-3 bg-background">
+                        <Link2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate">{link.label || 'Link público'}</p>
+                          <p className="text-xs text-muted-foreground truncate">{fullUrl}</p>
+                          {link.expires_at && (
+                            <p className="text-xs text-orange-500">
+                              Expira: {new Date(link.expires_at).toLocaleDateString('pt-BR')}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost" size="icon"
+                          onClick={() => { navigator.clipboard.writeText(fullUrl); toast({ title: "Link copiado!" }); }}
+                          data-testid={`button-copy-link-${link.token}`}
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon"
+                          onClick={() => deleteLinkMutation.mutate(link.token)}
+                          disabled={deleteLinkMutation.isPending}
+                          data-testid={`button-delete-link-${link.token}`}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

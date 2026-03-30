@@ -7,6 +7,7 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { requireOrgAccess, requireHasOrganization } from "./middleware/org-access";
 import { hasPermission, UserRole, canManageRole, getManageableRoles, isInterviewerRole, canManageSurveys, canViewResponses, canViewAnalytics, canAuditResponses } from "@shared/rbac";
 import { z } from "zod";
+import { randomBytes } from "crypto";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { point, polygon as turfPolygon } from "@turf/helpers";
 
@@ -1491,6 +1492,40 @@ export async function registerRoutes(
         },
         answers
       );
+
+      // T002: Duplicate answer pattern detection
+      // Check if another response for this survey has an identical set of answers
+      try {
+        const newFp = await db.execute(sql`
+          SELECT md5(string_agg(question_id::text || ':' || value::text, ',' ORDER BY question_id)) AS fp
+          FROM answers WHERE response_id = ${newResponse.id}
+        `);
+        const fp = (newFp.rows?.[0] as any)?.fp;
+        if (fp) {
+          const dupRows = await db.execute(sql`
+            SELECT r.id FROM responses r
+            WHERE r.survey_id = ${surveyId}
+              AND r.id != ${newResponse.id}
+              AND (
+                SELECT md5(string_agg(question_id::text || ':' || value::text, ',' ORDER BY question_id))
+                FROM answers WHERE response_id = r.id
+              ) = ${fp}
+            LIMIT 1
+          `);
+          if (dupRows.rows && dupRows.rows.length > 0) {
+            const existingFlag = newResponse.flagReason;
+            const dupFlag = 'Padrão de respostas idêntico detectado';
+            const combinedFlag = existingFlag ? `${existingFlag} | ${dupFlag}` : dupFlag;
+            await db.execute(sql`
+              UPDATE responses SET status = 'suspicious', flag_reason = ${combinedFlag}
+              WHERE id = ${newResponse.id}
+            `);
+            return res.status(201).json({ id: newResponse.id, status: 'suspicious', duplicateDetected: true });
+          }
+        }
+      } catch (e) {
+        console.error('[DupCheck] Error checking duplicate answers:', e);
+      }
 
       res.status(201).json({ id: newResponse.id, status: newResponse.status });
     } catch (err) {
@@ -3379,6 +3414,109 @@ export async function registerRoutes(
     } catch (err) {
       console.error('[zone-assignments/delete] error:', err);
       res.status(500).json({ message: "Erro ao remover atribuição" });
+    }
+  });
+
+  // === T005: PUBLIC REPORT LINKS ===
+
+  // Create a public shareable link for a survey's results
+  app.post("/api/surveys/:surveyId/public-links", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Sem permissão" });
+      }
+      const { label, expiresInDays } = req.body;
+      const token = randomBytes(32).toString('hex');
+      const expiresAt = expiresInDays
+        ? new Date(Date.now() + Number(expiresInDays) * 86400000).toISOString()
+        : null;
+      await db.execute(sql`
+        INSERT INTO public_report_tokens (organization_id, survey_id, token, label, expires_at, created_by)
+        VALUES (${survey.organizationId}, ${surveyId}, ${token}, ${label || null}, ${expiresAt}::timestamptz, ${userId})
+      `);
+      res.status(201).json({ token, label: label || null, expiresAt });
+    } catch (err) {
+      console.error('[public-links/create]', err);
+      res.status(500).json({ message: "Erro ao criar link" });
+    }
+  });
+
+  // List public links for a survey
+  app.get("/api/surveys/:surveyId/public-links", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const surveyId = Number(req.params.surveyId);
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      const member = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Sem permissão" });
+      }
+      const rows = await db.execute(sql`
+        SELECT id, token, label, expires_at, created_at
+        FROM public_report_tokens
+        WHERE survey_id = ${surveyId}
+        ORDER BY created_at DESC
+      `);
+      res.json(rows.rows);
+    } catch (err) {
+      console.error('[public-links/list]', err);
+      res.status(500).json({ message: "Erro ao listar links" });
+    }
+  });
+
+  // Delete a public link
+  app.delete("/api/public-links/:token", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const tokenVal = req.params.token;
+      const rows = await db.execute(sql`
+        SELECT prt.id, prt.organization_id FROM public_report_tokens prt
+        WHERE prt.token = ${tokenVal}
+        LIMIT 1
+      `);
+      if (!rows.rows || rows.rows.length === 0) return res.status(404).json({ message: "Link não encontrado" });
+      const row = rows.rows[0] as any;
+      const member = await storage.getMemberByUserId(userId, row.organization_id);
+      if (!member || !hasPermission(member.role as UserRole, "surveys:edit")) {
+        return res.status(403).json({ message: "Sem permissão" });
+      }
+      await db.execute(sql`DELETE FROM public_report_tokens WHERE token = ${tokenVal}`);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[public-links/delete]', err);
+      res.status(500).json({ message: "Erro ao excluir link" });
+    }
+  });
+
+  // PUBLIC endpoint: get survey results by token (no auth required)
+  app.get("/api/public/:token", async (req, res) => {
+    try {
+      const tokenVal = req.params.token;
+      const rows = await db.execute(sql`
+        SELECT prt.survey_id, prt.organization_id, prt.expires_at, prt.label
+        FROM public_report_tokens prt
+        WHERE prt.token = ${tokenVal}
+        LIMIT 1
+      `);
+      if (!rows.rows || rows.rows.length === 0) {
+        return res.status(404).json({ message: "Link não encontrado ou expirado" });
+      }
+      const row = rows.rows[0] as any;
+      if (row.expires_at && new Date(row.expires_at) < new Date()) {
+        return res.status(410).json({ message: "Este link expirou" });
+      }
+      const surveyId = Number(row.survey_id);
+      const aggregatedResults = await storage.getSurveyAggregatedResults(surveyId, {});
+      res.json({ ...aggregatedResults, publicLabel: row.label });
+    } catch (err) {
+      console.error('[public-report]', err);
+      res.status(500).json({ message: "Erro ao carregar relatório" });
     }
   });
 

@@ -798,3 +798,17 @@ export const interviewerZoneAssignments = pgTable("interviewer_zone_assignments"
 export const insertInterviewerZoneAssignmentSchema = createInsertSchema(interviewerZoneAssignments).omit({ id: true, createdAt: true });
 export type InsertInterviewerZoneAssignment = z.infer<typeof insertInterviewerZoneAssignmentSchema>;
 export type InterviewerZoneAssignment = typeof interviewerZoneAssignments.$inferSelect;
+
+export const publicReportTokens = pgTable("public_report_tokens", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  surveyId: integer("survey_id").references(() => surveys.id).notNull(),
+  token: varchar("token", { length: 64 }).unique().notNull(),
+  label: text("label"),
+  expiresAt: timestamp("expires_at"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertPublicReportTokenSchema = createInsertSchema(publicReportTokens).omit({ id: true, createdAt: true });
+export type InsertPublicReportToken = z.infer<typeof insertPublicReportTokenSchema>;
+export type PublicReportToken = typeof publicReportTokens.$inferSelect;
