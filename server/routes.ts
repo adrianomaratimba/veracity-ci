@@ -38,6 +38,7 @@ import {
   geofenceViolations
 } from "@shared/schema";
 import webpush from "web-push";
+import { sendWhatsAppMessage } from "./twilio-client";
 
 // Configure web-push with VAPID keys
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -1525,6 +1526,63 @@ export async function registerRoutes(
         }
       } catch (e) {
         console.error('[DupCheck] Error checking duplicate answers:', e);
+      }
+
+      // T013: AI Fraud Score — weighted heuristic scoring (0-100)
+      try {
+        let score = 0;
+        const r = responseMeta;
+        // GPS accuracy risk
+        if (r.accuracy > 500) score += 40;
+        else if (r.accuracy > 150) score += 20;
+        // Interview duration risk
+        if (r.duration != null) {
+          if (r.duration < 10) score += 50;
+          else if (r.duration < 60) score += 35;
+          else if (r.duration < 120) score += 15;
+        }
+        // Time of day risk (midnight to 5am)
+        const hour = new Date(r.endTime).getHours();
+        if (hour >= 0 && hour < 5) score += 20;
+        // Audio too short
+        if (r.audioDuration != null && r.audioDuration < 30) score += 20;
+        // Already suspicious from earlier checks
+        if (status === 'suspicious') score += 30;
+        // GPS clustering: same exact coords as another response in same survey
+        const gpsCluster = await db.execute(sql`
+          SELECT COUNT(*) as cnt FROM responses
+          WHERE survey_id = ${surveyId}
+            AND id != ${newResponse.id}
+            AND ABS(latitude - ${r.latitude}) < 0.0001
+            AND ABS(longitude - ${r.longitude}) < 0.0001
+        `);
+        if (parseInt((gpsCluster.rows?.[0] as any)?.cnt || '0') > 0) score += 20;
+
+        const fraudScore = Math.min(100, score);
+        await db.execute(sql`UPDATE responses SET fraud_score = ${fraudScore} WHERE id = ${newResponse.id}`);
+      } catch (e) {
+        console.error('[FraudScore] Error computing score:', e);
+      }
+
+      // T010: WhatsApp alert when survey quota is reached
+      if (survey.targetSample) {
+        try {
+          const countRows = await db.execute(sql`SELECT COUNT(*) as cnt FROM responses WHERE survey_id = ${surveyId} AND status != 'invalid'`);
+          const total = parseInt((countRows.rows?.[0] as any)?.cnt || '0');
+          if (total >= survey.targetSample && total - 1 < survey.targetSample) {
+            const org = await storage.getOrganization(survey.organizationId);
+            if (org?.whatsappPhone) {
+              await sendWhatsAppMessage(
+                org.whatsappPhone,
+                `✅ *Cota Atingida!*\n` +
+                `A pesquisa *${survey.title}* atingiu a meta de ${survey.targetSample} entrevistas.\n` +
+                `Total atual: *${total}* respostas válidas.\nConsidere pausar a coleta.`
+              ).catch(e => console.error('[quota/whatsapp]', e));
+            }
+          }
+        } catch (e) {
+          console.error('[QuotaCheck] Error:', e);
+        }
       }
 
       res.status(201).json({ id: newResponse.id, status: newResponse.status });
@@ -3051,6 +3109,76 @@ export async function registerRoutes(
     }
   });
 
+  // T012: State municipality map — aggregate leading candidate % per geofenceCity
+  app.get("/api/organizations/:orgId/state-map-data", isAuthenticated, requireOrgAccess("orgId", "analytics:view"), async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.orgId);
+      const surveysRows = await db.execute(sql`
+        SELECT s.id, s.title, s.geofence_city, s.target_sample, s.status,
+               COUNT(r.id) FILTER (WHERE r.status != 'invalid') as response_count
+        FROM surveys s
+        LEFT JOIN responses r ON r.survey_id = s.id
+        WHERE s.organization_id = ${orgId}
+        GROUP BY s.id
+      `);
+
+      const cityData: Record<string, {
+        city: string; surveys: Array<{ id: number; title: string; status: string; responses: number; target: number }>;
+        leadingOption: string | null; leadingPct: number;
+      }> = {};
+
+      for (const row of surveysRows.rows as any[]) {
+        const city = row.geofence_city;
+        if (!city) continue;
+
+        if (!cityData[city]) {
+          cityData[city] = { city, surveys: [], leadingOption: null, leadingPct: 0 };
+        }
+
+        cityData[city].surveys.push({
+          id: row.id, title: row.title, status: row.status,
+          responses: parseInt(row.response_count || '0'), target: row.target_sample || 0,
+        });
+
+        // Get vote intention for this survey
+        const voteRows = await db.execute(sql`
+          SELECT ra.value, COUNT(*) as cnt
+          FROM responses r
+          JOIN response_answers ra ON ra.response_id = r.id
+          JOIN questions q ON q.id = ra.question_id
+          WHERE r.survey_id = ${row.id}
+            AND r.status != 'invalid'
+            AND q.is_vote_intention = true
+          GROUP BY ra.value
+          ORDER BY cnt DESC
+          LIMIT 1
+        `);
+
+        if (voteRows.rows.length > 0) {
+          const top = voteRows.rows[0] as any;
+          const tvResult = await db.execute(sql`
+            SELECT COUNT(*) as cnt FROM responses r
+            JOIN response_answers ra ON ra.response_id = r.id
+            JOIN questions q ON q.id = ra.question_id
+            WHERE r.survey_id = ${row.id} AND r.status != 'invalid' AND q.is_vote_intention = true
+          `);
+          const totalVotes = parseInt((tvResult.rows[0] as any)?.cnt || '1');
+
+          const pct = Math.round((parseInt(top.cnt) / totalVotes) * 100);
+          if (pct > cityData[city].leadingPct) {
+            cityData[city].leadingOption = top.value;
+            cityData[city].leadingPct = pct;
+          }
+        }
+      }
+
+      res.json(Object.values(cityData));
+    } catch (err) {
+      console.error('[state-map-data] error:', err);
+      res.status(500).json({ message: "Erro ao buscar dados do mapa" });
+    }
+  });
+
   // --- GEOFENCE VIOLATIONS ---
   // POST: record a geofence violation from an interviewer
   app.post("/api/surveys/:surveyId/geofence-violations", isAuthenticated, async (req, res) => {
@@ -3074,10 +3202,11 @@ export async function registerRoutes(
       });
 
       // Send push notifications to subscribed admins/coordinators
+      const interviewer = await storage.getUserById(userId);
+      const interviewerName = [interviewer?.firstName, interviewer?.lastName].filter(Boolean).join(' ') || 'Entrevistadora';
+
       if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
         try {
-          const interviewer = await storage.getUserById(userId);
-          const interviewerName = [interviewer?.firstName, interviewer?.lastName].filter(Boolean).join(' ') || 'Entrevistadora';
           const subscriptions = await storage.getOrgPushSubscriptions(survey.organizationId);
           const payload = JSON.stringify({
             title: '⚠️ Saída de Setor Detectada',
@@ -3092,6 +3221,23 @@ export async function registerRoutes(
         } catch (pushErr) {
           console.error('[geofence-violations/push] error:', pushErr);
         }
+      }
+
+      // T010: WhatsApp alert for geofence violation
+      try {
+        const org = await storage.getOrganization(survey.organizationId);
+        if (org?.whatsappPhone) {
+          const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          await sendWhatsAppMessage(
+            org.whatsappPhone,
+            `⚠️ *Saída de Geocerca* [${time}]\n` +
+            `Entrevistadora: *${interviewerName}*\n` +
+            `Saiu do bairro: *${neighborhood}*\n` +
+            `Pesquisa: ${survey.title}`
+          );
+        }
+      } catch (waErr) {
+        console.error('[geofence-violations/whatsapp] error:', waErr);
       }
 
       res.status(201).json(violation);

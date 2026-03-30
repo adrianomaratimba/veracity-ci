@@ -409,6 +409,20 @@ export default function AuditPage({ params }: AuditPageProps) {
                           </div>
                         </div>
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          {(response as any).fraudScore != null && (
+                            <Badge
+                              variant="outline"
+                              className={
+                                (response as any).fraudScore >= 70 ? 'border-red-500 text-red-600 bg-red-50 dark:bg-red-950/30' :
+                                (response as any).fraudScore >= 40 ? 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30' :
+                                'border-green-500 text-green-600 bg-green-50 dark:bg-green-950/30'
+                              }
+                              title="Pontuação de risco de fraude (0-100)"
+                              data-testid={`badge-fraud-score-${response.id}`}
+                            >
+                              IA {(response as any).fraudScore}
+                            </Badge>
+                          )}
                           <Badge variant={
                             response.status === 'suspicious' ? 'outline' :
                             response.status === 'valid' ? 'default' : 'destructive'
@@ -655,6 +669,35 @@ export default function AuditPage({ params }: AuditPageProps) {
                   Ver no Google Maps
                 </a>
               </div>
+
+              {(selectedResponse as any).fraudScore != null && (
+                <div className={`p-4 rounded-lg border ${
+                  (selectedResponse as any).fraudScore >= 70 ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800' :
+                  (selectedResponse as any).fraudScore >= 40 ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800' :
+                  'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className={`w-4 h-4 ${
+                        (selectedResponse as any).fraudScore >= 70 ? 'text-red-600' :
+                        (selectedResponse as any).fraudScore >= 40 ? 'text-amber-600' : 'text-green-600'
+                      }`} />
+                      <Label className="font-medium">Pontuação de Risco IA</Label>
+                    </div>
+                    <span className={`text-2xl font-bold ${
+                      (selectedResponse as any).fraudScore >= 70 ? 'text-red-600' :
+                      (selectedResponse as any).fraudScore >= 40 ? 'text-amber-600' : 'text-green-600'
+                    }`} data-testid="text-fraud-score-detail">
+                      {(selectedResponse as any).fraudScore}/100
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {(selectedResponse as any).fraudScore >= 70 ? 'Alto risco — revisão urgente recomendada.' :
+                     (selectedResponse as any).fraudScore >= 40 ? 'Risco moderado — verifique os dados.' :
+                     'Baixo risco — entrevista provavelmente legítima.'}
+                  </p>
+                </div>
+              )}
 
               {selectedResponse.flagReason && (
                 <div className="p-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">

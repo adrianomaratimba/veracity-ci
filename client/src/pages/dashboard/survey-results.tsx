@@ -683,6 +683,9 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
 
   const [selectedQuestionForComparison, setSelectedQuestionForComparison] = useState<string>("all");
 
+  // T007: Wave comparison state
+  const [compareWaveSurveyId, setCompareWaveSurveyId] = useState<string>("none");
+
   const { data: interviewerData, isLoading: interviewerLoading } = useQuery<InterviewerComparison>({
     queryKey: ['/api/organizations', orgId, 'audit/interviewers', surveyId.toString(), selectedQuestionForComparison],
     queryFn: async () => {
@@ -736,6 +739,27 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       refetchLinks();
       toast({ title: "Link removido" });
     },
+  });
+
+  // T007: Wave comparison queries
+  const { data: orgSurveys = [] } = useQuery<Array<{ id: number; title: string; waveLabel: string | null }>>({
+    queryKey: ['/api/organizations', orgId, 'surveys-list'],
+    queryFn: async () => {
+      const res = await fetch(`/api/surveys?organizationId=${orgId}`, { credentials: 'include' });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.surveys || data || []).filter((s: any) => s.id !== surveyId);
+    },
+  });
+
+  const { data: waveCompareData } = useQuery<any>({
+    queryKey: ['/api/surveys', compareWaveSurveyId, 'results', 'aggregated', 'wave-compare'],
+    queryFn: async () => {
+      const res = await fetch(`/api/surveys/${compareWaveSurveyId}/results/aggregated`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: compareWaveSurveyId !== 'none',
   });
 
   const userRole = (currentMember?.role as UserRole) || 'viewer';
@@ -1565,6 +1589,12 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                   Simulador
                 </TabsTrigger>
               )}
+              {!isViewer && (
+                <TabsTrigger value="wave-compare" data-testid="tab-wave-compare" className="text-xs sm:text-sm">
+                  <TrendingUp className="w-4 h-4 mr-1 hidden sm:inline" />
+                  Comparar Ondas
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="overview" className="mt-6">
@@ -2360,6 +2390,131 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                         </ResponsiveContainer>
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+
+            {/* T007: Wave Comparison */}
+            {!isViewer && (
+              <TabsContent value="wave-compare" className="mt-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-primary" />
+                      Comparar Ondas de Pesquisa
+                    </CardTitle>
+                    <CardDescription>
+                      Selecione outra pesquisa para comparar os resultados lado a lado.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="flex items-center gap-3">
+                      <Label className="whitespace-nowrap">Comparar com:</Label>
+                      <select
+                        className="border rounded-md px-3 py-2 text-sm bg-background flex-1 max-w-sm"
+                        value={compareWaveSurveyId}
+                        onChange={(e) => setCompareWaveSurveyId(e.target.value)}
+                        data-testid="select-wave-compare"
+                      >
+                        <option value="none">— Selecionar pesquisa —</option>
+                        {orgSurveys.map((s) => (
+                          <option key={s.id} value={String(s.id)}>
+                            {s.title}{s.waveLabel ? ` (${s.waveLabel})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {compareWaveSurveyId === 'none' && (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                        <p>Selecione uma pesquisa acima para comparar os resultados.</p>
+                      </div>
+                    )}
+
+                    {compareWaveSurveyId !== 'none' && (() => {
+                      const baseQ = voteIntentionQuestion;
+                      const compareQ = waveCompareData?.questions?.find(
+                        (q: any) => q.isVoteIntention || q.type === 'vote_intention'
+                      ) || waveCompareData?.questions?.[0];
+
+                      if (!baseQ || !compareQ) {
+                        return (
+                          <div className="text-center py-8 text-muted-foreground">
+                            Não foi possível encontrar perguntas comparáveis entre as pesquisas.
+                          </div>
+                        );
+                      }
+
+                      // Build side-by-side data
+                      const allOptions = Array.from(new Set([
+                        ...baseQ.results.map((r: any) => r.option),
+                        ...(compareQ.results || []).map((r: any) => r.option),
+                      ]));
+
+                      const chartData = allOptions.map((opt) => {
+                        const baseVal = baseQ.results.find((r: any) => r.option === opt)?.percentage ?? 0;
+                        const compareVal = compareQ.results?.find((r: any) => r.option === opt)?.percentage ?? 0;
+                        const delta = compareVal - baseVal;
+                        return { name: opt, atual: baseVal, comparacao: compareVal, delta };
+                      }).sort((a, b) => b.atual - a.atual);
+
+                      const baseSurvey = survey;
+                      const compSurvey = orgSurveys.find(s => String(s.id) === compareWaveSurveyId);
+
+                      return (
+                        <div className="space-y-6">
+                          <div className="flex gap-6 text-sm">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-sm bg-primary" />
+                              <span className="font-medium">{baseSurvey?.title}</span>
+                              {(baseSurvey as any)?.waveLabel && (
+                                <Badge variant="outline" className="text-xs">{(baseSurvey as any).waveLabel}</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-sm bg-slate-400" />
+                              <span className="font-medium">{compSurvey?.title}</span>
+                              {compSurvey?.waveLabel && (
+                                <Badge variant="outline" className="text-xs">{compSurvey.waveLabel}</Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 60)}>
+                            <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 50 }}>
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                              <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
+                              <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 12 }} />
+                              <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
+                              <Legend />
+                              <Bar dataKey="atual" name={baseSurvey?.title || 'Atual'} fill="hsl(var(--primary))" radius={[0, 3, 3, 0]}>
+                                <LabelList dataKey="atual" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 11 }} />
+                              </Bar>
+                              <Bar dataKey="comparacao" name={compSurvey?.title || 'Comparação'} fill="#94a3b8" radius={[0, 3, 3, 0]}>
+                                <LabelList dataKey="comparacao" position="right" formatter={(v: number) => `${v.toFixed(1)}%`} style={{ fontSize: 11 }} />
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+
+                          {/* Delta table */}
+                          <div>
+                            <h4 className="text-sm font-semibold mb-2">Variação entre pesquisas (Δ)</h4>
+                            <div className="space-y-2">
+                              {chartData.map((row) => (
+                                <div key={row.name} className="flex items-center justify-between px-3 py-2 rounded-md bg-muted/40 text-sm">
+                                  <span className="font-medium">{row.name}</span>
+                                  <span className={`font-bold ${row.delta > 0 ? 'text-green-600' : row.delta < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                    {row.delta > 0 ? '+' : ''}{row.delta.toFixed(1)} p.p.
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </CardContent>
                 </Card>
               </TabsContent>

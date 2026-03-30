@@ -21,7 +21,8 @@ import {
   Crown,
   BarChart2,
   MapPin,
-  MessageSquare
+  MessageSquare,
+  Globe
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -127,6 +128,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
         { name: 'Supervisor', href: `/org/${orgId}/supervisor`, icon: Radar },
         { name: 'Mensagens', href: `/org/${orgId}/messages`, icon: MessageSquare, badge: true },
         { name: 'Geocerca', href: `/org/${orgId}/geofencing`, icon: MapPin },
+        { name: 'Mapa ES', href: `/org/${orgId}/state-map`, icon: Globe },
       ];
     }
     
@@ -139,6 +141,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
       { name: 'Supervisor', href: `/org/${orgId}/supervisor`, icon: Radar },
       { name: 'Mensagens', href: `/org/${orgId}/messages`, icon: MessageSquare, badge: true },
       { name: 'Geocerca', href: `/org/${orgId}/geofencing`, icon: MapPin },
+      { name: 'Mapa ES', href: `/org/${orgId}/state-map`, icon: Globe },
     ];
     
     // Auditoria - only for admin/owner

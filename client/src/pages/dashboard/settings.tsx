@@ -47,6 +47,7 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
     dailyReports: false,
     weeklyReports: true
   });
+  const [whatsappPhone, setWhatsappPhone] = useState("");
 
   // Question modules state
   const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
@@ -381,8 +382,29 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
         hideVotoAuditBrand: org.hideVotoAuditBrand || false,
         logoUrl: org.logoUrl || ""
       });
+      setWhatsappPhone((org as any).whatsappPhone || "");
     }
   }, [org]);
+
+  const updateWhatsApp = useMutation({
+    mutationFn: async (phone: string) => {
+      const res = await fetch(`/api/organizations/${orgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ whatsappPhone: phone }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations', orgId] });
+      toast({ title: "Salvo", description: "Numero WhatsApp atualizado!" });
+    },
+    onError: () => {
+      toast({ title: "Erro", description: "Falha ao salvar numero WhatsApp", variant: "destructive" });
+    }
+  });
 
   const updateOrg = useMutation({
     mutationFn: async (data: { name: string; slug?: string }) => {
@@ -1244,6 +1266,34 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                     onCheckedChange={(v) => setNotifications({ ...notifications, weeklyReports: v })}
                     data-testid="switch-weekly-reports"
                   />
+                </div>
+
+                <div className="pt-4 border-t space-y-4">
+                  <div>
+                    <p className="font-medium flex items-center gap-2 mb-1">
+                      <span>📱</span> WhatsApp do Supervisor
+                    </p>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Numero para alertas automáticos: saída de geocerca, cota atingida e entrevistadoras paradas (30 min). Formato E.164 — ex: +5527999999999
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="+5527999999999"
+                        value={whatsappPhone}
+                        onChange={(e) => setWhatsappPhone(e.target.value)}
+                        className="max-w-xs"
+                        data-testid="input-whatsapp-phone"
+                      />
+                      <Button
+                        onClick={() => updateWhatsApp.mutate(whatsappPhone)}
+                        disabled={updateWhatsApp.isPending}
+                        data-testid="button-save-whatsapp"
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        {updateWhatsApp.isPending ? "Salvando..." : "Salvar"}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex justify-end pt-4 border-t">

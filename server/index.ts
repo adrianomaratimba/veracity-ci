@@ -59,8 +59,56 @@ app.use((req, res, next) => {
   next();
 });
 
+// T010: Idle interviewer background check — runs every 5 minutes
+async function checkIdleInterviewers() {
+  try {
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
+    const { sendWhatsAppMessage } = await import("./twilio-client");
+
+    // Find orgs with whatsapp_phone set and active surveys
+    const idleRows = await db.execute(sql`
+      SELECT DISTINCT
+        o.id as org_id,
+        o.whatsapp_phone,
+        s.id as survey_id,
+        s.title as survey_title,
+        u.id as interviewer_id,
+        COALESCE(u.first_name || ' ' || u.last_name, u.email) as interviewer_name,
+        MAX(r.created_at) as last_response
+      FROM organizations o
+      JOIN surveys s ON s.organization_id = o.id AND s.status = 'active'
+      JOIN survey_assignments sa ON sa.survey_id = s.id
+      JOIN users u ON u.id = sa.interviewer_id
+      LEFT JOIN responses r ON r.survey_id = s.id AND r.interviewer_id = u.id
+      WHERE o.whatsapp_phone IS NOT NULL
+        AND o.whatsapp_phone != ''
+      GROUP BY o.id, o.whatsapp_phone, s.id, s.title, u.id, u.email, u.first_name, u.last_name
+      HAVING MAX(r.created_at) IS NOT NULL
+         AND MAX(r.created_at) < NOW() - INTERVAL '30 minutes'
+         AND MAX(r.created_at) > NOW() - INTERVAL '35 minutes'
+    `);
+
+    for (const row of (idleRows.rows as any[])) {
+      const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      await sendWhatsAppMessage(
+        row.whatsapp_phone,
+        `⏱️ *Entrevistadora Parada* [${time}]\n` +
+        `*${row.interviewer_name}* está sem atividade há 30 minutos.\n` +
+        `Última entrevista: ${new Date(row.last_response).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n` +
+        `Pesquisa: ${row.survey_title}`
+      ).catch(() => {});
+    }
+  } catch (e) {
+    console.error('[IdleCheck] Error:', e);
+  }
+}
+
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Start idle interviewer checker (every 5 minutes)
+  setInterval(checkIdleInterviewers, 5 * 60 * 1000);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

@@ -34,6 +34,7 @@ export const organizations = pgTable("organizations", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   billingStatus: text("billing_status").default("active"),
+  whatsappPhone: text("whatsapp_phone"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -134,6 +135,7 @@ export const surveys = pgTable("surveys", {
   samplingPercentage: doublePrecision("sampling_percentage"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
+  waveLabel: text("wave_label"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   deletedAt: timestamp("deleted_at"),
@@ -175,6 +177,7 @@ export const responses = pgTable("responses", {
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+  fraudScore: integer("fraud_score"),
 });
 
 export const answers = pgTable("answers", {
