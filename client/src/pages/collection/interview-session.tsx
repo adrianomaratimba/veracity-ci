@@ -8,6 +8,7 @@ import { useLocationTracking } from "@/hooks/use-location-tracking";
 import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 import { useGeofencing } from "@/hooks/use-geofencing";
 import { isPointInsidePolygon } from "@/lib/geofences";
+import { GpsEngine, SmoothedPosition } from "@/lib/gps-engine";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mic, MapPin, CheckCircle, AlertTriangle, ChevronRight, Save, XCircle, WifiOff, Cloud, Square, Play } from "lucide-react";
@@ -138,9 +139,13 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   const [gpsAccuracyOk, setGpsAccuracyOk] = useState(false);
   const [gpsShowAcceptImprecise, setGpsShowAcceptImprecise] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsRawAccuracy, setGpsRawAccuracy] = useState<number | null>(null);
+  const [gpsSampleCount, setGpsSampleCount] = useState(0);
+  // True when GPS is "ready to use" — either accurate or explicitly accepted by user/auto-timer
+  const [gpsAccepted, setGpsAccepted] = useState(false);
 
-  // Accuracy threshold in meters — accept as "good enough"
-  const GPS_ACCURACY_THRESHOLD = 150;
+  // Accuracy threshold in meters — accept as "good enough" (50 m matches outdoor GPS chip capability)
+  const GPS_ACCURACY_THRESHOLD = 50;
 
   const [answers, setAnswers] = useState<Record<number, any>>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -295,7 +300,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     };
   }, []);
 
-  // GPS capture with high accuracy — waits for a good signal before enabling the start button
+  // GPS capture — uses GpsEngine (multi-sample smoothing, maximumAge:0) for Waze-grade precision
+  const gpsEngineRef = useRef<GpsEngine | null>(null);
+
   useEffect(() => {
     const requireGps = (survey as any)?.requireGps ?? true;
     if (!requireGps) return;
@@ -306,90 +313,93 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
       return;
     }
 
-    let bestSample: GeolocationCoordinates | null = null;
-    let watchId: number | null = null;
-    let noSignalTimeoutId: ReturnType<typeof setTimeout> | null = null;       // 5s – show "sem GPS" skip
-    let showImpreciseTimeoutId: ReturnType<typeof setTimeout> | null = null;  // 8s – show "accept imprecise" option
-    let acceptAnywayTimeoutId: ReturnType<typeof setTimeout> | null = null;   // 20s – auto-accept imprecise
+    // Timers
+    let noSignalTimeoutId: ReturnType<typeof setTimeout> | null = null;   // 5s – no reading at all
+    let showImpreciseTimeoutId: ReturnType<typeof setTimeout> | null = null; // 8s – show "accept" button
+    let acceptAnywayTimeoutId: ReturnType<typeof setTimeout> | null = null;  // 20s – auto-accept
 
-    const handleNewPosition = (position: GeolocationPosition) => {
-      const coords = position.coords;
-      const isImprovement = !bestSample || coords.accuracy < bestSample.accuracy;
+    const engine = new GpsEngine({
+      targetAccuracyMeters: GPS_ACCURACY_THRESHOLD,
+      maxSamples: 8,
+      sampleAccuracyCutoff: 200,
 
-      // Track best (most accurate) sample so far
-      if (isImprovement) {
-        bestSample = coords;
-        setGpsBestSoFar(coords);
-      }
-
-      // Cancel the "no GPS signal" timeout as we have at least one reading
-      if (noSignalTimeoutId !== null) {
-        clearTimeout(noSignalTimeoutId);
-        noSignalTimeoutId = null;
-        setGpsTimeoutReached(false);
-      }
-
-      // If accuracy is good enough, accept immediately
-      if (coords.accuracy <= GPS_ACCURACY_THRESHOLD) {
-        if (watchId !== null) {
-          navigator.geolocation.clearWatch(watchId);
-          watchId = null;
-        }
-        if (acceptAnywayTimeoutId !== null) {
-          clearTimeout(acceptAnywayTimeoutId);
-          acceptAnywayTimeoutId = null;
-        }
-        setGpsCoords(coords);
-        setGpsAccuracyOk(true);
-      } else if (isImprovement) {
-        // Chip is improving — silently update coords even after auto-accept
-        // so submitted data always reflects the best GPS reading available
-        setGpsCoords(coords);
-      }
-      // Otherwise keep collecting — acceptAnywayTimeout will fire after 20s
-    };
-
-    watchId = navigator.geolocation.watchPosition(
-      handleNewPosition,
-      (err) => {
-        if (!bestSample) {
-          setGpsError("Erro ao obter localização. Verifique as permissões.");
+      onRawAccuracy: (acc) => {
+        setGpsRawAccuracy(acc);
+        // First raw reading cancels "no signal" timer
+        if (noSignalTimeoutId !== null) {
+          clearTimeout(noSignalTimeoutId);
+          noSignalTimeoutId = null;
+          setGpsTimeoutReached(false);
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
 
-    // After 5s with no signal at all, show "Continuar sem GPS" option
+      onPosition: (pos: SmoothedPosition) => {
+        // Build a GeolocationCoordinates-compatible object from smoothed data
+        const syntheticCoords = {
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          accuracy: pos.accuracy,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+          toJSON: () => ({}),
+        } as unknown as GeolocationCoordinates;
+
+        // Always track best so the UI can show progress
+        setGpsBestSoFar(prev => (!prev || pos.accuracy < prev.accuracy) ? syntheticCoords : prev);
+        setGpsCoords(syntheticCoords);
+        setGpsSampleCount(pos.sampleCount);
+
+        if (pos.accuracy <= GPS_ACCURACY_THRESHOLD) {
+          // Good enough — mark as accurate and cancel auto-accept timer
+          setGpsAccuracyOk(true);
+          setGpsAccepted(true);
+          if (acceptAnywayTimeoutId !== null) {
+            clearTimeout(acceptAnywayTimeoutId);
+            acceptAnywayTimeoutId = null;
+          }
+        }
+        // If still imprecise: keep running, timers will decide next steps
+      },
+
+      onError: (err) => {
+        const msg = 'message' in err ? err.message : 'Erro de GPS';
+        console.warn('[GPS] error:', msg);
+        setGpsError("Erro ao obter localização. Verifique as permissões do GPS.");
+      },
+    });
+
+    gpsEngineRef.current = engine;
+    engine.start();
+
+    // After 5s with no reading at all, show "Continuar sem GPS" button
     noSignalTimeoutId = setTimeout(() => {
-      if (!bestSample) setGpsTimeoutReached(true);
+      if (!engine.currentBest) setGpsTimeoutReached(true);
     }, 5000);
 
-    // After 8s with imprecise signal, show "Usar GPS atual" button
+    // After 8s with imprecise signal, offer "Usar GPS atual" button
     showImpreciseTimeoutId = setTimeout(() => {
-      if (!bestSample || bestSample.accuracy > GPS_ACCURACY_THRESHOLD) {
+      if (!engine.currentBest || engine.currentBest.accuracy > GPS_ACCURACY_THRESHOLD) {
         setGpsShowAcceptImprecise(true);
       }
     }, 8000);
 
-    // After 20s without a good-accuracy fix, accept the best we have automatically
-    // but keep the watch running in background so GPS chip can still warm up
+    // After 20s without a precise fix, auto-accept the best available
     acceptAnywayTimeoutId = setTimeout(() => {
-      if (bestSample) {
-        setGpsCoords(bestSample);
-        setGpsAccuracyOk(false);
-        // Keep watchId running — handleNewPosition will keep updating bestSample
-        // and will call setGpsCoords / setGpsAccuracyOk again if accuracy improves
+      const best = engine.currentBest;
+      if (best) {
+        setGpsAccuracyOk(false); // mark as imprecise but accepted
+        setGpsAccepted(true);    // unblock the start button
+        // gpsCoords is already set via onPosition — nothing else needed
       } else {
-        if (watchId !== null) {
-          navigator.geolocation.clearWatch(watchId);
-          watchId = null;
-        }
         setGpsTimeoutReached(true);
       }
     }, 20000);
 
     return () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      engine.stop();
+      gpsEngineRef.current = null;
       if (noSignalTimeoutId !== null) clearTimeout(noSignalTimeoutId);
       if (showImpreciseTimeoutId !== null) clearTimeout(showImpreciseTimeoutId);
       if (acceptAnywayTimeoutId !== null) clearTimeout(acceptAnywayTimeoutId);
@@ -752,9 +762,10 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         </div>
         <div className="flex items-center gap-2 text-xs opacity-80 mt-1 flex-wrap">
           {isRecording && <span className="flex items-center gap-1 text-red-300 animate-pulse"><Mic className="w-3 h-3" /> GRAVANDO</span>}
-          {gpsCoords && gpsAccuracyOk && <span className="flex items-center gap-1 text-green-300"><MapPin className="w-3 h-3" /> GPS Ativo</span>}
-          {gpsCoords && !gpsAccuracyOk && <span className="flex items-center gap-1 text-orange-300"><MapPin className="w-3 h-3" /> GPS Impreciso</span>}
-          {gpsBestSoFar && !gpsCoords && <span className="flex items-center gap-1 text-blue-300"><MapPin className="w-3 h-3" /> GPS Aguardando</span>}
+          {gpsCoords && gpsAccuracyOk && <span className="flex items-center gap-1 text-green-300"><MapPin className="w-3 h-3" /> GPS {gpsCoords.accuracy.toFixed(0)}m</span>}
+          {gpsCoords && !gpsAccuracyOk && <span className="flex items-center gap-1 text-orange-300"><MapPin className="w-3 h-3" /> GPS ~{gpsCoords.accuracy.toFixed(0)}m</span>}
+          {!gpsCoords && gpsRawAccuracy && <span className="flex items-center gap-1 text-blue-300"><MapPin className="w-3 h-3" /> GPS {gpsRawAccuracy.toFixed(0)}m…</span>}
+          {!gpsCoords && !gpsRawAccuracy && !skippedGps && <span className="flex items-center gap-1 text-blue-300"><MapPin className="w-3 h-3" /> GPS Aguardando</span>}
           {skippedGps && !gpsCoords && <span className="flex items-center gap-1 text-yellow-300"><MapPin className="w-3 h-3" /> Sem GPS</span>}
           {!isOnline && <span className="flex items-center gap-1 text-yellow-300"><WifiOff className="w-3 h-3" /> Modo Offline</span>}
         </div>
@@ -795,25 +806,44 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                           ? "Entrevista sem GPS"
                           : gpsError
                           ? gpsError
-                          : gpsCoords && gpsAccuracyOk
-                          ? `Boa precisão: ${gpsCoords.accuracy.toFixed(0)}m`
-                          : gpsCoords && !gpsAccuracyOk
-                          ? `Precisão: ${gpsCoords.accuracy.toFixed(0)}m (chip GPS não ativo)`
-                          : gpsBestSoFar && gpsBestSoFar.accuracy > 500
-                          ? `Sinal fraco (${gpsBestSoFar.accuracy.toFixed(0)}m) — aguardando chip GPS...`
-                          : gpsBestSoFar
-                          ? `Aguardando sinal melhor... ${gpsBestSoFar.accuracy.toFixed(0)}m`
+                          : gpsAccuracyOk
+                          ? `Precisão: ${gpsCoords?.accuracy.toFixed(0)}m — ${gpsSampleCount} amostras`
+                          : gpsCoords
+                          ? `Melhorando… ${gpsCoords.accuracy.toFixed(0)}m (${gpsSampleCount} amostras)`
+                          : gpsRawAccuracy
+                          ? `Aguardando chip GPS… ${gpsRawAccuracy.toFixed(0)}m`
                           : "Aguardando sinal GPS..."}
                       </p>
-                      {/* Help text when GPS chip is not engaging (accuracy > 500m) */}
-                      {!skippedGps && !gpsCoords && gpsBestSoFar && gpsBestSoFar.accuracy > 500 && (
-                        <p className="text-xs text-amber-600 mt-1">
-                          💡 Ative o GPS de alta precisão nas configurações do celular e vá para um local a céu aberto.
-                        </p>
+                      {/* Real-time accuracy progress bar */}
+                      {!skippedGps && (gpsRawAccuracy !== null || gpsCoords) && (
+                        <div className="mt-2">
+                          {(() => {
+                            const current = gpsCoords?.accuracy ?? gpsRawAccuracy ?? 999;
+                            // Map accuracy to bar: 0m=100%, 50m=100%, 100m=60%, 200m=30%, 500m+=5%
+                            const pct = Math.max(5, Math.min(100, Math.round(100 - (Math.log10(Math.max(current, 1)) / Math.log10(500)) * 95)));
+                            const color = current <= 50 ? 'bg-green-500' : current <= 100 ? 'bg-yellow-400' : 'bg-orange-400';
+                            const label = current <= 20 ? 'Excelente' : current <= 50 ? 'Boa' : current <= 100 ? 'Razoável' : current <= 200 ? 'Fraca' : 'Muito fraca';
+                            return (
+                              <div className="space-y-0.5">
+                                <div className="flex justify-between text-[10px] text-muted-foreground">
+                                  <span>Sinal: <span className={current <= 50 ? 'text-green-600 font-medium' : current <= 100 ? 'text-yellow-600' : 'text-orange-600'}>{label}</span></span>
+                                  <span>{current.toFixed(0)}m</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-500 ${color}`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
                       )}
-                      {!skippedGps && gpsCoords && !gpsAccuracyOk && gpsCoords.accuracy > 500 && (
+                      {/* Help: very weak signal */}
+                      {!skippedGps && (gpsRawAccuracy ?? 0) > 200 && !gpsAccuracyOk && (
                         <p className="text-xs text-amber-600 mt-1">
-                          💡 Precisão muito baixa. Ative "Alta precisão" no GPS do celular.
+                          💡 Vá para um local a céu aberto e ative "Alta precisão" no GPS do celular.
                         </p>
                       )}
                     </div>
@@ -831,15 +861,15 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                     </Button>
                   )}
                   {/* Has signal but imprecise after 8s — show "proceed anyway" */}
-                  {!gpsCoords && gpsBestSoFar && !skippedGps && gpsShowAcceptImprecise && (
+                  {!gpsAccuracyOk && gpsCoords && !skippedGps && gpsShowAcceptImprecise && (
                     <Button
                       size="sm"
                       variant="outline"
                       className="w-full border-orange-400 text-orange-600 hover:bg-orange-50"
-                      onClick={() => { setGpsCoords(gpsBestSoFar); setGpsAccuracyOk(false); }}
+                      onClick={() => { setGpsAccuracyOk(false); setGpsAccepted(true); }}
                       data-testid="button-accept-imprecise-gps"
                     >
-                      Usar GPS atual ({gpsBestSoFar.accuracy.toFixed(0)}m)
+                      Usar GPS atual ({gpsCoords.accuracy.toFixed(0)}m) e continuar
                     </Button>
                   )}
                 </div>
@@ -905,7 +935,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               className="w-full" 
               onClick={handleStartInterview}
               disabled={
-                (((survey as any)?.requireGps ?? true) && !gpsCoords && !skippedGps) ||
+                (((survey as any)?.requireGps ?? true) && !gpsAccepted && !skippedGps) ||
                 (geofenceBlocking && isGeofenceActive && !zonesLoaded) ||
                 gpsZoneBlocked
               }

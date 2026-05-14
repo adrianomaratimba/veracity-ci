@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { isPointInsideGeofence, isPointInsidePolygon } from '@/lib/geofences';
+import { GpsEngine, SmoothedPosition } from '@/lib/gps-engine';
 
 interface GeofencingOptions {
   neighborhoodName?: string | null;
@@ -70,7 +71,7 @@ export function useGeofencing({
   });
 
   const wasInsideRef = useRef<boolean>(safeDefault);
-  const watchIdRef = useRef<number | null>(null);
+  const engineRef = useRef<GpsEngine | null>(null);
 
   // Reset state whenever blocking mode or fence data changes (e.g. zones loaded async)
   useEffect(() => {
@@ -83,16 +84,16 @@ export function useGeofencing({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blockingMode, hasGeofence]);
 
-  const checkPosition = useCallback((coords: GeolocationCoordinates) => {
+  const checkPosition = useCallback((pos: SmoothedPosition) => {
     if (!hasGeofence) return;
 
     let inside = false;
     if (hasMultiPolygons && polygons) {
-      inside = polygons.some(poly => isPointInsidePolygon(coords.longitude, coords.latitude, poly));
+      inside = polygons.some(poly => isPointInsidePolygon(pos.longitude, pos.latitude, poly));
     } else if (hasSinglePolygon && polygon) {
-      inside = isPointInsidePolygon(coords.longitude, coords.latitude, polygon);
+      inside = isPointInsidePolygon(pos.longitude, pos.latitude, polygon);
     } else if (hasNeighborhood && neighborhoodName) {
-      inside = isPointInsideGeofence(coords.longitude, coords.latitude, neighborhoodName);
+      inside = isPointInsideGeofence(pos.longitude, pos.latitude, neighborhoodName);
     }
 
     setState(prev => ({
@@ -112,19 +113,20 @@ export function useGeofencing({
     const active = enabled && hasGeofence && !!navigator.geolocation;
     if (!active) return;
 
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (position) => checkPosition(position.coords),
-      (err) => console.warn('[Geofencing] GPS error:', err.message),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
-    );
+    engineRef.current?.stop();
+    engineRef.current = new GpsEngine({
+      targetAccuracyMeters: 50,
+      maxSamples: 8,
+      sampleAccuracyCutoff: 100,
+      onPosition: checkPosition,
+    });
+    engineRef.current.start();
 
     return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
+      engineRef.current?.stop();
+      engineRef.current = null;
     };
-  }, [enabled, neighborhoodName, checkPosition]);
+  }, [enabled, hasGeofence, checkPosition]);
 
   return state;
 }
