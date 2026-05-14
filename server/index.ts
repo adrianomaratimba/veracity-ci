@@ -33,6 +33,25 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+const SENSITIVE_LOG_KEYS = new Set([
+  'passwordHash', 'password_hash',
+  'replitUserId', 'replit_user_id',
+  'emailVerified', 'email_verified',
+  'authProvider', 'auth_provider',
+]);
+
+const NO_BODY_LOG_PREFIXES = ['/api/auth/'];
+
+function scrubSensitiveFields(obj: unknown): unknown {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(scrubSensitiveFields);
+  return Object.fromEntries(
+    Object.entries(obj as Record<string, unknown>)
+      .filter(([key]) => !SENSITIVE_LOG_KEYS.has(key))
+      .map(([key, val]) => [key, scrubSensitiveFields(val)])
+  );
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -48,8 +67,9 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      const skipBody = NO_BODY_LOG_PREFIXES.some(prefix => path.startsWith(prefix));
+      if (!skipBody && capturedJsonResponse) {
+        logLine += ` :: ${JSON.stringify(scrubSensitiveFields(capturedJsonResponse))}`;
       }
 
       log(logLine);

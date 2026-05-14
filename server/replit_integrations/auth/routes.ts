@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { authStorage } from "./storage";
 import { isAuthenticated } from "./replitAuth";
 import { authService } from "../../auth-service";
-import { registerUserSchema, loginUserSchema } from "@shared/models/auth";
+import { registerUserSchema, loginUserSchema, sanitizeUser } from "@shared/models/auth";
 import { sendPasswordResetEmail } from "../../email-service";
 import { authRateLimiter, passwordResetRateLimiter, registrationRateLimiter } from "../../middleware/rate-limit";
 
@@ -15,13 +15,13 @@ export function registerAuthRoutes(app: Express): void {
       if (req.session?.userId) {
         const user = await authService.getUserById(req.session.userId);
         if (user) {
-          return res.json(user);
+          return res.json(sanitizeUser(user));
         }
       }
       // Check Replit Auth
       if (req.user?.claims?.sub) {
         const user = await authStorage.getUser(req.user.claims.sub);
-        return res.json(user);
+        return res.json(user ? sanitizeUser(user) : null);
       }
       return res.status(401).json({ message: "Not authenticated" });
     } catch (error) {
@@ -74,7 +74,7 @@ export function registerAuthRoutes(app: Express): void {
       // Auto-accept pending invitations
       await authStorage.acceptPendingInvitations(user.id, user.email!);
 
-      res.json({ user });
+      res.json({ user: sanitizeUser(user) });
     } catch (error: any) {
       console.error("Login error:", error);
       res.status(401).json({ message: error.message || "Erro ao fazer login" });

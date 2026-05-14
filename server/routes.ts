@@ -21,7 +21,7 @@ function isCoordInsidePolygon(lng: number, lat: number, coordinates: [number, nu
   }
 }
 import { db } from "./db";
-import { users } from "@shared/models/auth";
+import { users, sanitizeUser, sanitizeMemberUser } from "@shared/models/auth";
 import { sql, eq, desc } from "drizzle-orm";
 import { authService } from "./auth-service";
 import { 
@@ -121,10 +121,13 @@ export async function registerRoutes(
     }
     
     const allMembers = await storage.getOrganizationMembers(orgId);
+
+    const sanitizeMembers = (members: typeof allMembers) =>
+      members.map(({ user, ...rest }) => ({ ...rest, user: sanitizeMemberUser(user) }));
     
     // Owner sees all members
     if (currentMember.role === 'owner') {
-      res.json(allMembers);
+      res.json(sanitizeMembers(allMembers));
     } else if (currentMember.role === 'admin') {
       // Admin sees: themselves, owner (read-only), and roles they can manage
       // Admin does NOT see other admins
@@ -134,7 +137,7 @@ export async function registerRoutes(
         m.role === 'owner' || // owner (read-only, but visible)
         manageableRoles.includes(m.role as UserRole)
       );
-      res.json(visibleMembers);
+      res.json(sanitizeMembers(visibleMembers));
     } else if (currentMember.role === 'coordinator') {
       // Coordinator sees: themselves and all interviewers in the organization
       // Note: Cannot filter by "their surveys" as there's no ownership field on surveys
@@ -142,11 +145,11 @@ export async function registerRoutes(
         m.userId === userId || // themselves
         m.role === 'interviewer'
       );
-      res.json(visibleMembers);
+      res.json(sanitizeMembers(visibleMembers));
     } else {
       // Interviewers and viewers see only themselves
       const visibleMembers = allMembers.filter(m => m.userId === userId);
-      res.json(visibleMembers);
+      res.json(sanitizeMembers(visibleMembers));
     }
   });
 

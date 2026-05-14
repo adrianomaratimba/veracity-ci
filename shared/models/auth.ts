@@ -61,3 +61,28 @@ export type User = typeof users.$inferSelect;
 export type VerificationToken = typeof verificationTokens.$inferSelect;
 export type RegisterUser = z.infer<typeof registerUserSchema>;
 export type LoginUser = z.infer<typeof loginUserSchema>;
+
+export type SafeUser = Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'profileImageUrl' | 'emailVerified'>;
+
+export type PublicMemberUser = Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'profileImageUrl'>;
+
+export function sanitizeUser(user: User): SafeUser {
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    profileImageUrl: user.profileImageUrl,
+    emailVerified: user.emailVerified,
+  };
+}
+
+export function sanitizeMemberUser(user: User): PublicMemberUser {
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    profileImageUrl: user.profileImageUrl,
+  };
+}

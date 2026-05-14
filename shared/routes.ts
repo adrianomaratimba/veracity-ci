@@ -18,7 +18,7 @@ import {
   userRoleEnum,
   invitationStatusEnum
 } from './schema';
-import { users, registerUserSchema, loginUserSchema } from './models/auth';
+import { registerUserSchema, loginUserSchema } from './models/auth';
 
 // === ERROR SCHEMAS ===
 export const errorSchemas = {
@@ -64,7 +64,14 @@ export const api = {
       input: loginUserSchema,
       responses: {
         200: z.object({
-          user: z.custom<typeof users.$inferSelect>(),
+          user: z.object({
+            id: z.string(),
+            email: z.string().nullable(),
+            firstName: z.string().nullable(),
+            lastName: z.string().nullable(),
+            profileImageUrl: z.string().nullable(),
+            emailVerified: z.boolean().nullable(),
+          }),
         }),
         401: errorSchemas.validation,
       },
@@ -142,7 +149,13 @@ export const api = {
             id: z.number(),
             userId: z.string(),
             role: z.string(),
-            user: z.custom<typeof users.$inferSelect>(),
+            user: z.object({
+              id: z.string(),
+              email: z.string().nullable(),
+              firstName: z.string().nullable(),
+              lastName: z.string().nullable(),
+              profileImageUrl: z.string().nullable(),
+            }),
           })),
         }
       },
