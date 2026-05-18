@@ -891,6 +891,20 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     updateQuestionField(index, "logic", logic);
   };
 
+  const handleDuplicateQuestion = (index: number) => {
+    const q = questions[index];
+    const duplicate = {
+      ...q,
+      id: undefined,
+      text: q.text + " (cópia)",
+      order: questions.length + 1,
+    };
+    const updated = [...questions, duplicate];
+    setQuestions(updated);
+    setHasChanges(true);
+    toast({ title: "Pergunta duplicada", description: "A cópia foi adicionada ao final. Edite e salve." });
+  };
+
   const handleDeleteQuestion = async (index: number) => {
     const q = questions[index];
     if (q.id) {
@@ -1125,6 +1139,9 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                               </Button>
                               <Button variant="outline" size="sm" onClick={() => handleSaveQuestion(index)} data-testid={`button-save-question-${index}`}>
                                 <CheckCircle className="w-4 h-4 mr-2" /> Salvar
+                              </Button>
+                              <Button variant="ghost" size="sm" title="Duplicar pergunta" onClick={() => handleDuplicateQuestion(index)} data-testid={`button-duplicate-question-${index}`}>
+                                <Copy className="w-4 h-4" />
                               </Button>
                               <Button variant="ghost" size="sm" onClick={() => handleDeleteQuestion(index)} data-testid={`button-delete-question-${index}`}>
                                 <Trash2 className="w-4 h-4" />
