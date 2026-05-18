@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -134,6 +135,9 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
   const [step, setStep] = useState<Step>('permissions');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitProgress, setSubmitProgress] = useState(0);
+  const [submitPhaseLabel, setSubmitPhaseLabel] = useState('Preparando...');
+  const autoSubmitRef = useRef(false);
   const [gpsCoords, setGpsCoords] = useState<GeolocationCoordinates | null>(null);
   const [gpsBestSoFar, setGpsBestSoFar] = useState<GeolocationCoordinates | null>(null);
   const [gpsAccuracyOk, setGpsAccuracyOk] = useState(false);
@@ -741,6 +745,57 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
     }
   };
 
+  // Auto-trigger submission when entering 'submit' step, once audioBlob is ready
+  useEffect(() => {
+    if (step !== 'submit') {
+      autoSubmitRef.current = false;
+      return;
+    }
+    if (autoSubmitRef.current) return;
+    const requireAudio = (survey as any)?.requireAudio ?? true;
+    if (requireAudio && !audioBlob) return; // wait for recording to finalize
+    autoSubmitRef.current = true;
+    handleSubmit();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, audioBlob]);
+
+  // Animate progress bar while in 'submit' step
+  useEffect(() => {
+    if (step !== 'submit') {
+      setSubmitProgress(0);
+      return;
+    }
+    setSubmitProgress(5);
+    const interval = setInterval(() => {
+      setSubmitProgress(prev => {
+        if (prev >= 82) { clearInterval(interval); return 82; }
+        const increment = prev < 30 ? 4 : prev < 60 ? 2 : 1;
+        return Math.min(prev + increment, 82);
+      });
+    }, 180);
+    return () => clearInterval(interval);
+  }, [step]);
+
+  // Track submission phase label
+  useEffect(() => {
+    if (isUploadingAudio) {
+      setSubmitPhaseLabel('Enviando áudio...');
+      setSubmitProgress(prev => Math.max(prev, 20));
+    } else if (isSubmitting) {
+      setSubmitPhaseLabel('Registrando dados...');
+      setSubmitProgress(prev => Math.max(prev, 55));
+    } else if (isSavingOffline) {
+      setSubmitPhaseLabel('Salvando localmente...');
+    }
+  }, [isUploadingAudio, isSubmitting, isSavingOffline]);
+
+  // Jump to 100% when success
+  useEffect(() => {
+    if (step === 'success') {
+      setSubmitProgress(100);
+    }
+  }, [step]);
+
   if (surveyLoading) return <div className="p-4 flex justify-center"><Loader2 className="animate-spin" /></div>;
   if (!survey) return <div>Pesquisa não encontrada</div>;
 
@@ -1208,43 +1263,29 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
         {step === 'submit' && (
           <Card className="p-8 text-center space-y-6">
-            <div className="mx-auto w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 animate-in zoom-in duration-300">
-              <CheckCircle className="w-10 h-10" />
+            <div className="mx-auto w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center animate-in zoom-in duration-300">
+              <Loader2 className="w-10 h-10 text-primary animate-spin" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold mb-2">Entrevista Concluída</h2>
-              <p className="text-muted-foreground">
-                {isOnline 
-                  ? "Pronto para enviar os dados com segurança."
-                  : "Será salva localmente e enviada quando houver conexão."
-                }
-              </p>
+              <h2 className="text-2xl font-bold mb-2">
+                {isOnline ? 'Enviando Entrevista...' : 'Salvando Localmente...'}
+              </h2>
+              <p className="text-muted-foreground text-sm">{submitPhaseLabel}</p>
             </div>
-            
-            {!isOnline && (
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3 rounded-lg flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
-                <WifiOff className="w-5 h-5 shrink-0" />
-                <span className="text-sm">Modo offline ativo. A entrevista será armazenada no dispositivo.</span>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm font-medium">
+                <span className="text-muted-foreground">Progresso</span>
+                <span>{submitProgress}%</span>
               </div>
-            )}
-            
+              <Progress value={submitProgress} className="h-3" />
+            </div>
+
             <div className="bg-muted p-4 rounded-lg text-sm text-left space-y-2">
               <div className="flex justify-between">
-                <span>Perguntas Respondidas:</span>
+                <span>Perguntas:</span>
                 <span className="font-bold">{Object.keys(answers).length}/{shuffledQuestions.length}</span>
               </div>
-              {((survey as any)?.requireAudio ?? true) && (
-                <div className="flex justify-between">
-                  <span>Evidência de Áudio:</span>
-                  <span className="font-bold">Pronto</span>
-                </div>
-              )}
-              {((survey as any)?.requireGps ?? true) && (
-                <div className="flex justify-between">
-                  <span>Precisão do GPS:</span>
-                  <span className="font-bold">{gpsCoords?.accuracy.toFixed(0)}m</span>
-                </div>
-              )}
               <div className="flex justify-between">
                 <span>Conexão:</span>
                 <span className={`font-bold ${isOnline ? 'text-green-600' : 'text-yellow-600'}`}>
@@ -1255,7 +1296,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
 
             {submitError && (
               <div
-                className="flex items-start gap-3 p-4 bg-red-50 border border-red-300 rounded-lg"
+                className="flex items-start gap-3 p-4 bg-red-50 border border-red-300 rounded-lg text-left"
                 data-testid="alert-submit-geofence-error"
               >
                 <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
@@ -1265,34 +1306,6 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 </div>
               </div>
             )}
-
-            <Button 
-              className="w-full h-12 text-lg" 
-              onClick={handleSubmit}
-              disabled={isUploadingAudio || isSubmitting || isSavingOffline}
-              data-testid="button-submit-interview"
-            >
-              {(isUploadingAudio || isSubmitting || isSavingOffline) ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  {isSavingOffline ? "Salvando Localmente..." : isUploadingAudio ? "Enviando Áudio..." : "Enviando Dados..."}
-                </>
-              ) : (
-                <>
-                  <Save className="w-5 h-5 mr-2" />
-                  Enviar Entrevista
-                </>
-              )}
-            </Button>
-
-            <Button
-              variant="ghost"
-              className="w-full text-muted-foreground"
-              onClick={() => setLocation('/')}
-              data-testid="button-back-from-submit"
-            >
-              ← Voltar
-            </Button>
           </Card>
         )}
 
@@ -1302,10 +1315,20 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               <CheckCircle className="w-10 h-10" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold mb-2">Enviado com Sucesso!</h2>
-              <p className="text-muted-foreground">A entrevista foi registrada e os dados estão seguros.</p>
+              <h2 className="text-2xl font-bold mb-2">
+                {isOnline ? 'Enviado com Sucesso!' : 'Salvo com Sucesso!'}
+              </h2>
+              <p className="text-muted-foreground">
+                {isOnline
+                  ? 'A entrevista foi registrada e os dados estão seguros.'
+                  : 'Salvo no dispositivo. Será enviado automaticamente ao reconectar.'}
+              </p>
             </div>
-            
+
+            <div className="space-y-2">
+              <Progress value={100} className="h-3" />
+            </div>
+
             <div className="bg-green-50 border border-green-200 p-4 rounded-lg text-sm text-left space-y-2">
               <div className="flex justify-between">
                 <span>Perguntas Respondidas:</span>
@@ -1313,13 +1336,13 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               </div>
               {((survey as any)?.requireAudio ?? true) && (
                 <div className="flex justify-between">
-                  <span>Áudio Registrado:</span>
+                  <span>Áudio:</span>
                   <span className="font-bold text-green-700">Confirmado</span>
                 </div>
               )}
               {((survey as any)?.requireGps ?? true) && (
                 <div className="flex justify-between">
-                  <span>GPS Verificado:</span>
+                  <span>GPS:</span>
                   <span className="font-bold text-green-700">Confirmado</span>
                 </div>
               )}
@@ -1333,11 +1356,12 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               Nova Entrevista
             </Button>
             <Button 
-              variant="outline"
-              className="w-full" 
-              onClick={() => setLocation('/dashboard')}
+              variant="ghost"
+              className="w-full text-muted-foreground"
+              onClick={() => setLocation('/collect/pending')}
+              data-testid="button-exit-after-submit"
             >
-              Voltar ao Painel
+              Sair
             </Button>
           </Card>
         )}

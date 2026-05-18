@@ -613,6 +613,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
     customGeofenceId: null as number | null,
     samplingPercentage: null as number | null,
     geofenceEnabled: false,
+    waveLabel: "",
   });
 
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
@@ -664,6 +665,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
         geofenceCity: (survey as any).geofenceCity ?? null,
         customGeofenceId: (survey as any).customGeofenceId ?? null,
         samplingPercentage: (survey as any).samplingPercentage ?? null,
+        waveLabel: (survey as any).waveLabel ?? "",
       });
       if (survey.questions) {
         setQuestions(survey.questions.map(q => ({
@@ -756,6 +758,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             geofenceCity: surveyForm.geofenceCity ?? null,
             customGeofenceId: surveyForm.customGeofenceId ?? null,
             samplingPercentage: surveyForm.samplingPercentage ?? null,
+            waveLabel: surveyForm.waveLabel || null,
           } as any
         });
         toast({ title: "Criada", description: "Pesquisa criada com sucesso!" });
@@ -784,6 +787,7 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
             geofenceCity: surveyForm.geofenceCity ?? null,
             customGeofenceId: surveyForm.customGeofenceId ?? null,
             samplingPercentage: surveyForm.samplingPercentage ?? null,
+            waveLabel: surveyForm.waveLabel || null,
           } as any
         });
         
@@ -2118,6 +2122,20 @@ export default function SurveyEditorPage({ params }: { params: { orgId: string; 
                       onChange={(e) => { setSurveyForm({ ...surveyForm, marginOfError: e.target.value ? parseFloat(e.target.value) : null }); setHasChanges(true); }}
                       data-testid="input-settings-margin"
                     />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="waveLabel">Rótulo da Onda</Label>
+                    <Input
+                      id="waveLabel"
+                      placeholder="Ex: 1ª Onda, Rodada 2..."
+                      value={surveyForm.waveLabel}
+                      onChange={(e) => { setSurveyForm({ ...surveyForm, waveLabel: e.target.value }); setHasChanges(true); }}
+                      data-testid="input-settings-wave-label"
+                    />
+                    <p className="text-xs text-muted-foreground">Identifica a rodada para comparação de ondas.</p>
                   </div>
                 </div>
 
