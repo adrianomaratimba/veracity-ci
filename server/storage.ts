@@ -1729,7 +1729,7 @@ export class DatabaseStorage implements IStorage {
         .from(responses)
         .innerJoin(surveys, eq(responses.surveyId, surveys.id))
         .where(and(
-          eq(responses.userId, m.userId),
+          eq(responses.interviewerId, m.userId),
           eq(surveys.organizationId, orgId),
           sql`${responses.latitude} IS NOT NULL`,
           sql`${responses.longitude} IS NOT NULL`
