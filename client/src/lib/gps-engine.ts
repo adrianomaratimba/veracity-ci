@@ -50,8 +50,8 @@ export class GpsEngine {
   constructor(options: GpsEngineOptions = {}) {
     this.options = {
       targetAccuracyMeters: options.targetAccuracyMeters ?? 50,
-      maxSamples: options.maxSamples ?? 8,
-      sampleAccuracyCutoff: options.sampleAccuracyCutoff ?? 120,
+      maxSamples: options.maxSamples ?? 15,
+      sampleAccuracyCutoff: options.sampleAccuracyCutoff ?? 80,
       onPosition: options.onPosition,
       onRawAccuracy: options.onRawAccuracy,
       onError: options.onError,
@@ -70,7 +70,7 @@ export class GpsEngine {
       (err) => this.options.onError?.(err),
       {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 30000,
         maximumAge: 0, // always demand a fresh GPS fix — same as Waze
       },
     );
@@ -159,17 +159,21 @@ export class GpsEngine {
 
     const lat = sumLat / sumW;
     const lon = sumLon / sumW;
-    // Effective accuracy estimate: RMS of individual errors weighted equally
-    const effectiveAccuracy = Math.sqrt(
-      this.samples.reduce((acc, s) => acc + s.accuracy * s.accuracy, 0) / this.samples.length,
-    );
+
+    // Effective accuracy after averaging N samples:
+    // Statistical theory: averaging N independent measurements improves precision
+    // by 1/sqrt(N). We use the best raw reading as the base accuracy estimate,
+    // since it represents the chip's best single measurement.
+    const bestAcc = this.bestRaw?.accuracy ?? this.samples[0].accuracy;
+    const n = this.samples.length;
+    const effectiveAccuracy = Math.max(1, bestAcc / Math.sqrt(n));
 
     return {
       latitude: lat,
       longitude: lon,
       accuracy: Math.round(effectiveAccuracy * 10) / 10,
-      bestRawAccuracy: this.bestRaw?.accuracy ?? effectiveAccuracy,
-      sampleCount: this.samples.length,
+      bestRawAccuracy: bestAcc,
+      sampleCount: n,
       timestamp: Date.now(),
     };
   }

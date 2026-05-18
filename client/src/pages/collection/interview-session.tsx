@@ -350,6 +350,8 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
         setGpsBestSoFar(prev => (!prev || pos.accuracy < prev.accuracy) ? syntheticCoords : prev);
         setGpsCoords(syntheticCoords);
         setGpsSampleCount(pos.sampleCount);
+        // Clear any previous error — if we're receiving positions, GPS is working
+        setGpsError(null);
 
         if (pos.accuracy <= GPS_ACCURACY_THRESHOLD) {
           // Good enough — mark as accurate and cancel auto-accept timer
