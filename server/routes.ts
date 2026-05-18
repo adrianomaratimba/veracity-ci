@@ -22,7 +22,7 @@ function isCoordInsidePolygon(lng: number, lat: number, coordinates: [number, nu
 }
 import { db } from "./db";
 import { users, sanitizeUser, sanitizeMemberUser } from "@shared/models/auth";
-import { sql, eq, desc } from "drizzle-orm";
+import { sql, eq, desc, and, inArray } from "drizzle-orm";
 import { authService } from "./auth-service";
 import { 
   organizationMembers, 

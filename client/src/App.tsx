@@ -4,9 +4,10 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
-import { useOrganizations } from "@/hooks/use-organizations";
+import { useOrganizations, useCurrentMember } from "@/hooks/use-organizations";
 import { useEffect, Component, type ReactNode } from "react";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { hasPermission, type UserRole, type Permission } from "@shared/rbac";
 
 // Error Boundary to catch rendering errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
@@ -40,6 +41,39 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
     }
     return this.props.children;
   }
+}
+
+// Route guard: redirects users without the required permission
+function RequirePermission({ 
+  orgId, 
+  permission, 
+  children, 
+  fallback 
+}: { 
+  orgId: string | undefined; 
+  permission: Permission; 
+  children: ReactNode; 
+  fallback?: string;
+}) {
+  const parsedOrgId = orgId ? parseInt(orgId) : 0;
+  const { data: member, isLoading } = useCurrentMember(parsedOrgId);
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (isLoading || !parsedOrgId) return;
+    // member===null means the user has no membership yet (still loading or no org)
+    if (member === null) return;
+    const role = (member?.role as UserRole) || 'viewer';
+    if (!hasPermission(role, permission)) {
+      setLocation(fallback ?? `/org/${parsedOrgId}/surveys`);
+    }
+  }, [member, isLoading, parsedOrgId, permission, fallback, setLocation]);
+
+  if (isLoading) return <LoadingScreen />;
+  if (!member) return <LoadingScreen />;
+  const role = (member.role as UserRole) || 'viewer';
+  if (!hasPermission(role, permission)) return <LoadingScreen />;
+  return <>{children}</>;
 }
 
 // Pages
@@ -105,21 +139,57 @@ function AuthenticatedRoutes() {
       <Route path="/verify-email" component={VerifyEmailPage} />
       
       <Route path="/no-organization" component={NoOrganizationPage} />
-      <Route path="/org/:orgId/dashboard" component={DashboardOverview} />
+
+      {/* Pages accessible to all org members */}
       <Route path="/org/:orgId/surveys" component={SurveysPage} />
-      <Route path="/org/:orgId/surveys/new" component={SurveyEditorPage} />
-      <Route path="/org/:orgId/surveys/:id" component={SurveyEditorPage} />
-      <Route path="/org/:orgId/surveys/:id/analytics" component={SurveyAnalytics} />
-      <Route path="/org/:orgId/surveys/:surveyId/results" component={SurveyResults} />
-      <Route path="/org/:orgId/team" component={TeamPage} />
-      <Route path="/org/:orgId/audit" component={AuditPage} />
-      <Route path="/org/:orgId/settings" component={SettingsPage} />
-      <Route path="/org/:orgId/portal" component={ViewerPortal} />
-      <Route path="/org/:orgId/access" component={AccessControlPage} />
-      <Route path="/org/:orgId/supervisor" component={SupervisorDashboard} />
-      <Route path="/org/:orgId/geofencing" component={GeofencingPage} />
       <Route path="/org/:orgId/messages" component={MessagesPage} />
-      <Route path="/org/:orgId/state-map" component={StateMapPage} />
+
+      {/* Pages requiring analytics:view (coordinators and above) */}
+      <Route path="/org/:orgId/dashboard">
+        {(p) => <RequirePermission orgId={p.orgId} permission="analytics:view"><DashboardOverview params={p} /></RequirePermission>}
+      </Route>
+      <Route path="/org/:orgId/supervisor">
+        {(p) => <RequirePermission orgId={p.orgId} permission="analytics:view"><SupervisorDashboard params={p} /></RequirePermission>}
+      </Route>
+      <Route path="/org/:orgId/surveys/:id/analytics">
+        {(p) => <RequirePermission orgId={p.orgId} permission="analytics:view"><SurveyAnalytics params={p} /></RequirePermission>}
+      </Route>
+      <Route path="/org/:orgId/surveys/:surveyId/results">
+        {(p) => <RequirePermission orgId={p.orgId} permission="analytics:view_aggregate"><SurveyResults params={p} /></RequirePermission>}
+      </Route>
+      <Route path="/org/:orgId/state-map">
+        {(p) => <RequirePermission orgId={p.orgId} permission="analytics:view"><StateMapPage params={p} /></RequirePermission>}
+      </Route>
+      <Route path="/org/:orgId/portal">
+        {(p) => <RequirePermission orgId={p.orgId} permission="analytics:view_aggregate"><ViewerPortal params={p} /></RequirePermission>}
+      </Route>
+
+      {/* Pages requiring surveys:create (coordinators and above) */}
+      <Route path="/org/:orgId/surveys/new">
+        {(p) => <RequirePermission orgId={p.orgId} permission="surveys:create"><SurveyEditorPage params={p} /></RequirePermission>}
+      </Route>
+      <Route path="/org/:orgId/surveys/:id">
+        {(p) => <RequirePermission orgId={p.orgId} permission="surveys:edit"><SurveyEditorPage params={p} /></RequirePermission>}
+      </Route>
+      <Route path="/org/:orgId/geofencing">
+        {(p) => <RequirePermission orgId={p.orgId} permission="surveys:edit"><GeofencingPage params={p} /></RequirePermission>}
+      </Route>
+
+      {/* Pages requiring audit_logs:view (admins and above) */}
+      <Route path="/org/:orgId/audit">
+        {(p) => <RequirePermission orgId={p.orgId} permission="audit_logs:view"><AuditPage params={p} /></RequirePermission>}
+      </Route>
+
+      {/* Pages requiring settings:view (admins and above) */}
+      <Route path="/org/:orgId/settings">
+        {(p) => <RequirePermission orgId={p.orgId} permission="settings:view"><SettingsPage params={p} /></RequirePermission>}
+      </Route>
+      <Route path="/org/:orgId/team">
+        {(p) => <RequirePermission orgId={p.orgId} permission="members:view"><TeamPage params={p} /></RequirePermission>}
+      </Route>
+      <Route path="/org/:orgId/access">
+        {(p) => <RequirePermission orgId={p.orgId} permission="members:edit_role"><AccessControlPage params={p} /></RequirePermission>}
+      </Route>
       
       {/* Platform Admin (Super Admin) */}
       <Route path="/platform" component={PlatformAdminPage} />
