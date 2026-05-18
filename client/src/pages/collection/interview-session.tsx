@@ -1026,7 +1026,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
               </span>
               <h3 className="text-xl font-medium mb-6">{shuffledQuestions[currentQuestionIndex].text}</h3>
 
-              <div className="flex-1">
+              <div className="flex-1" key={shuffledQuestions[currentQuestionIndex].id}>
                 {shuffledQuestions[currentQuestionIndex].type === 'text' && (
                   <Input 
                     placeholder="Digite sua resposta..." 
@@ -1046,15 +1046,15 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 )}
                 {shuffledQuestions[currentQuestionIndex].type === 'single_choice' && (
                   <RadioGroup 
-                    value={answers[shuffledQuestions[currentQuestionIndex].id]} 
+                    value={answers[shuffledQuestions[currentQuestionIndex].id] ?? ""}
                     onValueChange={(val) => handleAnswer(shuffledQuestions[currentQuestionIndex].id, val)}
                   >
                     {(shuffledOptionsMap[shuffledQuestions[currentQuestionIndex].id] || []).map((opt, idx) => {
                        const optText = getOptionText(opt);
                        const optImage = getOptionImage(opt);
                        return (
-                         <div key={`${optText}-${idx}`} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                           <RadioGroupItem value={optText} id={`opt-${currentQuestionIndex}-${idx}`} />
+                         <div key={`q${shuffledQuestions[currentQuestionIndex].id}-opt-${idx}`} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                           <RadioGroupItem value={optText} id={`opt-${shuffledQuestions[currentQuestionIndex].id}-${idx}`} />
                            {optImage && (
                              <img 
                                src={optImage} 
@@ -1062,7 +1062,7 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                                className="w-12 h-12 object-cover rounded-md border shrink-0"
                              />
                            )}
-                           <Label htmlFor={`opt-${currentQuestionIndex}-${idx}`} className="text-base cursor-pointer flex-1">{optText}</Label>
+                           <Label htmlFor={`opt-${shuffledQuestions[currentQuestionIndex].id}-${idx}`} className="text-base cursor-pointer flex-1">{optText}</Label>
                          </div>
                        );
                     })}
