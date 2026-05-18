@@ -247,8 +247,8 @@ export interface IStorage {
   getCustomGeofences(orgId: number): Promise<CustomGeofence[]>;
   getCustomGeofenceById(id: number): Promise<CustomGeofence | undefined>;
   createCustomGeofence(data: InsertCustomGeofence): Promise<CustomGeofence>;
-  updateCustomGeofence(id: number, data: Partial<InsertCustomGeofence>): Promise<CustomGeofence>;
-  deleteCustomGeofence(id: number): Promise<void>;
+  updateCustomGeofence(id: number, organizationId: number, data: Partial<InsertCustomGeofence>): Promise<CustomGeofence | undefined>;
+  deleteCustomGeofence(id: number, organizationId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2150,13 +2150,14 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async updateCustomGeofence(id: number, data: Partial<InsertCustomGeofence>): Promise<CustomGeofence> {
-    const [row] = await db.update(customGeofences).set(data).where(eq(customGeofences.id, id)).returning();
+  async updateCustomGeofence(id: number, organizationId: number, data: Partial<InsertCustomGeofence>): Promise<CustomGeofence | undefined> {
+    const [row] = await db.update(customGeofences).set(data).where(and(eq(customGeofences.id, id), eq(customGeofences.organizationId, organizationId))).returning();
     return row;
   }
 
-  async deleteCustomGeofence(id: number): Promise<void> {
-    await db.delete(customGeofences).where(eq(customGeofences.id, id));
+  async deleteCustomGeofence(id: number, organizationId: number): Promise<boolean> {
+    const result = await db.delete(customGeofences).where(and(eq(customGeofences.id, id), eq(customGeofences.organizationId, organizationId))).returning({ id: customGeofences.id });
+    return result.length > 0;
   }
 }
 

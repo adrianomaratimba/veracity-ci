@@ -3219,6 +3219,15 @@ export async function registerRoutes(
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Survey not found" });
 
+      const membership = await storage.getMemberByUserId(userId, survey.organizationId);
+      if (!membership) return res.status(403).json({ message: "Acesso negado" });
+
+      const fieldRoles = ["owner", "admin", "coordinator"];
+      if (!fieldRoles.includes(membership.role)) {
+        const assigned = await storage.isInterviewerAssigned(surveyId, userId);
+        if (!assigned) return res.status(403).json({ message: "Acesso negado" });
+      }
+
       const violation = await storage.createGeofenceViolation({
         surveyId,
         organizationId: survey.organizationId,
@@ -3342,11 +3351,13 @@ export async function registerRoutes(
   app.patch("/api/organizations/:orgId/custom-geofences/:id", isAuthenticated, requireOrgAccess("orgId", "surveys:edit"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const orgId = parseInt(req.params.orgId);
       const { name, city, polygon, populationCount } = req.body;
-      const geofence = await storage.updateCustomGeofence(id, {
+      const geofence = await storage.updateCustomGeofence(id, orgId, {
         name, city, polygon,
         populationCount: populationCount !== undefined ? (populationCount ? parseInt(populationCount) : null) : undefined,
       });
+      if (!geofence) return res.status(404).json({ message: "Geocerca não encontrada" });
       res.json(geofence);
     } catch (err) {
       res.status(500).json({ message: "Erro ao atualizar geocerca" });
@@ -3356,7 +3367,9 @@ export async function registerRoutes(
   app.delete("/api/organizations/:orgId/custom-geofences/:id", isAuthenticated, requireOrgAccess("orgId", "surveys:edit"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      await storage.deleteCustomGeofence(id);
+      const orgId = parseInt(req.params.orgId);
+      const deleted = await storage.deleteCustomGeofence(id, orgId);
+      if (!deleted) return res.status(404).json({ message: "Geocerca não encontrada" });
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ message: "Erro ao deletar geocerca" });
