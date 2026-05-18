@@ -23,7 +23,8 @@ import {
   interviewerZoneAssignments, InterviewerZoneAssignment, InsertInterviewerZoneAssignment,
   messages, Message, InsertMessage,
   userPushSubscriptions, UserPushSubscription,
-  customGeofences, CustomGeofence, InsertCustomGeofence
+  customGeofences, CustomGeofence, InsertCustomGeofence,
+  uploadOwnership, UploadOwnership
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
@@ -249,6 +250,10 @@ export interface IStorage {
   createCustomGeofence(data: InsertCustomGeofence): Promise<CustomGeofence>;
   updateCustomGeofence(id: number, organizationId: number, data: Partial<InsertCustomGeofence>): Promise<CustomGeofence | undefined>;
   deleteCustomGeofence(id: number, organizationId: number): Promise<boolean>;
+
+  // Upload Ownership
+  createUploadOwnership(objectId: string, userId: string, organizationId?: number): Promise<void>;
+  getUploadOwnership(objectId: string): Promise<{ userId: string; organizationId: number | null } | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2189,6 +2194,23 @@ export class DatabaseStorage implements IStorage {
   async deleteCustomGeofence(id: number, organizationId: number): Promise<boolean> {
     const result = await db.delete(customGeofences).where(and(eq(customGeofences.id, id), eq(customGeofences.organizationId, organizationId))).returning({ id: customGeofences.id });
     return result.length > 0;
+  }
+
+  // --- UPLOAD OWNERSHIP ---
+  async createUploadOwnership(objectId: string, userId: string, organizationId?: number): Promise<void> {
+    await db.insert(uploadOwnership).values({
+      objectId,
+      userId,
+      organizationId: organizationId ?? null,
+    }).onConflictDoNothing();
+  }
+
+  async getUploadOwnership(objectId: string): Promise<{ userId: string; organizationId: number | null } | undefined> {
+    const [row] = await db.select({
+      userId: uploadOwnership.userId,
+      organizationId: uploadOwnership.organizationId,
+    }).from(uploadOwnership).where(eq(uploadOwnership.objectId, objectId));
+    return row;
   }
 }
 

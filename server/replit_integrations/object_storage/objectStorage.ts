@@ -102,14 +102,41 @@ export class ObjectStorageService {
       // Get the ACL policy for the object.
       const aclPolicy = await getObjectAclPolicy(file);
       const isPublic = aclPolicy?.visibility === "public";
+
+      const contentType: string = metadata.contentType || "application/octet-stream";
+
+      // Force attachment disposition for content types that browsers can execute
+      // inline, preventing stored-XSS even if a malicious file were uploaded.
+      const dangerousInlineTypes = [
+        "text/html",
+        "text/xml",
+        "application/xml",
+        "application/xhtml+xml",
+        "image/svg+xml",
+        "text/javascript",
+        "application/javascript",
+        "application/x-javascript",
+        "application/json",
+        "text/css",
+        "text/plain",
+      ];
+      const baseContentType = contentType.split(";")[0].trim().toLowerCase();
+      const forceAttachment = dangerousInlineTypes.includes(baseContentType);
+
       // Set appropriate headers
-      res.set({
-        "Content-Type": metadata.contentType || "application/octet-stream",
+      const headers: Record<string, string | number> = {
+        "Content-Type": contentType,
         "Content-Length": metadata.size,
-        "Cache-Control": `${
-          isPublic ? "public" : "private"
-        }, max-age=${cacheTtlSec}`,
-      });
+        "Cache-Control": `${isPublic ? "public" : "private"}, max-age=${cacheTtlSec}`,
+        "X-Content-Type-Options": "nosniff",
+      };
+
+      if (forceAttachment) {
+        const filename = file.name.split("/").pop() || "download";
+        headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+      }
+
+      res.set(headers);
 
       // Stream the file to the response
       const stream = file.createReadStream();

@@ -802,6 +802,17 @@ export const insertInterviewerZoneAssignmentSchema = createInsertSchema(intervie
 export type InsertInterviewerZoneAssignment = z.infer<typeof insertInterviewerZoneAssignmentSchema>;
 export type InterviewerZoneAssignment = typeof interviewerZoneAssignments.$inferSelect;
 
+// Upload ownership — tracks which user/org is the owner of each uploaded object.
+// Used by the download route to enforce deny-by-default access control when
+// an object has no explicit ACL metadata.
+export const uploadOwnership = pgTable("upload_ownership", {
+  objectId: text("object_id").primaryKey(), // UUID extracted from /objects/uploads/<uuid>
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type UploadOwnership = typeof uploadOwnership.$inferSelect;
+
 export const publicReportTokens = pgTable("public_report_tokens", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
