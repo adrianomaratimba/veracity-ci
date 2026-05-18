@@ -221,7 +221,7 @@ function InterviewerListItem({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm truncate">{interviewer.name}</span>
-          <Badge variant="outline" className="text-xs shrink-0">
+          <Badge variant="outline" className={`text-xs shrink-0 ${interviewer.isOnline ? 'bg-green-500 text-white border-green-500' : 'bg-gray-200 text-gray-500 border-gray-300'}`}>
             {getStatusLabel(interviewer.isOnline)}
           </Badge>
         </div>
