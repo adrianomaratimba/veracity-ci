@@ -1702,15 +1702,45 @@ export class DatabaseStorage implements IStorage {
     const surveyMap = new Map(orgSurveys.map(s => [s.id, { id: s.id, title: s.title }]));
 
     const result = await Promise.all(members.map(async (m) => {
-      // Get latest location
+      // Get latest GPS tracking ping
       const [lastLoc] = await db.select()
         .from(interviewerLocations)
         .where(and(
           eq(interviewerLocations.userId, m.userId),
-          eq(interviewerLocations.organizationId, orgId)
+          eq(interviewerLocations.organizationId, orgId),
+          // Exclude placeholder 0,0 rows that may have been inserted before this fix
+          sql`(${interviewerLocations.latitude} != 0 OR ${interviewerLocations.longitude} != 0)`
         ))
         .orderBy(desc(interviewerLocations.recordedAt))
         .limit(1);
+
+      // Get latest interview GPS (from submitted responses)
+      const [lastResponse] = await db.select({
+        latitude: responses.latitude,
+        longitude: responses.longitude,
+        createdAt: responses.createdAt,
+        surveyId: responses.surveyId,
+      })
+        .from(responses)
+        .innerJoin(surveys, eq(responses.surveyId, surveys.id))
+        .where(and(
+          eq(responses.userId, m.userId),
+          eq(surveys.organizationId, orgId),
+          sql`${responses.latitude} IS NOT NULL`,
+          sql`${responses.longitude} IS NOT NULL`
+        ))
+        .orderBy(desc(responses.createdAt))
+        .limit(1);
+
+      // Use whichever source is more recent
+      const trackingTime = lastLoc ? new Date(lastLoc.recordedAt).getTime() : 0;
+      const responseTime = lastResponse?.createdAt ? new Date(lastResponse.createdAt).getTime() : 0;
+      const useResponseGps = responseTime > trackingTime && !!lastResponse?.latitude && !!lastResponse?.longitude;
+
+      const effectiveLat = useResponseGps ? lastResponse!.latitude! : lastLoc?.latitude;
+      const effectiveLng = useResponseGps ? lastResponse!.longitude! : lastLoc?.longitude;
+      const effectiveTime = useResponseGps ? new Date(lastResponse!.createdAt!) : lastLoc?.recordedAt;
+      const effectiveSurveyId = useResponseGps ? lastResponse!.surveyId : lastLoc?.surveyId;
 
       // Get today's distance
       const [distanceData] = await db.select({
@@ -1724,6 +1754,7 @@ export class DatabaseStorage implements IStorage {
         ))
         .limit(1);
 
+      // Online = tracking ping within 5 min (response GPS doesn't count as "live" presence)
       const isOnline = lastLoc && lastLoc.isOnline && 
         (now.getTime() - new Date(lastLoc.recordedAt).getTime()) < onlineThreshold;
 
@@ -1734,12 +1765,12 @@ export class DatabaseStorage implements IStorage {
         profileImageUrl: m.user.profileImageUrl,
         role: m.role,
         isOnline: !!isOnline,
-        lastLocation: lastLoc ? {
-          lat: lastLoc.latitude,
-          lng: lastLoc.longitude,
-          time: lastLoc.recordedAt
+        lastLocation: (effectiveLat != null && effectiveLng != null && effectiveTime) ? {
+          lat: effectiveLat,
+          lng: effectiveLng,
+          time: effectiveTime
         } : null,
-        currentSurvey: lastLoc?.surveyId ? surveyMap.get(lastLoc.surveyId) || null : null,
+        currentSurvey: effectiveSurveyId ? surveyMap.get(effectiveSurveyId) || null : null,
         distanceToday: distanceData?.distance || 0
       };
     }));

@@ -2771,7 +2771,10 @@ export async function registerRoutes(
       
       const existingLocation = await db.select()
         .from(interviewerLocations)
-        .where(eq(interviewerLocations.userId, userId))
+        .where(and(
+          eq(interviewerLocations.userId, userId),
+          eq(interviewerLocations.organizationId, orgId)
+        ))
         .orderBy(desc(interviewerLocations.recordedAt))
         .limit(1);
       
@@ -2782,17 +2785,9 @@ export async function registerRoutes(
             recordedAt: now  // Update recordedAt so online threshold check works
           })
           .where(eq(interviewerLocations.id, existingLocation[0].id));
-      } else {
-        await db.insert(interviewerLocations).values({
-          userId,
-          organizationId: orgId,
-          latitude: 0,
-          longitude: 0,
-          accuracy: null,
-          isOnline: true,
-          sessionId: `heartbeat_${Date.now()}`
-        });
       }
+      // If no existing location row exists, do NOT insert a 0,0 placeholder.
+      // The location will be properly set when the first GPS ping arrives.
       
       res.json({ success: true });
     } catch (err) {
@@ -2807,10 +2802,13 @@ export async function registerRoutes(
       const orgId = parseInt(req.params.id);
       const userId = await getResolvedUserId(req);
       
-      // Mark last location as offline
+      // Mark last location as offline — scoped to this org only
       await db.update(interviewerLocations)
         .set({ isOnline: false })
-        .where(eq(interviewerLocations.userId, userId));
+        .where(and(
+          eq(interviewerLocations.userId, userId),
+          eq(interviewerLocations.organizationId, orgId)
+        ));
       
       res.json({ success: true });
     } catch (err) {
