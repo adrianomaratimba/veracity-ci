@@ -177,9 +177,23 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
            </div>
            <span className="font-display font-bold text-lg">Veracity</span>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-          {isMobileMenuOpen ? <X /> : <Menu />}
-        </Button>
+        <div className="flex items-center gap-1">
+          {!isInstalled && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs border-primary/40 text-primary h-8 px-2"
+              onClick={async () => { resetDismiss(); await installApp(); }}
+              data-testid="button-install-app-mobile-header"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              Instalar
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            {isMobileMenuOpen ? <X /> : <Menu />}
+          </Button>
+        </div>
       </div>
 
       <aside className={cn(
