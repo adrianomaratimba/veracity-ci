@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrentMember, useOrganizations } from "@/hooks/use-organizations";
-import { usePWA } from "@/hooks/use-pwa";
+import { usePWAContext } from "@/contexts/pwa-context";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { 
@@ -83,7 +83,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { isInstalled, isInstallable, installApp, resetDismiss } = usePWA();
+  const { isInstalled, installApp, resetDismiss } = usePWAContext();
   const { data: currentMember } = useCurrentMember(orgId ? parseInt(orgId) : 0);
   const { data: organizations } = useOrganizations();
   const { data: adminCheck } = usePlatformAdminCheck();

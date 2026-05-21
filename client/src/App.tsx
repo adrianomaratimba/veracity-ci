@@ -106,6 +106,7 @@ import MessagesPage from "@/pages/dashboard/messages";
 import StateMapPage from "@/pages/dashboard/state-map";
 import PublicReportPage from "@/pages/public-report";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
+import { PWAProvider } from "@/contexts/pwa-context";
 import { setupAutoSync } from "@/lib/syncQueue";
 
 function AuthenticatedRoutes() {
@@ -240,11 +241,13 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-          <OfflineIndicator />
-        </TooltipProvider>
+        <PWAProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+            <OfflineIndicator />
+          </TooltipProvider>
+        </PWAProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

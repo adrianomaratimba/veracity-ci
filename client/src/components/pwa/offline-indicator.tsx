@@ -1,74 +1,29 @@
-import { usePWA } from "@/hooks/use-pwa";
-import { WifiOff, Download, Check, Share, X, ArrowUp, Smartphone, MoreVertical } from "lucide-react";
+import { usePWAContext } from "@/contexts/pwa-context";
+import { WifiOff, Share, X, ArrowUp, Smartphone, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
 
 export function OfflineIndicator() {
   const {
     isOnline,
-    isInstallable,
-    isInstalled,
     isIOSSafari,
     showIOSInstructions,
     showAndroidInstructions,
-    isDismissed,
-    dismissBanner,
     dismissIOSInstructions,
     dismissAndroidInstructions,
-    installApp,
-  } = usePWA();
-  const { toast } = useToast();
+  } = usePWAContext();
 
-  const handleInstall = async () => {
-    const success = await installApp();
-    if (success) {
-      toast({
-        title: "App instalado!",
-        description: "Veracity foi adicionado à sua tela inicial.",
-      });
-    }
-  };
-
-  if (isOnline && !isInstallable && !showIOSInstructions && !showAndroidInstructions) return null;
+  if (isOnline && !showIOSInstructions && !showAndroidInstructions) return null;
 
   return (
     <>
-      <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2">
-        {!isOnline && (
+      {!isOnline && (
+        <div className="fixed bottom-4 left-4 z-50">
           <div className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg shadow-lg animate-pulse">
             <WifiOff className="w-4 h-4" />
             <span className="text-sm font-medium">Modo Offline</span>
           </div>
-        )}
-
-        {isInstallable && !isInstalled && !isDismissed && (
-          <div className="flex items-center gap-1 shadow-lg rounded-lg overflow-hidden">
-            <Button
-              onClick={handleInstall}
-              className="gap-2 rounded-r-none"
-              data-testid="button-install-pwa"
-            >
-              <Download className="w-4 h-4" />
-              Instalar App
-            </Button>
-            <button
-              onClick={dismissBanner}
-              className="h-full px-2 bg-primary hover:bg-primary/80 text-primary-foreground flex items-center border-l border-primary-foreground/20"
-              aria-label="Fechar"
-              data-testid="button-dismiss-install-banner"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {isInstalled && (
-          <div className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg">
-            <Check className="w-4 h-4" />
-            <span className="text-sm font-medium">App Instalado</span>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* iOS Safari install instructions panel */}
       {isIOSSafari && showIOSInstructions && (
