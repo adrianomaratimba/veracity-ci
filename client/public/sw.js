@@ -1,18 +1,22 @@
-// VotoAudit Service Worker v3
+// VotoAudit Service Worker v4
 // Strategy:
 //   - App shell (HTML): network-first, cache fallback
 //   - JS/CSS assets (hashed): cache-first (immutable content)
 //   - API GET: network-first, short-term cache fallback
 //   - API POST: try network, queue offline if unavailable
 //   - Fonts/images: cache-first
+//
+// vite-plugin-pwa (injectManifest mode) replaces the WB_MANIFEST assignment
+// below at build time with the full list of all hashed Vite assets, enabling
+// complete pre-caching on first install instead of lazy caching.
 
-const SHELL_CACHE = 'votoaudit-shell-v3';
-const ASSETS_CACHE = 'votoaudit-assets-v3';
-const API_CACHE = 'votoaudit-api-v3';
+const SHELL_CACHE = 'votoaudit-shell-v4';
+const ASSETS_CACHE = 'votoaudit-assets-v4';
+const API_CACHE = 'votoaudit-api-v4';
 const OFFLINE_URL = '/offline.html';
 
-// These are always pre-cached on install
-const PRECACHE_URLS = [
+// Static shell URLs always pre-cached on install
+const SHELL_PRECACHE_URLS = [
   '/',
   '/offline.html',
   '/manifest.json',
@@ -21,14 +25,36 @@ const PRECACHE_URLS = [
   '/favicon.png',
 ];
 
+// Replaced by vite-plugin-pwa at build time with all hashed Vite asset URLs.
+// Evaluates to undefined in dev mode — handled gracefully in the install handler.
+const _wbManifest = self.__WB_MANIFEST;
+const ASSET_PRECACHE_URLS = _wbManifest
+  ? _wbManifest.map(e => (typeof e === 'string' ? e : e.url))
+  : [];
+
 // ─── INSTALL ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(SHELL_CACHE).then((cache) => {
-      return cache.addAll(PRECACHE_URLS).catch((err) => {
-        console.warn('[SW] Precache partial failure (OK):', err);
+    (async () => {
+      // Pre-cache the app shell (HTML, icons, manifest)
+      const shellCache = await caches.open(SHELL_CACHE);
+      await shellCache.addAll(SHELL_PRECACHE_URLS).catch((err) => {
+        console.warn('[SW] Shell precache partial failure (OK):', err);
       });
-    }).then(() => self.skipWaiting())
+
+      // Pre-cache all Vite-generated hashed assets from the build manifest
+      if (ASSET_PRECACHE_URLS.length > 0) {
+        const assetsCache = await caches.open(ASSETS_CACHE);
+        await assetsCache.addAll(ASSET_PRECACHE_URLS).catch((err) => {
+          console.warn('[SW] Assets precache partial failure (OK):', err);
+        });
+        console.log('[SW] Pre-cached', ASSET_PRECACHE_URLS.length, 'build assets');
+      } else {
+        console.log('[SW] No build manifest (dev mode) — assets cached lazily');
+      }
+
+      await self.skipWaiting();
+    })()
   );
 });
 
@@ -38,7 +64,10 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(
-        keys.filter((k) => !KEEP.includes(k)).map((k) => caches.delete(k))
+        keys.filter((k) => !KEEP.includes(k)).map((k) => {
+          console.log('[SW] Deleting old cache:', k);
+          return caches.delete(k);
+        })
       ))
       .then(() => self.clients.claim())
   );
