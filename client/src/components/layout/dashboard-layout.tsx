@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrentMember, useOrganizations } from "@/hooks/use-organizations";
+import { usePWA } from "@/hooks/use-pwa";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { 
@@ -22,7 +23,9 @@ import {
   BarChart2,
   MapPin,
   MessageSquare,
-  Globe
+  Globe,
+  Smartphone,
+  Download
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -80,6 +83,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { isInstalled, isInstallable, installApp, resetDismiss } = usePWA();
   const { data: currentMember } = useCurrentMember(orgId ? parseInt(orgId) : 0);
   const { data: organizations } = useOrganizations();
   const { data: adminCheck } = usePlatformAdminCheck();
@@ -273,6 +277,20 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
               </div>
             )}
           </div>
+
+          {!isInstalled && (
+            <div className="mb-2">
+              <button
+                onClick={async () => { resetDismiss(); await installApp(); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer group text-primary hover:bg-primary/10 border border-primary/30 hover:border-primary/60"
+                data-testid="button-install-app-sidebar"
+              >
+                <Smartphone className="w-5 h-5 text-primary" />
+                <span className="flex-1 text-left">Instalar App no Celular</span>
+                <Download className="w-4 h-4 text-primary/60" />
+              </button>
+            </div>
+          )}
 
           <div className="border-t pt-4 mt-4">
             <div className="flex items-center gap-3 px-2 mb-4">

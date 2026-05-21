@@ -17,6 +17,10 @@ function isIOSWithoutInstallPrompt(): boolean {
   return /iphone|ipad|ipod/i.test(ua) && !isStandalone();
 }
 
+function isMobileBrowser(): boolean {
+  return /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+}
+
 const DISMISSED_KEY = 'pwa-install-dismissed';
 
 export function usePWA() {
@@ -26,6 +30,7 @@ export function usePWA() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOSSafari, setIsIOSSafari] = useState(false);
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
+  const [showAndroidInstructions, setShowAndroidInstructions] = useState(false);
   const [isDismissed, setIsDismissed] = useState(() => {
     try { return localStorage.getItem(DISMISSED_KEY) === '1'; } catch { return false; }
   });
@@ -44,6 +49,9 @@ export function usePWA() {
   useEffect(() => {
     if (isIOSWithoutInstallPrompt()) {
       setIsIOSSafari(true);
+      setIsInstallable(true);
+    } else if (isMobileBrowser() && !isStandalone()) {
+      // Android/other mobile: always show install option even before prompt fires
       setIsInstallable(true);
     }
 
@@ -71,18 +79,22 @@ export function usePWA() {
       return false;
     }
 
-    if (!deferredPrompt) return false;
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
 
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setIsInstalled(true);
+        setIsInstallable(false);
+      }
 
-    if (outcome === 'accepted') {
-      setIsInstalled(true);
-      setIsInstallable(false);
+      setDeferredPrompt(null);
+      return outcome === 'accepted';
     }
 
-    setDeferredPrompt(null);
-    return outcome === 'accepted';
+    // No native prompt yet — show manual Android/desktop instructions
+    setShowAndroidInstructions(true);
+    return false;
   };
 
   const dismissBanner = () => {
@@ -90,7 +102,13 @@ export function usePWA() {
     setIsDismissed(true);
   };
 
+  const resetDismiss = () => {
+    try { localStorage.removeItem(DISMISSED_KEY); } catch {}
+    setIsDismissed(false);
+  };
+
   const dismissIOSInstructions = () => setShowIOSInstructions(false);
+  const dismissAndroidInstructions = () => setShowAndroidInstructions(false);
 
   return {
     isOnline,
@@ -98,9 +116,12 @@ export function usePWA() {
     isInstalled,
     isIOSSafari,
     showIOSInstructions,
+    showAndroidInstructions,
     isDismissed,
     dismissBanner,
+    resetDismiss,
     dismissIOSInstructions,
+    dismissAndroidInstructions,
     installApp,
   };
 }
