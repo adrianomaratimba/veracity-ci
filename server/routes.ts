@@ -2479,7 +2479,7 @@ export async function registerRoutes(
       const user = await storage.getUserById(userId);
       const platformAdminEmails = getPlatformAdminEmails();
       console.log('[admin/check] userId:', userId, 'email:', user?.email, 'adminEmails:', platformAdminEmails);
-      const isAdmin = user && user.email && platformAdminEmails.includes(user.email.toLowerCase());
+      const isAdmin = user && user.email && user.emailVerified && platformAdminEmails.includes(user.email.toLowerCase());
       console.log('[admin/check] isAdmin:', isAdmin);
       res.json({ isAdmin });
     } catch (err) {
@@ -2506,7 +2506,7 @@ export async function registerRoutes(
       const user = await storage.getUserById(userId);
       
       const platformAdminEmails = getPlatformAdminEmails();
-      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+      if (!user || !user.email || !user.emailVerified || !platformAdminEmails.includes(user.email.toLowerCase())) {
         return res.status(403).json({ message: "Apenas administradores da plataforma podem editar planos" });
       }
 
@@ -2527,7 +2527,7 @@ export async function registerRoutes(
       const user = await storage.getUserById(userId);
       
       const platformAdminEmails = getPlatformAdminEmails();
-      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+      if (!user || !user.email || !user.emailVerified || !platformAdminEmails.includes(user.email.toLowerCase())) {
         return res.status(403).json({ message: "Apenas administradores da plataforma" });
       }
 
@@ -2546,7 +2546,7 @@ export async function registerRoutes(
       const user = await storage.getUserById(userId);
       
       const platformAdminEmails = getPlatformAdminEmails();
-      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+      if (!user || !user.email || !user.emailVerified || !platformAdminEmails.includes(user.email.toLowerCase())) {
         return res.status(403).json({ message: "Apenas administradores da plataforma" });
       }
 
@@ -2589,7 +2589,7 @@ export async function registerRoutes(
       const user = await storage.getUserById(userId);
       
       const platformAdminEmails = getPlatformAdminEmails();
-      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+      if (!user || !user.email || !user.emailVerified || !platformAdminEmails.includes(user.email.toLowerCase())) {
         return res.status(403).json({ message: "Apenas administradores da plataforma" });
       }
 
@@ -2619,7 +2619,7 @@ export async function registerRoutes(
       const adminUser = await storage.getUserById(adminUserId);
       
       const platformAdminEmails = getPlatformAdminEmails();
-      if (!adminUser || !adminUser.email || !platformAdminEmails.includes(adminUser.email.toLowerCase())) {
+      if (!adminUser || !adminUser.email || !adminUser.emailVerified || !platformAdminEmails.includes(adminUser.email.toLowerCase())) {
         return res.status(403).json({ message: "Apenas administradores da plataforma" });
       }
 
@@ -2828,7 +2828,7 @@ export async function registerRoutes(
       const user = await storage.getUserById(userId);
       const platformAdminEmails = getPlatformAdminEmails();
       
-      if (!user || !user.email || !platformAdminEmails.includes(user.email.toLowerCase())) {
+      if (!user || !user.email || !user.emailVerified || !platformAdminEmails.includes(user.email.toLowerCase())) {
         return res.status(403).json({ message: "Apenas administradores da plataforma podem acessar este recurso" });
       }
       next();
