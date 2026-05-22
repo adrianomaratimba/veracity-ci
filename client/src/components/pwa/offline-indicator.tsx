@@ -20,8 +20,9 @@ export function OfflineIndicator() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [location] = useLocation();
 
-  // Don't show global indicator inside interview-session (has its own)
-  const isInsideCollection = location.startsWith('/collect/survey/');
+  // Don't show global indicator inside an active interview session (has its own).
+  // Route is /collect/:surveyId where :surveyId is a number.
+  const isInsideCollection = /^\/collect\/\d+/.test(location);
 
   useEffect(() => {
     // Initialize with current count
@@ -186,7 +187,10 @@ export function OfflineIndicator() {
                   <Smartphone className="w-4 h-4 text-gray-600" />
                   <span className="text-sm font-medium text-gray-700">Instalar app</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Ou "Adicionar à tela inicial"</p>
+                <div className="mt-1.5 flex items-center gap-1.5 bg-red-50 border border-red-200 rounded px-2 py-1">
+                  <span className="text-xs text-red-700 font-medium">⚠ Não use "Adicionar à tela inicial"</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">"Adicionar à tela inicial" cria apenas um atalho que abre no navegador — não é o app.</p>
               </div>
             </div>
 
@@ -194,13 +198,13 @@ export function OfflineIndicator() {
               <div className="w-7 h-7 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</div>
               <div>
                 <p className="text-sm font-medium text-gray-800">Confirme tocando em <strong>Instalar</strong></p>
-                <p className="text-xs text-gray-500 mt-0.5">O ícone aparecerá na tela inicial e o app abrirá sem o navegador</p>
+                <p className="text-xs text-gray-500 mt-0.5">O ícone aparecerá na tela inicial e o app abrirá sem o navegador, funcionando offline.</p>
               </div>
             </div>
 
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               <p className="text-xs text-amber-700">
-                <strong>Importante:</strong> Se instalou antes como "atalho", remova-o e reinstale seguindo esses passos para abrir como app.
+                <strong>Já instalou como atalho?</strong> Remova-o da tela inicial, reabra o site no Chrome e siga esses passos para instalar corretamente como app.
               </p>
             </div>
 

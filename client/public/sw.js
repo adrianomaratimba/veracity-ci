@@ -1,18 +1,21 @@
-// VotoAudit Service Worker v4
+// VotoAudit Service Worker v5
 // Strategy:
 //   - App shell (HTML): network-first, cache fallback
 //   - JS/CSS assets (hashed): cache-first (immutable content)
-//   - API GET: network-first, short-term cache fallback
+//   - API GET: network-first, cache fallback (indefinite — serves stale when offline)
 //   - API POST: try network, queue offline if unavailable
 //   - Fonts/images: cache-first
 //
 // vite-plugin-pwa (injectManifest mode) replaces the WB_MANIFEST assignment
 // below at build time with the full list of all hashed Vite assets, enabling
 // complete pre-caching on first install instead of lazy caching.
+//
+// CACHE_URLS message: sent by the app to proactively warm the API cache for
+// offline use (survey data, questions, org details).
 
-const SHELL_CACHE = 'votoaudit-shell-v4';
-const ASSETS_CACHE = 'votoaudit-assets-v4';
-const API_CACHE = 'votoaudit-api-v4';
+const SHELL_CACHE = 'votoaudit-shell-v5';
+const ASSETS_CACHE = 'votoaudit-assets-v5';
+const API_CACHE = 'votoaudit-api-v5';
 const OFFLINE_URL = '/offline.html';
 
 // Static shell URLs always pre-cached on install
@@ -245,8 +248,39 @@ async function syncPending() {
 // ─── MESSAGES ─────────────────────────────────────────────────────────────────
 self.addEventListener('message', (event) => {
   if (event.data === 'skipWaiting') self.skipWaiting();
+
   if (event.data === 'clearApiCache') {
     caches.delete(API_CACHE).then(() => console.log('[SW] API cache cleared'));
+  }
+
+  // CACHE_URLS: sent by the app to proactively warm the API cache.
+  // The app calls fetch() for each URL so the SW intercepts them and stores
+  // the responses via networkFirstWithCache automatically. This message is an
+  // alternative path that fetches directly from inside the SW context.
+  if (event.data?.type === 'CACHE_URLS') {
+    const urls = Array.isArray(event.data.urls) ? event.data.urls : [];
+    event.waitUntil(
+      (async () => {
+        const cache = await caches.open(API_CACHE);
+        let ok = 0;
+        for (const url of urls) {
+          try {
+            const res = await fetch(url, { credentials: 'include' });
+            if (res.ok) {
+              await cache.put(url, res);
+              ok++;
+            }
+          } catch (e) {
+            console.warn('[SW] CACHE_URLS falhou:', url, e);
+          }
+        }
+        console.log(`[SW] CACHE_URLS: ${ok}/${urls.length} URLs cacheadas`);
+        // Notify the requesting client
+        if (event.source) {
+          event.source.postMessage({ type: 'CACHE_URLS_DONE', ok, total: urls.length });
+        }
+      })()
+    );
   }
 });
 

@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { Plus, FileText, MoreVertical, Play, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive, Download, Upload } from "lucide-react";
+import { Plus, FileText, MoreVertical, Play, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive, Download, Upload, Loader2, Check } from "lucide-react";
+import { useOfflineCache } from "@/hooks/use-offline-cache";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -48,7 +49,10 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState<number | null>(null);
-  
+  const [preparingOffline, setPreparingOffline] = useState<Set<number>>(new Set());
+  const [offlineReadySurveys, setOfflineReadySurveys] = useState<Set<number>>(new Set());
+  const { prepareOffline } = useOfflineCache();
+
   const userRole = (currentMember?.role || 'viewer') as UserRole;
   const canImportExport = userRole === 'owner' || userRole === 'admin';
   const canCreate = canManageSurveys(userRole);
@@ -65,6 +69,23 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
     location: "",
     targetSample: 400
   });
+
+  const handlePrepareOffline = async (surveyId: number) => {
+    if (!navigator.onLine) {
+      toast({ title: "Sem conexão", description: "Conecte à internet para preparar o uso offline.", variant: "destructive" });
+      return;
+    }
+    setPreparingOffline(prev => new Set([...prev, surveyId]));
+    try {
+      await prepareOffline(surveyId, orgId);
+      setOfflineReadySurveys(prev => new Set([...prev, surveyId]));
+      toast({ title: "Pronto para uso offline", description: "Pesquisa e perguntas salvas no dispositivo." });
+    } catch {
+      toast({ title: "Erro", description: "Não foi possível preparar o cache offline.", variant: "destructive" });
+    } finally {
+      setPreparingOffline(prev => { const s = new Set(prev); s.delete(surveyId); return s; });
+    }
+  };
 
   const handleOpenRename = (survey: Survey) => {
     setSurveyToRename(survey);
@@ -361,10 +382,28 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                   </Button>
                 )}
                 {isInterviewer ? (
-                  <Button size="sm" onClick={() => setLocation(`/collect/${survey.id}`)} data-testid={`button-collect-${survey.id}`}>
-                    <Play className="w-4 h-4 mr-2" />
-                    Iniciar Coleta
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" onClick={() => setLocation(`/collect/${survey.id}`)} data-testid={`button-collect-${survey.id}`}>
+                      <Play className="w-4 h-4 mr-2" />
+                      Iniciar Coleta
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handlePrepareOffline(survey.id)}
+                      disabled={preparingOffline.has(survey.id)}
+                      title={offlineReadySurveys.has(survey.id) ? "Dados já baixados para offline" : "Baixar dados para uso offline"}
+                      data-testid={`button-prepare-offline-${survey.id}`}
+                    >
+                      {preparingOffline.has(survey.id) ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : offlineReadySurveys.has(survey.id) ? (
+                        <Check className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
                 ) : (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
