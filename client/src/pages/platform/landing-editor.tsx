@@ -92,7 +92,7 @@ export default function LandingEditor() {
       });
     } else if (!isLoading) {
       setFormData({
-        seoTitle: "Veracity - Plataforma de Pesquisas Eleitorais",
+        seoTitle: "Data Veracity | Sistema de Pesquisas Eleitorais e de Opinião",
         seoDescription: "Sistema profissional para gestão de pesquisas eleitorais com GPS, gravação de áudio e detecção de fraudes em tempo real.",
         seoKeywords: "pesquisa eleitoral, coleta de dados, GPS, anti-fraude, LGPD",
         heroHeadline: "Pesquisas Eleitorais com Credibilidade Total",
@@ -245,7 +245,7 @@ export default function LandingEditor() {
                     id="seoTitle"
                     value={formData.seoTitle || ""}
                     onChange={(e) => updateField("seoTitle", e.target.value)}
-                    placeholder="Veracity - Plataforma de Pesquisas Eleitorais"
+                    placeholder="Data Veracity | Sistema de Pesquisas Eleitorais e de Opinião"
                     data-testid="input-seo-title"
                   />
                   <p className="text-xs text-muted-foreground">
