@@ -797,7 +797,28 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
   }, [step]);
 
   if (surveyLoading) return <div className="p-4 flex justify-center"><Loader2 className="animate-spin" /></div>;
-  if (!survey) return <div>Pesquisa não encontrada</div>;
+  if (!survey) {
+    const offline = !navigator.onLine;
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center gap-4">
+        {offline
+          ? <WifiOff className="w-14 h-14 text-amber-500" />
+          : <AlertTriangle className="w-14 h-14 text-destructive" />
+        }
+        <h2 className="text-xl font-bold">
+          {offline ? 'Dados não disponíveis offline' : 'Pesquisa não encontrada'}
+        </h2>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          {offline
+            ? 'Esta pesquisa ainda não foi baixada para uso offline. Conecte-se à internet, abra a página de pesquisas e toque no botão de download (↓) ao lado de "Iniciar Coleta".'
+            : 'Esta pesquisa não existe ou você não tem acesso a ela.'}
+        </p>
+        <Button variant="outline" onClick={() => setLocation('/')}>
+          Voltar ao início
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

@@ -108,6 +108,23 @@ import PublicReportPage from "@/pages/public-report";
 import { OfflineIndicator } from "@/components/pwa/offline-indicator";
 import { PWAProvider } from "@/contexts/pwa-context";
 import { setupAutoSync } from "@/lib/syncQueue";
+import { prepareAllSurveysOffline } from "@/hooks/use-offline-cache";
+
+/** Silently warms the SW offline cache for all surveys in all orgs
+ *  3 seconds after the user authenticates and is online.
+ *  This ensures data is available offline even without manual prep. */
+function AutoOfflineCache({ orgIds }: { orgIds: number[] }) {
+  useEffect(() => {
+    if (!navigator.onLine || orgIds.length === 0) return;
+    const timer = setTimeout(async () => {
+      for (const orgId of orgIds) {
+        await prepareAllSurveysOffline(orgId);
+      }
+    }, 3000); // delay so it doesn't compete with initial page load
+    return () => clearTimeout(timer);
+  }, [orgIds.join(',')]);
+  return null;
+}
 
 function AuthenticatedRoutes() {
   const { user, isLoading } = useAuth();
@@ -127,8 +144,12 @@ function AuthenticatedRoutes() {
   if (orgs && orgs.length === 0) {
     return <NoOrganizationPage />;
   }
-  
+
+  const orgIds = orgs?.map(o => o.id) ?? [];
+
   return (
+    <>
+      <AutoOfflineCache orgIds={orgIds} />
     <Switch>
       {/* Root redirect - shows loading while useEffect redirects */}
       <Route path="/">{() => <LoadingScreen />}</Route>
@@ -207,6 +228,7 @@ function AuthenticatedRoutes() {
       {/* Fallback */}
       <Route path="/:rest*" component={NotFound} />
     </Switch>
+    </>
   );
 }
 
