@@ -138,11 +138,16 @@ async function syncInterview(interview: PendingInterview): Promise<boolean> {
       );
       
       if (!uploadRes) {
-        throw new Error('Falha ao enviar áudio');
+        // Audio upload failed — do NOT block the interview. Submit without audio.
+        // The critical interview data (GPS, answers) must be preserved.
+        console.warn('[SyncQueue] Upload de áudio falhou — enviando entrevista sem áudio.');
+        audioUrl = '';
+        audioHash = 'no-audio';
+      } else {
+        console.log('[SyncQueue] Áudio enviado:', uploadRes.objectPath);
+        audioUrl = uploadRes.objectPath;
+        audioHash = 'synced-offline';
       }
-      console.log('[SyncQueue] Áudio enviado:', uploadRes.objectPath);
-      audioUrl = uploadRes.objectPath;
-      audioHash = 'synced-offline';
     } else {
       console.log('[SyncQueue] Entrevista sem áudio, pulando upload');
     }

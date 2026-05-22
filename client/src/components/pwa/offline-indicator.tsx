@@ -1,6 +1,10 @@
 import { usePWAContext } from "@/contexts/pwa-context";
-import { WifiOff, Share, X, ArrowUp, Smartphone, MoreVertical } from "lucide-react";
+import { WifiOff, Share, X, ArrowUp, Smartphone, MoreVertical, Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { addSyncListener, syncAllPending } from "@/lib/syncQueue";
+import { getPendingCount } from "@/lib/offlineStorage";
+import { useLocation } from "wouter";
 
 export function OfflineIndicator() {
   const {
@@ -12,16 +16,60 @@ export function OfflineIndicator() {
     dismissAndroidInstructions,
   } = usePWAContext();
 
-  if (isOnline && !showIOSInstructions && !showAndroidInstructions) return null;
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [location] = useLocation();
+
+  // Don't show global indicator inside interview-session (has its own)
+  const isInsideCollection = location.startsWith('/collect/survey/');
+
+  useEffect(() => {
+    // Initialize with current count
+    getPendingCount().then(setPendingCount).catch(() => {});
+
+    // Listen for sync status updates
+    const unsub = addSyncListener((status) => {
+      setPendingCount(status.pendingCount);
+      setIsSyncing(status.isSyncing);
+    });
+    return unsub;
+  }, []);
+
+  // Trigger sync when coming back online
+  useEffect(() => {
+    if (isOnline && pendingCount > 0) {
+      syncAllPending().catch(() => {});
+    }
+  }, [isOnline]);
+
+  const showNothing = isOnline && !showIOSInstructions && !showAndroidInstructions && pendingCount === 0;
+  if (showNothing) return null;
 
   return (
     <>
+      {/* Offline badge */}
       {!isOnline && (
-        <div className="fixed bottom-4 left-4 z-50">
+        <div className="fixed bottom-20 left-4 z-50">
           <div className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg shadow-lg animate-pulse">
             <WifiOff className="w-4 h-4" />
             <span className="text-sm font-medium">Modo Offline</span>
           </div>
+        </div>
+      )}
+
+      {/* Global pending interviews indicator — shown on all pages except collection */}
+      {pendingCount > 0 && !isInsideCollection && (
+        <div className="fixed bottom-4 left-4 z-50">
+          <button
+            onClick={() => { window.location.href = '/collect/pending'; }}
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-3 py-2 rounded-lg shadow-lg hover:bg-primary/90 transition-colors"
+            data-testid="button-global-pending-sync"
+          >
+            <Cloud className={`w-4 h-4 ${isSyncing ? 'animate-pulse' : ''}`} />
+            <span className="text-sm font-medium">
+              {isSyncing ? 'Enviando...' : `${pendingCount} pendente${pendingCount > 1 ? 's' : ''}`}
+            </span>
+          </button>
         </div>
       )}
 
