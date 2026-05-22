@@ -12,9 +12,21 @@ function isStandalone(): boolean {
   );
 }
 
-function isIOSWithoutInstallPrompt(): boolean {
+function isIOSDevice(): boolean {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+/** Chrome on iOS identifies itself with "CriOS" in the user agent.
+ *  Chrome iOS does NOT support PWA installation — only Safari does. */
+function isIOSChromeBrowser(): boolean {
+  return isIOSDevice() && /CriOS/i.test(navigator.userAgent);
+}
+
+/** Any iOS browser that is not Safari-based (CriOS, FxiOS, EdgiOS, etc.)
+ *  cannot install PWAs — return true to show the "switch to Safari" prompt. */
+function isIOSNonSafariBrowser(): boolean {
   const ua = navigator.userAgent;
-  return /iphone|ipad|ipod/i.test(ua) && !isStandalone();
+  return isIOSDevice() && (/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua));
 }
 
 function isMobileBrowser(): boolean {
@@ -29,8 +41,10 @@ export function usePWA() {
   const [isInstalled, setIsInstalled] = useState(isStandalone());
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOSSafari, setIsIOSSafari] = useState(false);
+  const [isIOSChrome, setIsIOSChrome] = useState(false);
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
   const [showAndroidInstructions, setShowAndroidInstructions] = useState(false);
+  const [showIOSChromeInstructions, setShowIOSChromeInstructions] = useState(false);
   const [isDismissed, setIsDismissed] = useState(() => {
     try { return localStorage.getItem(DISMISSED_KEY) === '1'; } catch { return false; }
   });
@@ -47,10 +61,21 @@ export function usePWA() {
   }, []);
 
   useEffect(() => {
-    if (isIOSWithoutInstallPrompt()) {
+    if (isStandalone()) {
+      setIsInstalled(true);
+      setIsInstallable(false);
+      return;
+    }
+
+    if (isIOSNonSafariBrowser()) {
+      // Chrome/Firefox/Edge on iOS — cannot install PWA, must switch to Safari
+      setIsIOSChrome(true);
+      setIsInstallable(true);
+    } else if (isIOSDevice()) {
+      // Safari on iOS — can install via share sheet
       setIsIOSSafari(true);
       setIsInstallable(true);
-    } else if (isMobileBrowser() && !isStandalone()) {
+    } else if (isMobileBrowser()) {
       // Android/other mobile: always show install option even before prompt fires
       setIsInstallable(true);
     }
@@ -62,18 +87,18 @@ export function usePWA() {
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-
-    if (isStandalone()) {
-      setIsInstalled(true);
-      setIsInstallable(false);
-    }
-
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
     };
   }, []);
 
   const installApp = async () => {
+    if (isIOSChrome) {
+      // Chrome/non-Safari on iOS: guide them to open in Safari
+      setShowIOSChromeInstructions(true);
+      return false;
+    }
+
     if (isIOSSafari) {
       setShowIOSInstructions(true);
       return false;
@@ -109,19 +134,23 @@ export function usePWA() {
 
   const dismissIOSInstructions = () => setShowIOSInstructions(false);
   const dismissAndroidInstructions = () => setShowAndroidInstructions(false);
+  const dismissIOSChromeInstructions = () => setShowIOSChromeInstructions(false);
 
   return {
     isOnline,
     isInstallable,
     isInstalled,
     isIOSSafari,
+    isIOSChrome,
     showIOSInstructions,
     showAndroidInstructions,
+    showIOSChromeInstructions,
     isDismissed,
     dismissBanner,
     resetDismiss,
     dismissIOSInstructions,
     dismissAndroidInstructions,
+    dismissIOSChromeInstructions,
     installApp,
   };
 }
