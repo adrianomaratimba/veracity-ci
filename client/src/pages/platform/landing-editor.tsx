@@ -51,7 +51,7 @@ const defaultStats: LandingStat[] = [
 ];
 
 const defaultTestimonials: LandingTestimonial[] = [
-  { quote: "O Veracity revolucionou nossa operação de campo. A detecção de fraudes em tempo real nos dá confiança total nos dados coletados.", author: "Maria Silva", role: "Diretora de Pesquisa", company: "Instituto DataBrasil" },
+  { quote: "O Data Veracity revolucionou nossa operação de campo. A detecção de fraudes em tempo real nos dá confiança total nos dados coletados.", author: "Maria Silva", role: "Diretora de Pesquisa", company: "Instituto DataBrasil" },
   { quote: "Antes perdíamos horas verificando inconsistências. Agora o sistema faz isso automaticamente e nossos clientes confiam mais nos resultados.", author: "Carlos Santos", role: "Coordenador de Campo", company: "Pesquisas Nacionais Ltda" },
   { quote: "A interface é intuitiva e nossos entrevistadores se adaptaram rapidamente. O suporte é excelente.", author: "Ana Oliveira", role: "Gerente de Operações", company: "OpinionPoll Brasil" }
 ];
@@ -101,7 +101,7 @@ export default function LandingEditor() {
         heroCtaSecondary: "Ver Demonstração",
         statsEnabled: true,
         stats: defaultStats,
-        featuresTitle: "Por que escolher o Veracity?",
+        featuresTitle: "Por que escolher o Data Veracity?",
         featuresSubtitle: "Tecnologia de ponta para pesquisas confiáveis",
         features: defaultFeatures,
         testimonialsTitle: "O que nossos clientes dizem",
@@ -111,7 +111,7 @@ export default function LandingEditor() {
         faqs: defaultFaqs,
         faqEnabled: true,
         ctaTitle: "Pronto para revolucionar suas pesquisas?",
-        ctaSubtitle: "Comece gratuitamente e descubra como o Veracity pode transformar sua operação de campo.",
+        ctaSubtitle: "Comece gratuitamente e descubra como o Data Veracity pode transformar sua operação de campo.",
         ctaButton: "Criar conta grátis",
         footerText: "Desenvolvido no Brasil para institutos de pesquisa exigentes.",
       });

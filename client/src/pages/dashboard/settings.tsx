@@ -671,7 +671,7 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
                       onChange={(e) => setBrandingForm({ ...brandingForm, brandingName: e.target.value })}
                       data-testid="input-branding-name"
                     />
-                    <p className="text-xs text-muted-foreground">Substitui "Veracity" na interface</p>
+                    <p className="text-xs text-muted-foreground">Substitui "Data Veracity" na interface</p>
                   </div>
 
                   <div className="space-y-2">
@@ -740,8 +740,8 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
 
                   <div className="flex items-center justify-between pt-4 border-t">
                     <div>
-                      <p className="font-medium">Ocultar Marca Veracity</p>
-                      <p className="text-sm text-muted-foreground">Remove referencias ao Veracity</p>
+                      <p className="font-medium">Ocultar Marca Data Veracity</p>
+                      <p className="text-sm text-muted-foreground">Remove referências ao Data Veracity</p>
                     </div>
                     <Switch
                       checked={brandingForm.hideVotoAuditBrand}
@@ -801,7 +801,7 @@ export default function SettingsPage({ params }: { params: { orgId: string } }) 
               <Card>
                 <CardHeader>
                   <CardTitle>Subdominio Padrao</CardTitle>
-                  <CardDescription>Seu endereco padrao no Veracity</CardDescription>
+                  <CardDescription>Seu endereço padrão no Data Veracity</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2 p-4 bg-muted rounded-lg">

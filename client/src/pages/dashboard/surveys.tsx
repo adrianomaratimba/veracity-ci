@@ -502,7 +502,7 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                     <div className="flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg p-8">
                       <Upload className="w-12 h-12 text-muted-foreground mb-4" />
                       <p className="text-sm text-muted-foreground mb-4 text-center">
-                        Selecione um arquivo .json exportado do Veracity
+                        Selecione um arquivo .json exportado do Data Veracity
                       </p>
                       <input
                         type="file"

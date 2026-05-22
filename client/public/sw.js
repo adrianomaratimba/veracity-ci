@@ -1,4 +1,4 @@
-// VotoAudit Service Worker v5
+// Data Veracity Service Worker v6
 // Strategy:
 //   - App shell (HTML): network-first, cache fallback
 //   - JS/CSS assets (hashed): cache-first (immutable content)
@@ -13,9 +13,9 @@
 // CACHE_URLS message: sent by the app to proactively warm the API cache for
 // offline use (survey data, questions, org details).
 
-const SHELL_CACHE = 'votoaudit-shell-v5';
-const ASSETS_CACHE = 'votoaudit-assets-v5';
-const API_CACHE = 'votoaudit-api-v5';
+const SHELL_CACHE = 'dataveracity-shell-v6';
+const ASSETS_CACHE = 'dataveracity-assets-v6';
+const API_CACHE = 'dataveracity-api-v6';
 const OFFLINE_URL = '/offline.html';
 
 // Static shell URLs always pre-cached on install
@@ -207,7 +207,7 @@ const PENDING_STORE = 'pending-sync';
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('VotoAuditOffline', 2);
+    const req = indexedDB.open('DataVeracityOffline', 3);
     req.onerror = () => reject(req.error);
     req.onsuccess = () => resolve(req.result);
     req.onupgradeneeded = (e) => {
@@ -289,7 +289,7 @@ self.addEventListener('push', (event) => {
   if (!event.data) return;
   try {
     const data = event.data.json();
-    const title = data.title || 'VotoAudit';
+    const title = data.title || 'Data Veracity';
     const options = {
       body: data.body || '',
       icon: data.icon || '/icon-192.png',

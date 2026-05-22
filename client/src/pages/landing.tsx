@@ -122,11 +122,11 @@ function convertPlanToUI(dbPlan: SubscriptionPlan) {
 
 // Default configuration fallback - uses exact schema field names from landingPageConfig
 const defaultConfig: Partial<LandingPageConfig> = {
-  seoTitle: "Veracity - Pesquisas Eleitorais Confiáveis",
-  seoDescription: "Plataforma líder em pesquisas eleitorais com GPS, áudio e detecção de fraudes em tempo real.",
-  seoKeywords: "pesquisa eleitoral, coleta de dados, GPS, áudio, detecção de fraudes, LGPD",
-  heroHeadline: "Pesquisas Eleitorais com Provas Irrefutáveis",
-  heroSubheadline: "Capture GPS, áudio e impressão digital do dispositivo em cada entrevista. Detecte fraudes em tempo real e entregue resultados que seus clientes podem confiar.",
+  seoTitle: "Data Veracity | Sistema de Pesquisas Eleitorais e de Opinião",
+  seoDescription: "Data Veracity: plataforma profissional de pesquisas eleitorais e de opinião com GPS, áudio e detecção de fraudes em tempo real. Veracidade de dados garantida.",
+  seoKeywords: "sistema de pesquisas eleitorais, app de pesquisas de opinião, plataforma de pesquisas, software pesquisa eleitoral, coleta de dados campo, veracidade de dados, detecção de fraude pesquisa, pesquisa política",
+  heroHeadline: "Sistema de Pesquisas Eleitorais com Provas Irrefutáveis",
+  heroSubheadline: "Colete dados de campo com GPS, áudio e validação em tempo real. Detecte fraudes automaticamente e entregue resultados com veracidade total aos seus clientes.",
   heroCta: "Começar Gratuitamente",
   heroCtaSecondary: "Ver Demonstração",
   featuresTitle: "Tecnologia Anti-Fraude de Ponta",
@@ -134,9 +134,9 @@ const defaultConfig: Partial<LandingPageConfig> = {
   testimonialsTitle: "Utilizado pelos Melhores Institutos",
   faqTitle: "Perguntas Frequentes",
   ctaTitle: "Pronto para Revolucionar suas Pesquisas?",
-  ctaSubtitle: "Junte-se a centenas de institutos que já confiam no Veracity para entregar resultados precisos e auditáveis.",
+  ctaSubtitle: "Junte-se a centenas de institutos que já confiam no Data Veracity para entregar resultados precisos e auditáveis.",
   ctaButton: "Criar Conta Grátis",
-  footerText: "© 2025 Veracity. Todos os direitos reservados.",
+  footerText: "© 2025 Data Veracity. Todos os direitos reservados.",
   testimonialsEnabled: true,
   faqEnabled: true,
   statsEnabled: true,
@@ -261,7 +261,7 @@ export default function Landing() {
   // Parse testimonials and FAQs from config or use defaults
   const testimonials = (config.testimonials as Array<{quote: string, author: string, role: string, company: string}>) || [
     {
-      quote: "O Veracity revolucionou nossa operação de campo. A detecção de fraudes em tempo real nos dá confiança total nos dados coletados.",
+      quote: "O Data Veracity revolucionou nossa operação de campo. A detecção de fraudes em tempo real nos dá confiança total nos dados coletados.",
       author: "Maria Silva",
       role: "Diretora de Pesquisa",
       company: "Instituto DataBrasil"
@@ -326,7 +326,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display text-lg">V</div>
-            <span className="font-display font-bold text-xl tracking-tight">Veracity</span>
+            <span className="font-display font-bold text-xl tracking-tight">Data Veracity</span>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm">
             <a href="#recursos" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-recursos">Recursos</a>
@@ -467,7 +467,7 @@ export default function Landing() {
                 {config.testimonialsTitle || defaultConfig.testimonialsTitle}
               </h2>
               <p className="text-lg text-muted-foreground">
-                Veja o que nossos clientes dizem sobre o Veracity
+                Veja o que nossos clientes dizem sobre o Data Veracity
               </p>
             </div>
 
@@ -561,7 +561,7 @@ export default function Landing() {
             <div className="grid md:grid-cols-2 gap-12 items-center">
               <div>
                 <h2 className="text-3xl md:text-4xl font-display font-bold mb-6">
-                  Por que Institutos Escolhem o Veracity?
+                  Por que Institutos Escolhem o Data Veracity?
                 </h2>
                 <div className="space-y-6">
                   {[
@@ -634,7 +634,7 @@ export default function Landing() {
               {config.ctaTitle || "Pronto para Revolucionar suas Pesquisas?"}
             </h2>
             <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto">
-              {config.ctaSubtitle || "Junte-se a centenas de institutos que já confiam no Veracity para entregar resultados precisos e auditáveis."}
+              {config.ctaSubtitle || "Junte-se a centenas de institutos que já confiam no Data Veracity para entregar resultados precisos e auditáveis."}
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/auth">
@@ -656,10 +656,10 @@ export default function Landing() {
               <div>
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold">V</div>
-                  <span className="font-display font-bold text-lg">Veracity</span>
+                  <span className="font-display font-bold text-lg">Data Veracity</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Plataforma líder em pesquisas eleitorais com auditoria em tempo real.
+                  Plataforma líder em pesquisas eleitorais e de opinião com auditoria em tempo real.
                 </p>
               </div>
               <div>

@@ -500,7 +500,7 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/20 p-4">
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-display font-bold text-primary">Veracity</h1>
+        <h1 className="text-3xl font-display font-bold text-primary">Data Veracity</h1>
         <p className="text-muted-foreground mt-1">Configure sua plataforma de pesquisas</p>
       </div>
 

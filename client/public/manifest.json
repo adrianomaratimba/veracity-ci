@@ -1,7 +1,7 @@
 {
-  "name": "VotoAudit - Pesquisas Eleitorais",
-  "short_name": "VotoAudit",
-  "description": "Plataforma de pesquisas eleitorais com detecção de fraude",
+  "name": "Data Veracity - Pesquisas Eleitorais",
+  "short_name": "Data Veracity",
+  "description": "Plataforma profissional de pesquisas eleitorais e de opinião com GPS, áudio e detecção de fraudes",
   "start_url": "/",
   "scope": "/",
   "id": "/",
@@ -42,7 +42,7 @@
       "sizes": "512x512",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "VotoAudit - Coleta de Pesquisas"
+      "label": "Data Veracity - Coleta de Pesquisas"
     }
   ],
   "categories": ["business", "productivity"],

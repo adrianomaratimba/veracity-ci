@@ -58,7 +58,7 @@ export default function ContactPage() {
           </Link>
           <div className="flex items-center justify-center gap-2 mb-4">
             <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display text-lg">V</div>
-            <span className="font-display font-bold text-2xl tracking-tight">Veracity</span>
+            <span className="font-display font-bold text-2xl tracking-tight">Data Veracity</span>
           </div>
           <h1 className="text-3xl font-display font-bold mb-2">Plano Enterprise</h1>
           <p className="text-muted-foreground">Solucoes personalizadas para grandes operacoes</p>

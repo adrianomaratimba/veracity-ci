@@ -540,7 +540,7 @@ export default function PlatformAdminPage() {
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Painel Super Admin</h1>
         </div>
         <p className="text-muted-foreground">
-          Gerencie todas as organizações e usuários da plataforma Veracity.
+          Gerencie todas as organizações e usuários da plataforma Data Veracity.
         </p>
       </div>
 

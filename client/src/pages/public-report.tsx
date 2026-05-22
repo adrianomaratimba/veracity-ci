@@ -247,7 +247,7 @@ export default function PublicReportPage() {
         <Separator />
 
         <div className="text-center text-xs text-slate-400 pb-6">
-          <p>Dados coletados com GPS e áudio verificados • VotoAudit</p>
+          <p>Dados coletados com GPS e áudio verificados • Data Veracity</p>
           <p className="mt-1">Gerado em {new Date().toLocaleDateString('pt-BR')}</p>
         </div>
       </div>

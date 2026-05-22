@@ -175,7 +175,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display">
              V
            </div>
-           <span className="font-display font-bold text-lg">Veracity</span>
+           <span className="font-display font-bold text-lg">Data Veracity</span>
         </div>
         <div className="flex items-center gap-1">
           {!isInstalled && (
@@ -205,7 +205,7 @@ export function DashboardLayout({ children, orgId }: DashboardLayoutProps) {
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold font-display shadow-md shadow-primary/20">
               V
             </div>
-            <span className="font-display font-bold text-xl tracking-tight">Veracity</span>
+            <span className="font-display font-bold text-xl tracking-tight">Data Veracity</span>
           </div>
 
           {organizations && organizations.length > 0 && (

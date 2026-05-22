@@ -962,7 +962,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
         doc.setFont("helvetica", "normal");
         doc.setTextColor(150, 150, 150);
         doc.text(`Página ${pageNum} de ${total}`, pageW / 2, pageH - 8, { align: 'center' });
-        doc.text('Documento gerado por VotoAudit • Confidencial', pageW / 2, pageH - 4, { align: 'center' });
+        doc.text('Documento gerado por Data Veracity • Confidencial', pageW / 2, pageH - 4, { align: 'center' });
         doc.setTextColor(0, 0, 0);
       };
 

@@ -116,7 +116,7 @@ export function OfflineIndicator() {
               <div>
                 <p className="text-sm font-bold text-amber-900">Você está usando o Chrome</p>
                 <p className="text-sm text-amber-800 mt-0.5">
-                  O Chrome no iPhone <strong>não permite instalar apps</strong>. Para instalar o VotoAudit, você precisa abrir este site no <strong>Safari</strong>.
+                  O Chrome no iPhone <strong>não permite instalar apps</strong>. Para instalar o Data Veracity, você precisa abrir este site no <strong>Safari</strong>.
                 </p>
               </div>
             </div>
