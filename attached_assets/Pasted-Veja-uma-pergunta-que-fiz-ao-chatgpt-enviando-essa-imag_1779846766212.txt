@@ -1,0 +1,29 @@
+Veja uma pergunta que fiz ao chatgpt enviando essa imagem do print 1 (modelo como o Google apresenta os resultados da pesquisa). "como afiro a probabilidade de indicação positiva do Prefeito Geninho? Me dê as probabilidades dele ser bem sucedido na indicação." esse foi a pergunta que fiz a IA. Veja em seguida a resposta dada: "como afiro a probabilidade de indicação positiva do  Prefeito Geninho? Me dê as probabilidades dele ser bem sucedido na indicação". Vamos aos pontos, eu gostei muito da resposta, pois isso pode enriquecer e muito a entrega das pesquisas para meus contratantes, mas temos alguns pontos a serem avaliados: A resposta é ampla e rica, mas para uma apresentação ao cliente é longa demais eu gostei dos seguintes tópicos aplicados a esse pergunta em questão (número 6 ) . Cenário pessimista
+
+Se o candidato indicado for fraco, desconhecido ou rejeitado: 
+➡️ Probabilidade de sucesso: média, perto de 45–55%.
+
+Cenário realista
+Se o candidato for competitivo, alinhado ao grupo político e fizer boa campanha:
+➡️ Probabilidade de sucesso eleitoral: boa, algo entre 60–70%.
+
+Cenário otimista
+
+Se o prefeito estiver muito bem avaliado e escolher um nome forte:
+➡️ Probabilidade de sucesso: alta, acima de 75%.
+
+Conclusão política
+
+Hoje, o gráfico mostra que:
+
+O prefeito tem capacidade real de transferir votos.
+Ele não possui “domínio absoluto” do eleitorado.
+O nome indicado será decisivo.
+A rejeição direta ainda é relativamente controlada.
+O grupo político parece entrar na eleição com vantagem competitiva.
+
+Em linguagem eleitoral:
+
+Geninho aparenta ter um “capital de transferência” entre moderado e forte.
+
+Essas informações no gráfico de amostra do resultado da pesquisa dá um valor grande a apresentação dos resultados dando mais valor a minhas pesquisas. Mas veja que para cada pergunta a IA deverá dar uma resposta de acordo e quero saber se é possível colocarmos um botão em Pesquisa -> Resultados -> Ver Gráficos (print2) para que uma IA gerasse esses comentários no final da apresentação dos gráficos. Esses comentários devem ser mostrados para que eu possa aprovar ou editar antes e deverá ser feito de acordo com o desejo do administrador ele poderá escolher qual pergunta ele adicionará as dicas de IA e isso deverá ficar salvo e também ser exportado junto com a imagem ou impresso e tabém adicione exportar como PDF
