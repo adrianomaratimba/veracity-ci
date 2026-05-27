@@ -177,18 +177,26 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
     // Interviewer stats - build a name lookup from interviewersList
     const nameMap = new Map<string, string>();
     interviewersList?.forEach(int => nameMap.set(int.id, int.name));
+
+    // Helper: derive effective key + name for a response
+    // Imported responses store the real researcher in deviceInfo.originalInterviewerName
+    const getEffectiveInterviewer = (r: any): { key: string; name: string } => {
+      const originalName = r.deviceInfo?.originalInterviewerName;
+      if (originalName) return { key: `imported:${originalName}`, name: originalName };
+      const id = r.interviewerId || 'Desconhecido';
+      return { key: id, name: nameMap.get(id) || id };
+    };
     
     const interviewerMap = new Map<string, { id: string, name: string, total: number, valid: number, suspicious: number, avgDuration: number, avgAccuracy: number }>();
     responses.forEach(r => {
-      const id = r.interviewerId || 'Desconhecido';
-      const name = nameMap.get(id) || id;
-      const existing = interviewerMap.get(id) || { id, name, total: 0, valid: 0, suspicious: 0, avgDuration: 0, avgAccuracy: 0 };
+      const { key, name } = getEffectiveInterviewer(r);
+      const existing = interviewerMap.get(key) || { id: key, name, total: 0, valid: 0, suspicious: 0, avgDuration: 0, avgAccuracy: 0 };
       existing.total++;
       if (r.status === 'valid') existing.valid++;
       if (r.status === 'suspicious') existing.suspicious++;
       existing.avgDuration += (r.duration || 0);
       existing.avgAccuracy += (r.accuracy || 0);
-      interviewerMap.set(id, existing);
+      interviewerMap.set(key, existing);
     });
     const interviewerStats = Array.from(interviewerMap.values())
       .map(i => ({
@@ -239,8 +247,10 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
     if (!responses) return [];
     return responses.filter(r => {
       const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
+      const originalName = (r as any).deviceInfo?.originalInterviewerName || '';
       const matchesSearch = searchTerm === '' || 
         r.interviewerId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        originalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.id.toString().includes(searchTerm);
       return matchesStatus && matchesSearch;
     });
@@ -671,9 +681,11 @@ export default function SurveyAnalytics({ params }: { params: { orgId: string, i
                         <td className="px-4 py-3 font-mono text-xs text-muted-foreground">#{resp.id}</td>
                         <td className="px-4 py-3 whitespace-nowrap">{new Date(resp.createdAt!).toLocaleString('pt-BR')}</td>
                         <td className="px-4 py-3 text-sm">
-                          {(resp as any).interviewer 
-                            ? `${(resp as any).interviewer.firstName || ''} ${(resp as any).interviewer.lastName || ''}`.trim() || resp.interviewerId?.substring(0, 12) + '...'
-                            : resp.interviewerId?.substring(0, 12) + '...'}
+                          {(resp as any).deviceInfo?.originalInterviewerName
+                            ? (resp as any).deviceInfo.originalInterviewerName
+                            : (resp as any).interviewer
+                              ? `${(resp as any).interviewer.firstName || ''} ${(resp as any).interviewer.lastName || ''}`.trim() || resp.interviewerId?.substring(0, 12) + '...'
+                              : resp.interviewerId?.substring(0, 12) + '...'}
                         </td>
                         <td className="px-4 py-3">{formatDuration(resp.duration || 0)}</td>
                         <td className="px-4 py-3 font-mono text-xs">

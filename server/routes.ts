@@ -2017,6 +2017,20 @@ export async function registerRoutes(
       }
 
       // Build CSV (standard technical format)
+      // Pre-fetch user names for non-imported responses
+      const csvUserCache = new Map<string, string>();
+      const getCsvInterviewerName = async (r: any): Promise<string> => {
+        const di = r.deviceInfo as any;
+        if (di?.originalInterviewerName) return di.originalInterviewerName;
+        const id = r.interviewerId;
+        if (!id) return '';
+        if (csvUserCache.has(id)) return csvUserCache.get(id)!;
+        const u = await storage.getUserById(id);
+        const name = [u?.firstName, u?.lastName].filter(Boolean).join(' ') || id;
+        csvUserCache.set(id, name);
+        return name;
+      };
+
       const headers = [
         'ID',
         'Entrevistador',
@@ -2029,11 +2043,12 @@ export async function registerRoutes(
         ...questions.map(q => q.text)
       ];
       
-      const rows = responsesData.map(r => {
+      const rows = await Promise.all(responsesData.map(async r => {
         const answerMap = new Map(r.answers.map(a => [a.questionId, a.value]));
+        const interviewerName = await getCsvInterviewerName(r);
         return [
           r.id,
-          r.interviewerId,
+          interviewerName,
           new Date(r.createdAt!).toLocaleString('pt-BR'),
           r.latitude,
           r.longitude,
@@ -2046,7 +2061,7 @@ export async function registerRoutes(
             return value || '';
           })
         ];
-      });
+      }));
       
       // Generate CSV content
       const csvContent = [

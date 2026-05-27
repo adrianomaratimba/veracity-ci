@@ -88,9 +88,11 @@ export default function AuditPage({ params }: AuditPageProps) {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
+        const originalName = ((r as any).deviceInfo?.originalInterviewerName || '').toLowerCase();
         return (
           r.survey.title.toLowerCase().includes(query) ||
           r.interviewerId.toLowerCase().includes(query) ||
+          originalName.includes(query) ||
           String(r.id).includes(query)
         );
       }

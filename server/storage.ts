@@ -952,11 +952,6 @@ export class DatabaseStorage implements IStorage {
       allResponses = allResponses.filter(r => r.createdAt && new Date(r.createdAt) <= filters.endDate!);
     }
 
-    // Apply interviewer filter
-    if (filters.interviewerIds && filters.interviewerIds.length > 0) {
-      allResponses = allResponses.filter(r => filters.interviewerIds!.includes(r.interviewerId));
-    }
-
     // Get questions for these surveys FIRST (needed for dropdown even without responses)
     let surveyQuestions = await db.select().from(questions).where(
       sql`${questions.surveyId} IN (${sql.join(targetSurveyIds.map(id => sql`${id}`), sql`, `)})`
@@ -974,21 +969,53 @@ export class DatabaseStorage implements IStorage {
       return { id: q.id, text: q.text, options };
     });
 
-    // Get unique interviewer IDs
-    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId)));
-    if (interviewerIds.length === 0) {
-      // Return questions for dropdown even when no responses
+    // Helper: derive effective interviewer key and name for a response
+    // Imported responses store the real researcher name in deviceInfo.originalInterviewerName
+    const getEffectiveKey = (r: typeof allResponses[number]): string => {
+      const di = r.deviceInfo as any;
+      if (di?.originalInterviewerName) return `imported:${di.originalInterviewerName}`;
+      return r.interviewerId;
+    };
+    const getEffectiveName = (r: typeof allResponses[number], userMap: Map<string, typeof allResponses[number]>): string => {
+      const di = r.deviceInfo as any;
+      if (di?.originalInterviewerName) return di.originalInterviewerName;
+      const user = userMap.get(r.interviewerId) as any;
+      return user?.firstName && user?.lastName
+        ? `${user.firstName} ${user.lastName}`
+        : (user as any)?.email || r.interviewerId;
+    };
+
+    // Get unique effective interviewer keys
+    const effectiveKeys = Array.from(new Set(allResponses.map(getEffectiveKey)));
+    if (effectiveKeys.length === 0) {
       return { interviewers: [], questions: formattedQuestions, comparison: [] };
     }
 
-    // Get interviewer details
-    const interviewerUsers = await db.select().from(users).where(
-      sql`${users.id} IN (${sql.join(interviewerIds.map(id => sql`${id}`), sql`, `)})`
-    );
+    // Get details for real (non-imported) user IDs
+    const realUserIds = Array.from(new Set(
+      allResponses.filter(r => !(r.deviceInfo as any)?.originalInterviewerName).map(r => r.interviewerId)
+    ));
+    const interviewerUsers = realUserIds.length > 0
+      ? await db.select().from(users).where(
+          sql`${users.id} IN (${sql.join(realUserIds.map(id => sql`${id}`), sql`, `)})`
+        )
+      : [];
     const interviewerMap = new Map(interviewerUsers.map(u => [u.id, u]));
 
+    // Build a label map: effectiveKey → display name
+    const keyToName = new Map<string, string>();
+    for (const r of allResponses) {
+      const key = getEffectiveKey(r);
+      if (!keyToName.has(key)) keyToName.set(key, getEffectiveName(r, interviewerMap as any));
+    }
+
+    // Apply interviewer filter using effective keys
+    const filteredResponses = (filters.interviewerIds && filters.interviewerIds.length > 0)
+      ? allResponses.filter(r => filters.interviewerIds!.includes(getEffectiveKey(r)))
+      : allResponses;
+
     // Get all answers for responses
-    const responseIds = allResponses.map(r => r.id);
+    const responseIds = filteredResponses.map(r => r.id);
     if (responseIds.length === 0) {
       return { interviewers: [], questions: formattedQuestions, comparison: [] };
     }
@@ -997,8 +1024,11 @@ export class DatabaseStorage implements IStorage {
       sql`${answers.responseId} IN (${sql.join(responseIds.map(id => sql`${id}`), sql`, `)})`
     );
 
-    // Map response to interviewer
-    const responseToInterviewer = new Map(allResponses.map(r => [r.id, r.interviewerId]));
+    // Map response to effective interviewer key
+    const responseToInterviewer = new Map(filteredResponses.map(r => [r.id, getEffectiveKey(r)]));
+
+    // Recompute unique keys after filter
+    const interviewerIds = Array.from(new Set(filteredResponses.map(getEffectiveKey)));
 
     // Build comparison data
     const comparisonData: Array<{
@@ -1027,10 +1057,7 @@ export class DatabaseStorage implements IStorage {
       }> = [];
 
       for (const intId of interviewerIds) {
-        const user = interviewerMap.get(intId);
-        const name = user?.firstName && user?.lastName 
-          ? `${user.firstName} ${user.lastName}` 
-          : user?.email || intId;
+        const name = keyToName.get(intId) || intId;
 
         const intAnswers = qAnswers.filter(a => responseToInterviewer.get(a.responseId) === intId);
         const total = intAnswers.length;
@@ -1082,13 +1109,10 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    // Build interviewers summary
+    // Build interviewers summary (using effective keys)
     const interviewersSummary = interviewerIds.map(id => {
-      const user = interviewerMap.get(id);
-      const name = user?.firstName && user?.lastName 
-        ? `${user.firstName} ${user.lastName}` 
-        : user?.email || id;
-      const total = allResponses.filter(r => r.interviewerId === id).length;
+      const name = keyToName.get(id) || id;
+      const total = filteredResponses.filter(r => getEffectiveKey(r) === id).length;
       return { id, name, totalResponses: total };
     });
 
@@ -1308,23 +1332,50 @@ export class DatabaseStorage implements IStorage {
     const allResponses = await db.select()
       .from(responses)
       .where(eq(responses.surveyId, surveyId));
-    
-    const interviewerIds = Array.from(new Set(allResponses.map(r => r.interviewerId).filter(Boolean)));
-    
+
+    // Separate imported responses (their real researcher is in deviceInfo.originalInterviewerName)
+    // from regular responses (grouped by interviewerId user ID).
+    const seenKeys = new Set<string>();
     const interviewersList: Array<{ id: string; name: string }> = [];
-    for (const id of interviewerIds) {
-      if (!id) continue;
-      const user = await db.select().from(users).where(eq(users.id, id)).limit(1);
-      if (user.length > 0) {
-        interviewersList.push({
-          id,
-          name: user[0].firstName && user[0].lastName 
-            ? `${user[0].firstName} ${user[0].lastName}`
-            : user[0].firstName || user[0].email || id
-        });
+
+    // Collect unique real user IDs for non-imported responses
+    const realUserIds = Array.from(new Set(
+      allResponses
+        .filter(r => !(r.deviceInfo as any)?.originalInterviewerName && r.interviewerId)
+        .map(r => r.interviewerId)
+    ));
+    const userRows = realUserIds.length > 0
+      ? await db.select().from(users).where(
+          sql`${users.id} IN (${sql.join(realUserIds.map(id => sql`${id}`), sql`, `)})`
+        )
+      : [];
+    const userMap = new Map(userRows.map(u => [u.id, u]));
+
+    for (const r of allResponses) {
+      const di = r.deviceInfo as any;
+      if (di?.originalInterviewerName) {
+        const key = `imported:${di.originalInterviewerName}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          interviewersList.push({ id: key, name: di.originalInterviewerName });
+        }
+      } else if (r.interviewerId) {
+        const key = r.interviewerId;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          const u = userMap.get(key);
+          if (u) {
+            interviewersList.push({
+              id: key,
+              name: u.firstName && u.lastName
+                ? `${u.firstName} ${u.lastName}`
+                : u.firstName || u.email || key
+            });
+          }
+        }
       }
     }
-    
+
     return interviewersList;
   }
 
