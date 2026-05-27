@@ -1424,9 +1424,22 @@ export async function registerRoutes(
       const survey = await storage.getSurvey(surveyId);
       if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
       
-      const isMember = await storage.isUserMemberOfOrg(interviewerId, survey.organizationId);
-      if (!isMember) {
+      const member = await storage.getMemberByUserId(interviewerId, survey.organizationId);
+      if (!member) {
         return res.status(403).json({ message: "Acesso negado" });
+      }
+
+      // Check RBAC: only roles with responses:submit permission can submit interviews
+      if (!hasPermission(member.role as UserRole, "responses:submit")) {
+        return res.status(403).json({ message: "Sem permissão para enviar respostas" });
+      }
+
+      // Interviewers must be assigned to the survey
+      if (member.role === "interviewer") {
+        const isAssigned = await storage.isInterviewerAssigned(surveyId, interviewerId);
+        if (!isAssigned) {
+          return res.status(403).json({ message: "Você não está designado para esta pesquisa" });
+        }
       }
       
       // Check organization plan limits
@@ -1603,13 +1616,21 @@ export async function registerRoutes(
     const survey = await storage.getSurvey(surveyId);
     if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
     
-    const isMember = await storage.isUserMemberOfOrg(userId, survey.organizationId);
-    if (!isMember) {
+    const member = await storage.getMemberByUserId(userId, survey.organizationId);
+    if (!member) {
       return res.status(403).json({ message: "Acesso negado" });
     }
-    
-    const responses = await storage.getResponses(surveyId);
-    res.json(responses);
+
+    // Interviewers can only view their own responses; roles without responses:view are denied
+    if (hasPermission(member.role as UserRole, "responses:view")) {
+      const responses = await storage.getResponses(surveyId);
+      return res.json(responses);
+    } else if (hasPermission(member.role as UserRole, "responses:view_own")) {
+      const responses = await storage.getResponses(surveyId);
+      return res.json(responses.filter(r => r.interviewerId === userId));
+    } else {
+      return res.status(403).json({ message: "Sem permissão para visualizar respostas" });
+    }
   });
 
   app.get(api.analytics.surveySummary.path, isAuthenticated, async (req, res) => {
@@ -1620,9 +1641,14 @@ export async function registerRoutes(
     const survey = await storage.getSurvey(surveyId);
     if (!survey) return res.status(404).json({ message: "Pesquisa não encontrada" });
     
-    const isMember = await storage.isUserMemberOfOrg(userId, survey.organizationId);
-    if (!isMember) {
+    const member = await storage.getMemberByUserId(userId, survey.organizationId);
+    if (!member) {
       return res.status(403).json({ message: "Acesso negado" });
+    }
+
+    // Only roles with full analytics:view may access raw location data; viewers get 403
+    if (!hasPermission(member.role as UserRole, "analytics:view")) {
+      return res.status(403).json({ message: "Sem permissão para visualizar analytics detalhados" });
     }
     
     const analytics = await storage.getSurveyAnalytics(surveyId);
@@ -1690,10 +1716,25 @@ export async function registerRoutes(
       });
       
       const { responseIds, status, reviewNote } = schema.parse(req.body);
-      
-      // Update all responses
+
+      // Tenant isolation: verify every response belongs to a survey in this org
+      const orgSurveys = await db.select({ id: surveys.id }).from(surveys).where(eq(surveys.organizationId, orgId));
+      const orgSurveyIds = new Set(orgSurveys.map(s => s.id));
+      const safeIds: number[] = [];
+      for (const id of responseIds) {
+        const resp = await storage.getResponse(id);
+        if (resp && orgSurveyIds.has(resp.surveyId)) {
+          safeIds.push(id);
+        }
+      }
+
+      if (safeIds.length === 0) {
+        return res.status(404).json({ message: "Nenhuma resposta válida encontrada para esta organização" });
+      }
+
+      // Update only verified responses
       const results = await Promise.all(
-        responseIds.map(id => storage.updateResponseStatus(id, status, reviewNote))
+        safeIds.map(id => storage.updateResponseStatus(id, status, reviewNote))
       );
       
       res.json({ updated: results.length, responses: results });
@@ -1707,9 +1748,14 @@ export async function registerRoutes(
     const userId = await getResolvedUserId(req);
     const orgId = Number(req.params.orgId);
     
-    const isMember = await storage.isUserMemberOfOrg(userId, orgId);
-    if (!isMember) {
+    const member = await storage.getMemberByUserId(userId, orgId);
+    if (!member) {
       return res.status(403).json({ message: "Acesso negado" });
+    }
+
+    // Only roles with responses:view may access all org responses
+    if (!hasPermission(member.role as UserRole, "responses:view")) {
+      return res.status(403).json({ message: "Sem permissão para visualizar respostas da organização" });
     }
     
     const responses = await storage.getResponsesByOrg(orgId);
