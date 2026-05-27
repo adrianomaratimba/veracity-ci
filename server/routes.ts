@@ -3947,39 +3947,50 @@ export async function registerRoutes(
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
       const questionsText = questions.map((q: any, i: number) => {
-        const resultsText = [...q.results]
-          .sort((a: any, b: any) => b.percentage - a.percentage)
-          .map((r: any) => `  - ${r.option}: ${r.count} votos (${r.percentage}%)`)
+        const sorted = [...q.results].sort((a: any, b: any) => b.percentage - a.percentage);
+        const total = sorted.reduce((acc: number, r: any) => acc + (r.count || 0), 0);
+        const resultsText = sorted
+          .map((r: any) => `  • ${r.option}: ${r.count} votos — ${r.percentage}%`)
           .join('\n');
-        return `Pergunta ${i + 1} (ID: ${q.questionId}): ${q.questionText}\nResultados:\n${resultsText}`;
-      }).join('\n\n');
+        return `Pergunta ${i + 1} (ID: ${q.questionId})\nEnunciado: "${q.questionText}"\nTotal de respostas: ${total}\nResultados (ordem decrescente):\n${resultsText}`;
+      }).join('\n\n---\n\n');
 
-      const prompt = `Você é um analista político eleitoral especializado em pesquisas de opinião pública do Brasil.
+      const systemMessage = `Você é um analista político eleitoral sênior especializado em pesquisas de opinião pública do Brasil, com profundo conhecimento em estatística eleitoral e comportamento do eleitor.
 
-Analise os resultados da pesquisa eleitoral "${surveyTitle}"${surveyLocation ? ` realizada em ${surveyLocation}` : ''}.
+REGRAS ABSOLUTAS — descumprir qualquer uma invalida a análise:
+1. Use EXCLUSIVAMENTE os números fornecidos nos dados. NUNCA some, subtraia ou calcule percentuais que não estejam explicitamente na tabela de resultados.
+2. Cite cada opção pelo seu valor exato (ex: "39,1% responderam Depende do Candidato"). Nunca agrupe opções inventando um percentual novo.
+3. Não inclua frases genéricas de introdução como "Os resultados indicam..." sem embasamento direto nos dados.
+4. Seja preciso e técnico: cite os números reais, interprete o que cada percentual significa estrategicamente.`;
 
-Para cada pergunta abaixo, escreva um comentário analítico político em português brasileiro de 3 a 5 frases, focando em:
-- O que os números indicam sobre a situação política local
-- Tendências e padrões relevantes
-- Riscos e oportunidades para os candidatos/gestores
-- Interpretação prática para um instituto de pesquisa eleitoral
+      const userMessage = `Pesquisa: "${surveyTitle}"${surveyLocation ? ` — realizada em ${surveyLocation}` : ''}
 
-Seja objetivo, técnico e use linguagem profissional de análise política. Não inclua introduções genéricas.
+Para cada pergunta abaixo, escreva uma análise eleitoral profissional em português brasileiro com:
+- Leitura fiel dos números exatos fornecidos (cite cada opção com seu percentual real)
+- Interpretação política do cenário: o que esse resultado significa para o candidato/gestor mencionado
+- Avaliação de risco e oportunidade: probabilidade de sucesso ou fracasso baseada nos dados
+- Comparativo entre opções (sem somar valores não fornecidos)
+- Recomendação estratégica objetiva para um instituto de pesquisa ou campanha política
+
+Mínimo 5 frases por análise, linguagem técnica e direta.
 
 ${questionsText}
 
 Responda APENAS com JSON neste formato exato, usando o questionId fornecido em cada pergunta:
 {
   "commentaries": [
-    { "questionId": <número exato do ID fornecido>, "comment": "<comentário analítico>" }
+    { "questionId": <número exato do ID fornecido>, "comment": "<análise completa>" }
   ]
 }`;
 
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: userMessage },
+        ],
         response_format: { type: 'json_object' },
-        temperature: 0.7,
+        temperature: 0.2,
         max_tokens: 4000,
       });
 
