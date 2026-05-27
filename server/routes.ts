@@ -3898,6 +3898,10 @@ export async function registerRoutes(
       const surveyId = Number(req.params.surveyId);
       const member = await storage.getMemberByUserId(userId, orgId);
       if (!member) return res.status(403).json({ message: "Sem acesso" });
+      const allowedRoles = ['owner', 'admin', 'coordinator'];
+      if (!allowedRoles.includes(member.role)) {
+        return res.status(403).json({ message: "Apenas coordenadores e superiores podem acessar análises por IA" });
+      }
       const survey = await storage.getSurvey(surveyId);
       if (!survey || survey.organizationId !== orgId) return res.status(404).json({ message: "Pesquisa não encontrada" });
       const commentaries = await storage.getSurveyCommentaries(surveyId);
