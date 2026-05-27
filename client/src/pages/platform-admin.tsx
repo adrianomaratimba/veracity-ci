@@ -529,11 +529,22 @@ type AppStoreConfig = {
   codemagic_api_key: string;
   codemagic_app_id: string;
   android_sha256_fingerprint: string;
+  ios_workflow_id: string;
+  android_workflow_id: string;
   ios_last_build_id?: string;
+  android_last_build_id?: string;
+};
+
+type AssetlinksStatus = {
+  configured: boolean;
+  fingerprint: string | null;
+  liveMatch: boolean;
+  liveError: string | null;
 };
 
 type BuildStatus = {
   buildId: string;
+  platform: string;
   status: string;
   startedAt?: string;
   finishedAt?: string;
@@ -559,14 +570,69 @@ const buildStatusColor: Record<string, string> = {
   timeout: 'text-red-600',
 };
 
+function BuildStatusCard({
+  platform,
+  buildStatus,
+  appId,
+  onRefresh,
+  isRefreshing,
+}: {
+  platform: 'ios' | 'android';
+  buildStatus: BuildStatus | null;
+  appId: string;
+  onRefresh: () => void;
+  isRefreshing: boolean;
+}) {
+  if (!buildStatus) return null;
+  return (
+    <div className="rounded-md border p-3 space-y-2 bg-muted/40" data-testid={`card-build-status-${platform}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">Último Build</p>
+        <Button variant="ghost" size="sm" onClick={onRefresh} disabled={isRefreshing}
+          data-testid={`button-check-build-status-${platform}`}>
+          {isRefreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground font-mono">ID: {buildStatus.buildId}</p>
+      {buildStatus.status && (
+        <p className={`text-sm font-medium ${buildStatusColor[buildStatus.status] || 'text-muted-foreground'}`}>
+          Status: {buildStatusLabel[buildStatus.status] || buildStatus.status}
+        </p>
+      )}
+      {buildStatus.finishedAt && (
+        <p className="text-xs text-muted-foreground">
+          Concluído em: {new Date(buildStatus.finishedAt).toLocaleString('pt-BR')}
+        </p>
+      )}
+      {appId && buildStatus.buildId && (
+        <a href={`https://codemagic.io/app/${appId}/build/${buildStatus.buildId}`}
+          target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+          data-testid={`link-codemagic-build-${platform}`}>
+          <ExternalLink className="w-3 h-3" />
+          Ver no Codemagic
+        </a>
+      )}
+    </div>
+  );
+}
+
 function AppStoresTab() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Config form state — only set when user wants to change a value
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [appIdInput, setAppIdInput] = useState('');
   const [sha256Input, setSha256Input] = useState('');
-  const [buildStatusData, setBuildStatusData] = useState<BuildStatus | null>(null);
-  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [iosWorkflowInput, setIosWorkflowInput] = useState('');
+  const [androidWorkflowInput, setAndroidWorkflowInput] = useState('');
+
+  // Per-platform build status
+  const [iosBuildStatus, setIosBuildStatus] = useState<BuildStatus | null>(null);
+  const [androidBuildStatus, setAndroidBuildStatus] = useState<BuildStatus | null>(null);
+  const [checkingIos, setCheckingIos] = useState(false);
+  const [checkingAndroid, setCheckingAndroid] = useState(false);
 
   const { data: config, isLoading: configLoading } = useQuery<AppStoreConfig>({
     queryKey: ['/api/admin/app-store/config'],
@@ -577,7 +643,7 @@ function AppStoresTab() {
     },
   });
 
-  const { data: assetlinks } = useQuery<{ configured: boolean; fingerprint: string | null }>({
+  const { data: assetlinks } = useQuery<AssetlinksStatus>({
     queryKey: ['/api/admin/app-store/verify-assetlinks'],
     queryFn: async () => {
       const res = await fetch('/api/admin/app-store/verify-assetlinks', { credentials: 'include' });
@@ -592,6 +658,8 @@ function AppStoresTab() {
       if (apiKeyInput) body.codemagic_api_key = apiKeyInput;
       if (appIdInput) body.codemagic_app_id = appIdInput;
       if (sha256Input) body.android_sha256_fingerprint = sha256Input;
+      if (iosWorkflowInput) body.ios_workflow_id = iosWorkflowInput;
+      if (androidWorkflowInput) body.android_workflow_id = androidWorkflowInput;
       const res = await fetch('/api/admin/app-store/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -611,42 +679,47 @@ function AppStoresTab() {
   });
 
   const triggerBuildMutation = useMutation({
-    mutationFn: async (workflowId: 'ios-app-store' | 'ios-development') => {
+    mutationFn: async (platform: 'ios-app-store' | 'ios-development' | 'android-twa') => {
       const res = await fetch('/api/admin/app-store/trigger-build', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflowId }),
+        body: JSON.stringify({ platform }),
         credentials: 'include',
       });
       if (!res.ok) throw new Error((await res.json()).message || 'Erro ao disparar build');
-      return res.json() as Promise<{ buildId: string; buildUrl: string }>;
+      return res.json() as Promise<{ buildId: string; platform: string; buildUrl: string }>;
     },
     onSuccess: (data) => {
+      const isAndroid = data.platform === 'android-twa';
       toast({
-        title: 'Build iOS disparado!',
+        title: `Build ${isAndroid ? 'Android' : 'iOS'} disparado!`,
         description: `Build ID: ${data.buildId}`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/app-store/config'] });
-      setBuildStatusData({ buildId: data.buildId, status: 'queued' });
+      const status: BuildStatus = { buildId: data.buildId, platform: data.platform, status: 'queued' };
+      if (isAndroid) setAndroidBuildStatus(status);
+      else setIosBuildStatus(status);
     },
     onError: (err: Error) => toast({ title: err.message, variant: 'destructive' }),
   });
 
-  const checkBuildStatus = async (buildId: string) => {
-    setCheckingStatus(true);
+  const checkBuildStatus = async (platform: 'ios' | 'android') => {
+    const setChecking = platform === 'ios' ? setCheckingIos : setCheckingAndroid;
+    const setStatus = platform === 'ios' ? setIosBuildStatus : setAndroidBuildStatus;
+    setChecking(true);
     try {
-      const res = await fetch(`/api/admin/app-store/build-status/${buildId}`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/app-store/build-status/${platform}`, { credentials: 'include' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Erro ao consultar status');
-      setBuildStatusData(data);
+      setStatus(data);
     } catch (err: any) {
       toast({ title: err.message, variant: 'destructive' });
     } finally {
-      setCheckingStatus(false);
+      setChecking(false);
     }
   };
 
-  const lastBuildId = config?.ios_last_build_id;
+  const canTrigger = !!(config?.codemagic_api_key && config?.codemagic_app_id);
 
   return (
     <div className="space-y-6">
@@ -658,15 +731,13 @@ function AppStoresTab() {
             <CardTitle>Configurações de CI/CD</CardTitle>
           </div>
           <CardDescription>
-            Credenciais para integração com o Codemagic (iOS) e verificação Android TWA.
+            Credenciais para integração com o Codemagic (iOS e Android) e verificação do TWA Android.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {configLoading ? (
             <div className="space-y-3">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+              {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
             </div>
           ) : (
             <>
@@ -700,6 +771,31 @@ function AppStoresTab() {
                 </p>
               </div>
               <Separator />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="input-ios-workflow">Workflow ID iOS</Label>
+                  <Input
+                    id="input-ios-workflow"
+                    data-testid="input-ios-workflow-id"
+                    placeholder="ios-app-store"
+                    value={iosWorkflowInput || config?.ios_workflow_id || ''}
+                    onChange={(e) => setIosWorkflowInput(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Padrão: ios-app-store</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="input-android-workflow">Workflow ID Android</Label>
+                  <Input
+                    id="input-android-workflow"
+                    data-testid="input-android-workflow-id"
+                    placeholder="android-twa"
+                    value={androidWorkflowInput || config?.android_workflow_id || ''}
+                    onChange={(e) => setAndroidWorkflowInput(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Padrão: android-twa</p>
+                </div>
+              </div>
+              <Separator />
               <div className="space-y-2">
                 <Label htmlFor="input-sha256">SHA-256 do Certificado Android</Label>
                 <Input
@@ -710,7 +806,7 @@ function AppStoresTab() {
                   onChange={(e) => setSha256Input(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Fingerprint SHA-256 do certificado de assinatura do Play Store (para assetlinks.json)
+                  Fingerprint SHA-256 do certificado de assinatura do Play Store (alimenta o assetlinks.json)
                 </p>
               </div>
             </>
@@ -737,7 +833,7 @@ function AppStoresTab() {
               <CardTitle>iOS (TestFlight)</CardTitle>
             </div>
             <CardDescription>
-              Dispare builds iOS via Codemagic. O app será enviado para o TestFlight automaticamente.
+              Dispara builds iOS via Codemagic. O workflow envia o app ao TestFlight automaticamente.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -745,7 +841,7 @@ function AppStoresTab() {
               <Button
                 data-testid="button-trigger-ios-appstore"
                 onClick={() => triggerBuildMutation.mutate('ios-app-store')}
-                disabled={triggerBuildMutation.isPending || !config?.codemagic_api_key || !config?.codemagic_app_id}
+                disabled={triggerBuildMutation.isPending || !canTrigger}
                 className="w-full"
               >
                 {triggerBuildMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
@@ -755,60 +851,31 @@ function AppStoresTab() {
                 variant="outline"
                 data-testid="button-trigger-ios-dev"
                 onClick={() => triggerBuildMutation.mutate('ios-development')}
-                disabled={triggerBuildMutation.isPending || !config?.codemagic_api_key || !config?.codemagic_app_id}
+                disabled={triggerBuildMutation.isPending || !canTrigger}
                 className="w-full"
               >
                 {triggerBuildMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
                 Disparar Build de Desenvolvimento
               </Button>
             </div>
-
-            {(!config?.codemagic_api_key || !config?.codemagic_app_id) && (
+            {!canTrigger && (
               <p className="text-xs text-amber-600 dark:text-amber-400">
                 Configure API Key e App ID do Codemagic para habilitar os builds.
               </p>
             )}
-
-            {(lastBuildId || buildStatusData) && (
-              <div className="rounded-md border p-3 space-y-2 bg-muted/40" data-testid="card-build-status">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Último Build</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => checkBuildStatus(buildStatusData?.buildId || lastBuildId!)}
-                    disabled={checkingStatus}
-                    data-testid="button-check-build-status"
-                  >
-                    {checkingStatus ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground font-mono">
-                  ID: {buildStatusData?.buildId || lastBuildId}
-                </p>
-                {buildStatusData?.status && (
-                  <p className={`text-sm font-medium ${buildStatusColor[buildStatusData.status] || 'text-muted-foreground'}`}>
-                    Status: {buildStatusLabel[buildStatusData.status] || buildStatusData.status}
-                  </p>
-                )}
-                {buildStatusData?.finishedAt && (
-                  <p className="text-xs text-muted-foreground">
-                    Concluído em: {new Date(buildStatusData.finishedAt).toLocaleString('pt-BR')}
-                  </p>
-                )}
-                {config?.codemagic_app_id && (lastBuildId || buildStatusData?.buildId) && (
-                  <a
-                    href={`https://codemagic.io/app/${config.codemagic_app_id}/build/${buildStatusData?.buildId || lastBuildId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                    data-testid="link-codemagic-build"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Ver no Codemagic
-                  </a>
-                )}
-              </div>
+            <BuildStatusCard
+              platform="ios"
+              buildStatus={iosBuildStatus}
+              appId={config?.codemagic_app_id || ''}
+              onRefresh={() => checkBuildStatus('ios')}
+              isRefreshing={checkingIos}
+            />
+            {!iosBuildStatus && config?.ios_last_build_id && (
+              <Button variant="ghost" size="sm" onClick={() => checkBuildStatus('ios')} disabled={checkingIos}
+                data-testid="button-load-ios-build-status" className="w-full text-xs">
+                {checkingIos ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                Carregar status do último build iOS
+              </Button>
             )}
           </CardContent>
         </Card>
@@ -821,59 +888,74 @@ function AppStoresTab() {
               <CardTitle>Android (TWA / Google Play)</CardTitle>
             </div>
             <CardDescription>
-              O app Android é gerado via Bubblewrap/TWA a partir do PWA publicado.
+              Dispara builds Android TWA via Codemagic e verifica o assetlinks.json para o Google Play.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <Button
+              data-testid="button-trigger-android-twa"
+              onClick={() => triggerBuildMutation.mutate('android-twa')}
+              disabled={triggerBuildMutation.isPending || !canTrigger}
+              className="w-full"
+            >
+              {triggerBuildMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+              Disparar Build Android TWA
+            </Button>
+            {!canTrigger && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Configure API Key e App ID do Codemagic para habilitar os builds.
+              </p>
+            )}
+            <BuildStatusCard
+              platform="android"
+              buildStatus={androidBuildStatus}
+              appId={config?.codemagic_app_id || ''}
+              onRefresh={() => checkBuildStatus('android')}
+              isRefreshing={checkingAndroid}
+            />
+            {!androidBuildStatus && config?.android_last_build_id && (
+              <Button variant="ghost" size="sm" onClick={() => checkBuildStatus('android')} disabled={checkingAndroid}
+                data-testid="button-load-android-build-status" className="w-full text-xs">
+                {checkingAndroid ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                Carregar status do último build Android
+              </Button>
+            )}
+
+            {/* Assetlinks verification */}
             <div className="rounded-md border p-3 space-y-3 bg-muted/40">
               <p className="text-sm font-medium">Verificação do assetlinks.json</p>
               <div className="flex items-center gap-2">
-                {assetlinks?.configured ? (
+                {assetlinks?.configured && assetlinks?.liveMatch ? (
                   <CheckCircle2 className="w-4 h-4 text-green-600" data-testid="icon-assetlinks-ok" />
                 ) : (
                   <XCircle className="w-4 h-4 text-red-500" data-testid="icon-assetlinks-missing" />
                 )}
                 <span className="text-sm">
-                  {assetlinks?.configured
-                    ? 'SHA-256 configurado — assetlinks.json ativo'
+                  {assetlinks?.configured && assetlinks?.liveMatch
+                    ? 'SHA-256 configurado e verificado no endpoint'
+                    : assetlinks?.configured
+                    ? 'SHA-256 configurado, mas não encontrado no endpoint'
                     : 'SHA-256 não configurado — TWA não verificado'}
                 </span>
               </div>
+              {assetlinks?.liveError && (
+                <p className="text-xs text-red-500">Erro na verificação live: {assetlinks.liveError}</p>
+              )}
               {assetlinks?.fingerprint && (
-                <p className="text-xs font-mono text-muted-foreground break-all">
-                  {assetlinks.fingerprint}
-                </p>
+                <p className="text-xs font-mono text-muted-foreground break-all">{assetlinks.fingerprint}</p>
               )}
             </div>
 
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">Passos para publicar no Google Play:</p>
-              <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Configure o SHA-256 do certificado acima</li>
-                <li>Execute <code className="bg-muted px-1 rounded">bubblewrap build</code> localmente</li>
-                <li>Faça upload do APK/AAB no Google Play Console</li>
-                <li>Obtenha o SHA-256 da assinatura do Play Store e atualize acima</li>
-              </ol>
-            </div>
-
-            <div className="flex gap-2">
-              <a
-                href="https://play.google.com/console"
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="link-play-console"
-              >
+            <div className="flex gap-2 flex-wrap">
+              <a href="https://play.google.com/console" target="_blank" rel="noopener noreferrer"
+                data-testid="link-play-console">
                 <Button variant="outline" size="sm">
                   <ExternalLink className="w-3 h-3 mr-2" />
                   Google Play Console
                 </Button>
               </a>
-              <a
-                href={`${window.location.origin}/.well-known/assetlinks.json`}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="link-assetlinks"
-              >
+              <a href={`${window.location.origin}/.well-known/assetlinks.json`}
+                target="_blank" rel="noopener noreferrer" data-testid="link-assetlinks">
                 <Button variant="outline" size="sm">
                   <ExternalLink className="w-3 h-3 mr-2" />
                   Ver assetlinks.json

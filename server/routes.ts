@@ -63,11 +63,11 @@ export async function registerRoutes(
 ): Promise<Server> {
 
   // Digital Asset Links — required for Android TWA verification.
-  // Replace SHA256_FINGERPRINT_PLACEHOLDER with the actual SHA-256 certificate
-  // fingerprint from your Play Store signing key (see APP_STORE_GUIDE.md Step 4).
-  // You can also set ANDROID_SHA256_FINGERPRINT as an environment variable.
-  app.get("/.well-known/assetlinks.json", (_req, res) => {
-    const fingerprint = process.env.ANDROID_SHA256_FINGERPRINT || "SHA256_FINGERPRINT_PLACEHOLDER";
+  // SHA-256 fingerprint is read from platform_app_config table (admin-configurable),
+  // falling back to ANDROID_SHA256_FINGERPRINT env var.
+  app.get("/.well-known/assetlinks.json", async (_req, res) => {
+    const dbFingerprint = await storage.getPlatformAppConfig('android_sha256_fingerprint').catch(() => undefined);
+    const fingerprint = dbFingerprint || process.env.ANDROID_SHA256_FINGERPRINT || "SHA256_FINGERPRINT_PLACEHOLDER";
     res.setHeader("Content-Type", "application/json");
     res.json([
       {
@@ -3260,31 +3260,77 @@ export async function registerRoutes(
   // APP STORE MANAGEMENT (platform admin only)
   // ==========================================
 
-  // GET /api/admin/app-store/config — return config (API key masked)
+  // AES-256-CBC encryption helpers for sensitive config values (codemagic_api_key)
+  const { createCipheriv, createDecipheriv, randomBytes: cryptoRandomBytes, createHash } = await import('crypto');
+
+  function getAppConfigEncryptionKey(): Buffer {
+    const secret = process.env.SESSION_SECRET || 'dev-only-fallback-key-must-be-32c';
+    return createHash('sha256').update(secret).digest();
+  }
+
+  function encryptConfigValue(plaintext: string): string {
+    const key = getAppConfigEncryptionKey();
+    const iv = cryptoRandomBytes(16);
+    const cipher = createCipheriv('aes-256-cbc', key, iv);
+    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    return 'enc:' + iv.toString('hex') + ':' + encrypted.toString('hex');
+  }
+
+  function decryptConfigValue(stored: string): string {
+    if (!stored.startsWith('enc:')) return stored; // legacy unencrypted or plaintext
+    const parts = stored.split(':');
+    if (parts.length !== 3) return stored;
+    const key = getAppConfigEncryptionKey();
+    const iv = Buffer.from(parts[1], 'hex');
+    const encrypted = Buffer.from(parts[2], 'hex');
+    const decipher = createDecipheriv('aes-256-cbc', key, iv);
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+  }
+
+  const SENSITIVE_CONFIG_KEYS = new Set(['codemagic_api_key']);
+
+  async function getDecryptedConfig(key: string): Promise<string | undefined> {
+    const raw = await storage.getPlatformAppConfig(key);
+    if (!raw) return undefined;
+    return SENSITIVE_CONFIG_KEYS.has(key) ? decryptConfigValue(raw) : raw;
+  }
+
+  // GET /api/admin/app-store/config — return config (sensitive keys masked)
   app.get("/api/admin/app-store/config", isAuthenticated, requirePlatformAdmin, async (_req, res) => {
     try {
       const config = await storage.getPlatformAppConfigs();
-      const masked: Record<string, string> = {};
+      const result: Record<string, string> = {};
       for (const [k, v] of Object.entries(config)) {
-        masked[k] = k === 'codemagic_api_key' ? (v ? '••••••••' + v.slice(-4) : '') : v;
+        if (SENSITIVE_CONFIG_KEYS.has(k)) {
+          // Decrypt then mask — only expose last 4 chars to confirm it's set
+          const decrypted = decryptConfigValue(v);
+          result[k] = decrypted ? '••••••••' + decrypted.slice(-4) : '';
+        } else {
+          result[k] = v;
+        }
       }
-      // Always include known keys so the frontend can render fields
-      const knownKeys = ['codemagic_api_key', 'codemagic_app_id', 'android_sha256_fingerprint'];
+      // Always include known keys with empty string if absent
+      const knownKeys = [
+        'codemagic_api_key', 'codemagic_app_id', 'android_sha256_fingerprint',
+        'ios_workflow_id', 'android_workflow_id',
+      ];
       for (const k of knownKeys) {
-        if (!(k in masked)) masked[k] = '';
+        if (!(k in result)) result[k] = '';
       }
-      res.json(masked);
+      res.json(result);
     } catch (err) {
       console.error('[app-store/config] error:', err);
       res.status(500).json({ message: "Erro ao buscar configurações" });
     }
   });
 
-  // POST /api/admin/app-store/config — save config key-values
+  // POST /api/admin/app-store/config — save config key-values (encrypts sensitive keys)
   const appStoreConfigSchema = z.object({
     codemagic_api_key: z.string().optional(),
     codemagic_app_id: z.string().optional(),
     android_sha256_fingerprint: z.string().optional(),
+    ios_workflow_id: z.string().optional(),
+    android_workflow_id: z.string().optional(),
   });
 
   app.post("/api/admin/app-store/config", isAuthenticated, requirePlatformAdmin, async (req, res) => {
@@ -3292,11 +3338,11 @@ export async function registerRoutes(
       const userId = await getResolvedUserId(req);
       const input = appStoreConfigSchema.parse(req.body);
       for (const [key, value] of Object.entries(input)) {
-        if (value !== undefined) {
-          // Skip if it's a masked placeholder (user didn't change it)
-          if (value.startsWith('••••')) continue;
-          await storage.setPlatformAppConfig(key, value, userId);
-        }
+        if (value === undefined || value === '') continue;
+        // Skip masked placeholder — user didn't change the sensitive field
+        if (value.startsWith('••••')) continue;
+        const toStore = SENSITIVE_CONFIG_KEYS.has(key) ? encryptConfigValue(value) : value;
+        await storage.setPlatformAppConfig(key, toStore, userId);
       }
       res.json({ success: true });
     } catch (err) {
@@ -3306,20 +3352,26 @@ export async function registerRoutes(
     }
   });
 
-  // POST /api/admin/app-store/trigger-build — trigger Codemagic build
+  // POST /api/admin/app-store/trigger-build — trigger Codemagic build by platform
   const triggerBuildSchema = z.object({
-    workflowId: z.enum(['ios-app-store', 'ios-development']),
+    platform: z.enum(['ios-app-store', 'ios-development', 'android-twa']),
   });
 
   app.post("/api/admin/app-store/trigger-build", isAuthenticated, requirePlatformAdmin, async (req, res) => {
     try {
       const input = triggerBuildSchema.parse(req.body);
-      const apiKey = await storage.getPlatformAppConfig('codemagic_api_key');
+      const apiKey = await getDecryptedConfig('codemagic_api_key');
       const appId = await storage.getPlatformAppConfig('codemagic_app_id');
 
       if (!apiKey || !appId) {
         return res.status(400).json({ message: "Codemagic API Key e App ID devem ser configurados antes de disparar builds" });
       }
+
+      // Resolve workflow ID: config key overrides, then default to platform value
+      const isAndroid = input.platform === 'android-twa';
+      const configWorkflowKey = isAndroid ? 'android_workflow_id' : 'ios_workflow_id';
+      const configuredWorkflowId = await storage.getPlatformAppConfig(configWorkflowKey);
+      const workflowId = configuredWorkflowId || input.platform;
 
       const response = await fetch('https://api.codemagic.io/builds', {
         method: 'POST',
@@ -3327,10 +3379,7 @@ export async function registerRoutes(
           'Content-Type': 'application/json',
           'x-auth-token': apiKey,
         },
-        body: JSON.stringify({
-          appId,
-          workflowId: input.workflowId,
-        }),
+        body: JSON.stringify({ appId, workflowId }),
       });
 
       const data = await response.json() as any;
@@ -3341,9 +3390,10 @@ export async function registerRoutes(
 
       const buildId: string = data.buildId || data.id;
       const userId = await getResolvedUserId(req);
-      await storage.setPlatformAppConfig(`ios_last_build_id`, buildId, userId);
+      const lastBuildKey = isAndroid ? 'android_last_build_id' : 'ios_last_build_id';
+      await storage.setPlatformAppConfig(lastBuildKey, buildId, userId);
 
-      res.json({ buildId, buildUrl: `https://codemagic.io/app/${appId}/build/${buildId}` });
+      res.json({ buildId, platform: input.platform, buildUrl: `https://codemagic.io/app/${appId}/build/${buildId}` });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json(err.errors);
       console.error('[app-store/trigger-build] error:', err);
@@ -3351,14 +3401,23 @@ export async function registerRoutes(
     }
   });
 
-  // GET /api/admin/app-store/build-status/:buildId — check Codemagic build status
-  app.get("/api/admin/app-store/build-status/:buildId", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+  // GET /api/admin/app-store/build-status/:platform — check latest build status for platform
+  app.get("/api/admin/app-store/build-status/:platform", isAuthenticated, requirePlatformAdmin, async (req, res) => {
     try {
-      const { buildId } = req.params;
-      const apiKey = await storage.getPlatformAppConfig('codemagic_api_key');
+      const { platform } = req.params;
+      if (!['ios', 'android'].includes(platform)) {
+        return res.status(400).json({ message: "platform deve ser 'ios' ou 'android'" });
+      }
 
+      const apiKey = await getDecryptedConfig('codemagic_api_key');
       if (!apiKey) {
         return res.status(400).json({ message: "Codemagic API Key não configurada" });
+      }
+
+      const lastBuildKey = platform === 'android' ? 'android_last_build_id' : 'ios_last_build_id';
+      const buildId = await storage.getPlatformAppConfig(lastBuildKey);
+      if (!buildId) {
+        return res.status(404).json({ message: "Nenhum build encontrado para esta plataforma" });
       }
 
       const response = await fetch(`https://api.codemagic.io/builds/${buildId}`, {
@@ -3373,11 +3432,11 @@ export async function registerRoutes(
       const build = data.build || data;
       res.json({
         buildId,
+        platform,
         status: build.status,
         startedAt: build.startedAt,
         finishedAt: build.finishedAt,
         workflowId: build.workflowId,
-        appId: build.appId,
       });
     } catch (err) {
       console.error('[app-store/build-status] error:', err);
@@ -3385,13 +3444,42 @@ export async function registerRoutes(
     }
   });
 
-  // GET /api/admin/app-store/verify-assetlinks — check assetlinks configured
-  app.get("/api/admin/app-store/verify-assetlinks", isAuthenticated, requirePlatformAdmin, async (_req, res) => {
+  // GET /api/admin/app-store/verify-assetlinks — live fetch + parse assetlinks.json
+  app.get("/api/admin/app-store/verify-assetlinks", isAuthenticated, requirePlatformAdmin, async (req, res) => {
     try {
-      const sha256 = await storage.getPlatformAppConfig('android_sha256_fingerprint')
+      const configuredSha256 = await storage.getPlatformAppConfig('android_sha256_fingerprint')
         || process.env.ANDROID_SHA256_FINGERPRINT;
-      const configured = !!(sha256 && sha256 !== 'SHA256_FINGERPRINT_PLACEHOLDER');
-      res.json({ configured, fingerprint: configured ? sha256 : null });
+      const configured = !!(configuredSha256 && configuredSha256 !== 'SHA256_FINGERPRINT_PLACEHOLDER');
+
+      // Live fetch and parse the assetlinks.json endpoint
+      let liveMatch = false;
+      let liveError: string | null = null;
+      try {
+        const host = (req.headers['x-forwarded-host'] as string) || req.get('host') || 'localhost:5000';
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const assetlinksUrl = `${protocol}://${host}/.well-known/assetlinks.json`;
+        const alRes = await fetch(assetlinksUrl);
+        if (alRes.ok) {
+          const alData = await alRes.json() as any[];
+          const fingerprintsInFile: string[] = alData.flatMap((entry: any) =>
+            entry?.target?.sha256_cert_fingerprints || []
+          );
+          liveMatch = configured
+            ? fingerprintsInFile.some((fp: string) => fp.toUpperCase() === configuredSha256?.toUpperCase())
+            : fingerprintsInFile.length > 0 && !fingerprintsInFile.includes('SHA256_FINGERPRINT_PLACEHOLDER');
+        } else {
+          liveError = `HTTP ${alRes.status}`;
+        }
+      } catch (fetchErr: any) {
+        liveError = fetchErr.message || 'Falha ao buscar endpoint';
+      }
+
+      res.json({
+        configured,
+        fingerprint: configured ? configuredSha256 : null,
+        liveMatch,
+        liveError,
+      });
     } catch (err) {
       res.status(500).json({ message: "Erro ao verificar assetlinks" });
     }

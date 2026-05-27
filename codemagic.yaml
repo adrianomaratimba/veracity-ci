@@ -110,3 +110,60 @@ workflows:
             --scheme App
     artifacts:
       - build/ios/ipa/*.ipa
+
+  android-twa:
+    name: Android TWA (Google Play)
+    max_build_duration: 45
+    environment:
+      # -----------------------------------------------------------------------
+      # Configure these variables in the Codemagic dashboard under
+      # App Settings > Environment variables:
+      #
+      #   ANDROID_KEYSTORE          — Base64-encoded .jks keystore file
+      #   ANDROID_KEYSTORE_PASSWORD — Password for the keystore
+      #   ANDROID_KEY_ALIAS         — Key alias inside the keystore
+      #   ANDROID_KEY_PASSWORD      — Password for the key
+      # -----------------------------------------------------------------------
+      node: v20.11.0
+      java: 17
+    cache:
+      cache_paths:
+        - node_modules
+        - android/.gradle
+    scripts:
+      - name: Install Node dependencies
+        script: npm ci
+
+      - name: Install Bubblewrap CLI
+        script: npm install -g @bubblewrap/cli
+
+      - name: Build web assets
+        script: npm run build
+
+      - name: Initialize Bubblewrap project (if not yet done)
+        script: |
+          if [ ! -f "android/app/build.gradle" ]; then
+            echo "Android project not found — running bubblewrap init..."
+            bubblewrap init --manifest https://veracity.replit.app/manifest.json \
+              --directory android \
+              --packageId br.com.dataveracity.app
+          else
+            echo "Android project present — skipping bubblewrap init."
+          fi
+
+      - name: Decode keystore from env
+        script: |
+          echo "$ANDROID_KEYSTORE" | base64 --decode > android/app/release.jks
+
+      - name: Build signed AAB
+        script: |
+          bubblewrap build --skipPwaValidation --directory android
+        env:
+          ANDROID_KEYSTORE: $ANDROID_KEYSTORE
+          ANDROID_KEYSTORE_PASSWORD: $ANDROID_KEYSTORE_PASSWORD
+          ANDROID_KEY_ALIAS: $ANDROID_KEY_ALIAS
+          ANDROID_KEY_PASSWORD: $ANDROID_KEY_PASSWORD
+
+    artifacts:
+      - android/app-release.aab
+      - android/app-release.apk
