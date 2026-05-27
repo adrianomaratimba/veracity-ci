@@ -74,3 +74,4 @@ The project is organized into `client/` (React frontend), `server/` (Express bac
 - `VAPID_PUBLIC_KEY`
 - `VAPID_PRIVATE_KEY`
 - `VAPID_EMAIL`
+- `OPENAI_API_KEY` — required for the AI commentary feature (POST /api/organizations/:orgId/surveys/:surveyId/ai-commentary)
