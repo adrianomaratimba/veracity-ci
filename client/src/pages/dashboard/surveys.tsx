@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { Plus, FileText, MoreVertical, Play, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive, Download, Upload, Loader2, Check } from "lucide-react";
+import { Plus, FileText, MoreVertical, Play, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive, Download, Upload, Loader2, Check, FileSpreadsheet } from "lucide-react";
 import { useOfflineCache } from "@/hooks/use-offline-cache";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -47,8 +47,12 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [duplicateTitle, setDuplicateTitle] = useState("");
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importActiveTab, setImportActiveTab] = useState("json");
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState<number | null>(null);
+  const [isImportingCsv, setIsImportingCsv] = useState(false);
+  const [csvPreviewData, setCsvPreviewData] = useState<{ headers: string[]; rows: Array<{ timestamp: string; interviewerName: string; answers: string[] }> } | null>(null);
+  const [csvSurveyTitle, setCsvSurveyTitle] = useState("");
   const [preparingOffline, setPreparingOffline] = useState<Set<number>>(new Set());
   const [offlineReadySurveys, setOfflineReadySurveys] = useState<Set<number>>(new Set());
   const { prepareOffline } = useOfflineCache();
@@ -252,6 +256,100 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
     }
   };
 
+  const parseGoogleFormsCSV = (text: string) => {
+    const parseRow = (line: string): string[] => {
+      const fields: string[] = [];
+      let inQuote = false;
+      let current = '';
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQuote && line[i + 1] === '"') { current += '"'; i++; }
+          else { inQuote = !inQuote; }
+        } else if (ch === ',' && !inQuote) {
+          fields.push(current); current = '';
+        } else { current += ch; }
+      }
+      fields.push(current);
+      return fields;
+    };
+    const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim());
+    if (lines.length < 2) return null;
+    const allHeaders = parseRow(lines[0]);
+    const questionHeaders = allHeaders.slice(2);
+    const rows = lines.slice(1).map(line => {
+      const cols = parseRow(line);
+      return { timestamp: cols[0] || '', interviewerName: cols[1] || '', answers: questionHeaders.map((_, i) => cols[i + 2] || '') };
+    }).filter(r => r.timestamp || r.interviewerName);
+    return { headers: questionHeaders, rows };
+  };
+
+  const handleCsvFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const parsed = parseGoogleFormsCSV(text);
+    if (!parsed || parsed.rows.length === 0) {
+      toast({ title: "Erro", description: "Arquivo inválido ou vazio. Verifique se é um CSV exportado pelo Google Forms.", variant: "destructive" });
+      return;
+    }
+    setCsvPreviewData(parsed);
+    setCsvSurveyTitle(file.name.replace(/\.csv$/i, '').replace(/_/g, ' '));
+    event.target.value = '';
+  };
+
+  const handleImportGoogleFormsCsv = async () => {
+    if (!csvPreviewData || !csvSurveyTitle.trim()) return;
+    setIsImportingCsv(true);
+    try {
+      const response = await fetch(`/api/organizations/${orgId}/surveys/import-google-forms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ surveyTitle: csvSurveyTitle, headers: csvPreviewData.headers, rows: csvPreviewData.rows }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao importar');
+      }
+      const result = await response.json();
+      toast({ title: "Importado com sucesso!", description: `${result.responsesImported} respostas e ${result.questionsImported} perguntas importadas.` });
+      setImportDialogOpen(false);
+      setCsvPreviewData(null);
+      setCsvSurveyTitle('');
+      window.location.reload();
+    } catch (error: any) {
+      toast({ title: "Erro", description: error.message || "Falha ao importar CSV", variant: "destructive" });
+    } finally {
+      setIsImportingCsv(false);
+    }
+  };
+
+  const handleExportGoogleForms = async (surveyId: number, surveyTitle: string) => {
+    setIsExporting(surveyId);
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}/export?format=google-forms`, { credentials: 'include' });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao exportar');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${surveyTitle.replace(/[^a-zA-Z0-9]/g, '_')}_GoogleForms.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast({ title: "Sucesso", description: "CSV no formato Google Forms exportado!" });
+    } catch (error: any) {
+      toast({ title: "Erro", description: error.message || "Falha ao exportar", variant: "destructive" });
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
   if (orgLoading || surveysLoading || memberLoading) return <LoadingScreen message="Carregando pesquisas..." />;
   if (!org) return <div>Organizacao nao encontrada</div>;
 
@@ -425,14 +523,24 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                         </DropdownMenuItem>
                       )}
                       {canImportExport && (
-                        <DropdownMenuItem 
-                          onClick={() => handleExportTemplate(survey.id, survey.title)} 
-                          disabled={isExporting === survey.id}
-                          data-testid={`button-export-${survey.id}`}
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          {isExporting === survey.id ? "Exportando..." : "Exportar Template"}
-                        </DropdownMenuItem>
+                        <>
+                          <DropdownMenuItem 
+                            onClick={() => handleExportTemplate(survey.id, survey.title)} 
+                            disabled={isExporting === survey.id}
+                            data-testid={`button-export-${survey.id}`}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            {isExporting === survey.id ? "Exportando..." : "Exportar Template"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleExportGoogleForms(survey.id, survey.title)}
+                            disabled={isExporting === survey.id}
+                            data-testid={`button-export-gf-${survey.id}`}
+                          >
+                            <FileSpreadsheet className="w-4 h-4 mr-2" />
+                            {isExporting === survey.id ? "Exportando..." : "Exportar (Google Forms)"}
+                          </DropdownMenuItem>
+                        </>
                       )}
                       {canAccessCollection && (
                         <>
@@ -484,47 +592,127 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
           {canCreate && (
           <div className="flex items-center gap-2 flex-wrap">
             {canImportExport && (
-              <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+              <Dialog open={importDialogOpen} onOpenChange={(open) => { setImportDialogOpen(open); if (!open) { setCsvPreviewData(null); setCsvSurveyTitle(''); setImportActiveTab('json'); } }}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="gap-2" data-testid="button-import-survey">
                     <Upload className="w-4 h-4" /> Importar
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Importar Pesquisa</DialogTitle>
                     <DialogDescription>
-                      Importe uma pesquisa de um arquivo JSON exportado anteriormente. 
-                      Útil para migrar pesquisas entre ambientes ou reutilizar templates.
+                      Escolha o formato do arquivo que deseja importar.
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg p-8">
-                      <Upload className="w-12 h-12 text-muted-foreground mb-4" />
-                      <p className="text-sm text-muted-foreground mb-4 text-center">
-                        Selecione um arquivo .json exportado do Data Veracity
-                      </p>
-                      <input
-                        type="file"
-                        accept=".json,application/json"
-                        onChange={handleImportTemplate}
-                        disabled={isImporting}
-                        className="hidden"
-                        id="import-file"
-                        data-testid="input-import-file"
-                      />
-                      <label htmlFor="import-file">
-                        <Button asChild disabled={isImporting}>
-                          <span>
-                            {isImporting ? "Importando..." : "Selecionar Arquivo"}
-                          </span>
-                        </Button>
-                      </label>
-                    </div>
-                    <p className="text-xs text-muted-foreground text-center">
-                      A pesquisa será criada como rascunho. Respostas coletadas não são importadas.
-                    </p>
-                  </div>
+                  <Tabs value={importActiveTab} onValueChange={setImportActiveTab} className="w-full">
+                    <TabsList className="w-full">
+                      <TabsTrigger value="json" className="flex-1" data-testid="tab-import-json">JSON (Template)</TabsTrigger>
+                      <TabsTrigger value="csv" className="flex-1" data-testid="tab-import-csv">CSV (Google Forms)</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="json">
+                      <div className="space-y-4 py-4">
+                        <div className="flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg p-8">
+                          <Upload className="w-12 h-12 text-muted-foreground mb-4" />
+                          <p className="text-sm text-muted-foreground mb-4 text-center">
+                            Selecione um arquivo .json exportado do Data Veracity
+                          </p>
+                          <input
+                            type="file"
+                            accept=".json,application/json"
+                            onChange={handleImportTemplate}
+                            disabled={isImporting}
+                            className="hidden"
+                            id="import-file"
+                            data-testid="input-import-file"
+                          />
+                          <label htmlFor="import-file">
+                            <Button asChild disabled={isImporting}>
+                              <span>{isImporting ? "Importando..." : "Selecionar Arquivo"}</span>
+                            </Button>
+                          </label>
+                        </div>
+                        <p className="text-xs text-muted-foreground text-center">
+                          A pesquisa será criada como rascunho. Respostas coletadas não são importadas.
+                        </p>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="csv">
+                      <div className="space-y-4 py-4">
+                        {!csvPreviewData ? (
+                          <div className="flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg p-8">
+                            <FileSpreadsheet className="w-12 h-12 text-muted-foreground mb-4" />
+                            <p className="text-sm text-muted-foreground mb-2 text-center font-medium">
+                              CSV exportado pelo Google Forms
+                            </p>
+                            <p className="text-xs text-muted-foreground mb-4 text-center">
+                              O arquivo deve ter "Carimbo de data/hora" e "Pesquisadora" como primeiras colunas
+                            </p>
+                            <input
+                              type="file"
+                              accept=".csv,text/csv"
+                              onChange={handleCsvFileSelect}
+                              className="hidden"
+                              id="import-csv-file"
+                              data-testid="input-import-csv-file"
+                            />
+                            <label htmlFor="import-csv-file">
+                              <Button asChild variant="outline">
+                                <span>Selecionar CSV</span>
+                              </Button>
+                            </label>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Respostas detectadas</span>
+                                <span className="font-semibold">{csvPreviewData.rows.length}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Perguntas detectadas</span>
+                                <span className="font-semibold">{csvPreviewData.headers.length}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Pesquisadoras</span>
+                                <span className="font-semibold">
+                                  {[...new Set(csvPreviewData.rows.map(r => r.interviewerName).filter(Boolean))].join(', ') || '—'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor="csv-survey-title">Nome da pesquisa</Label>
+                              <Input
+                                id="csv-survey-title"
+                                value={csvSurveyTitle}
+                                onChange={(e) => setCsvSurveyTitle(e.target.value)}
+                                placeholder="Ex: Pesquisa Geninho Maio 2026"
+                                data-testid="input-csv-survey-title"
+                              />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              As respostas serão importadas sem GPS nem áudio. Aparecerão na auditoria com badge "Importado".
+                            </p>
+                            <div className="flex gap-2">
+                              <Button variant="outline" className="flex-1" onClick={() => setCsvPreviewData(null)} data-testid="button-csv-back">
+                                Trocar Arquivo
+                              </Button>
+                              <Button
+                                className="flex-1"
+                                onClick={handleImportGoogleFormsCsv}
+                                disabled={isImportingCsv || !csvSurveyTitle.trim()}
+                                data-testid="button-csv-confirm"
+                              >
+                                {isImportingCsv ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importando...</> : "Importar Respostas"}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
                 </DialogContent>
               </Dialog>
             )}

@@ -1906,8 +1906,52 @@ export async function registerRoutes(
       // Get all responses with answers
       const responsesData = await storage.getResponsesWithAnswers(surveyId);
       const questions = survey.questions || [];
-      
-      // Build CSV
+
+      // Helper to escape CSV values
+      const escapeCSV = (val: any) => {
+        const str = String(val ?? '');
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes(';')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      // Google Forms-compatible format
+      if (format === 'google-forms') {
+        const userCache = new Map<string, string>();
+        const getUserName = async (userId: string) => {
+          if (userCache.has(userId)) return userCache.get(userId)!;
+          const u = await storage.getUserById(userId);
+          const name = [u?.firstName, u?.lastName].filter(Boolean).join(' ') || userId;
+          userCache.set(userId, name);
+          return name;
+        };
+
+        const gfHeaders = ['Carimbo de data/hora', 'Pesquisadora', ...questions.map(q => q.text)];
+        const gfRows = await Promise.all(responsesData.map(async r => {
+          const answerMap = new Map(r.answers.map(a => [a.questionId, a.value]));
+          const interviewerName = await getUserName(r.interviewerId);
+          const ts = new Date(r.createdAt!).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+          return [
+            ts,
+            interviewerName,
+            ...questions.map(q => {
+              const value = answerMap.get(q.id);
+              if (Array.isArray(value)) return value.join(';');
+              return value ?? '';
+            })
+          ];
+        }));
+
+        const gfCsv = [gfHeaders.map(escapeCSV).join(','), ...gfRows.map(row => row.map(escapeCSV).join(','))].join('\n');
+        const gfFilename = `${survey.title.replace(/[^a-zA-Z0-9]/g, '_')}_GoogleForms_${new Date().toISOString().split('T')[0]}.csv`;
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${gfFilename}"`);
+        res.send('\uFEFF' + gfCsv);
+        return;
+      }
+
+      // Build CSV (standard technical format)
       const headers = [
         'ID',
         'Entrevistador',
@@ -1940,14 +1984,6 @@ export async function registerRoutes(
       });
       
       // Generate CSV content
-      const escapeCSV = (val: any) => {
-        const str = String(val ?? '');
-        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
-      
       const csvContent = [
         headers.map(escapeCSV).join(','),
         ...rows.map(row => row.map(escapeCSV).join(','))
@@ -2033,7 +2069,130 @@ export async function registerRoutes(
     }
   });
 
-  // Import survey from JSON template (admin/owner only)
+  // Import Google Forms CSV — creates survey + responses from a parsed CSV export
+  app.post("/api/organizations/:orgId/surveys/import-google-forms", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.orgId);
+
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) return res.status(403).json({ message: "Acesso negado" });
+
+      const role = member.role as UserRole;
+      if (role !== 'owner' && role !== 'admin') {
+        return res.status(403).json({ message: "Apenas administradores e proprietários podem importar pesquisas" });
+      }
+
+      const { surveyTitle, headers, rows } = req.body as {
+        surveyTitle: string;
+        headers: string[];          // question column headers (already stripped of timestamp/pesquisadora)
+        rows: Array<{
+          timestamp: string;
+          interviewerName: string;
+          answers: string[];        // parallel to headers
+        }>;
+      };
+
+      if (!surveyTitle || !Array.isArray(headers) || !Array.isArray(rows)) {
+        return res.status(400).json({ message: "Dados inválidos. Verifique o formato do arquivo." });
+      }
+
+      // Detect question types from values
+      const questionMeta = headers.map((header, colIdx) => {
+        const values = rows.map(r => r.answers[colIdx] || '').filter(v => v);
+        const hasMultiple = values.some(v => v.includes(';'));
+        const allOptions = new Set<string>();
+        values.forEach(v => v.split(';').forEach(p => { const t = p.trim(); if (t) allOptions.add(t); }));
+        const isText = allOptions.size > 20 && !hasMultiple;
+        return {
+          text: header,
+          type: isText ? 'open_text' : hasMultiple ? 'multiple_choice' : 'single_choice',
+          options: isText ? null : Array.from(allOptions),
+        };
+      });
+
+      // Create survey as draft
+      const newSurvey = await storage.createSurvey({
+        organizationId: orgId,
+        title: surveyTitle + ' (Importado do Google Forms)',
+        description: `Importado do Google Forms em ${new Date().toLocaleDateString('pt-BR')}`,
+        type: 'electoral',
+        status: 'draft',
+        requireGps: false,
+        requireAudio: false,
+      });
+
+      // Create questions
+      const createdQuestions: Array<{ id: number; index: number }> = [];
+      for (let idx = 0; idx < questionMeta.length; idx++) {
+        const qm = questionMeta[idx];
+        const q = await storage.createQuestion({
+          surveyId: newSurvey.id,
+          text: qm.text,
+          type: qm.type,
+          options: qm.options,
+          order: idx,
+          required: false,
+        });
+        createdQuestions.push({ id: q.id, index: idx });
+      }
+
+      // Insert responses
+      let importedCount = 0;
+      const importerUserId = member.userId;
+
+      for (const row of rows) {
+        const ts = (() => {
+          try {
+            const d = new Date(row.timestamp);
+            return isNaN(d.getTime()) ? new Date() : d;
+          } catch { return new Date(); }
+        })();
+
+        const newResponse = await storage.createResponse(
+          {
+            surveyId: newSurvey.id,
+            interviewerId: importerUserId,
+            latitude: 0,
+            longitude: 0,
+            accuracy: 0,
+            gpsTimestamp: ts,
+            audioUrl: 'imported',
+            audioHash: 'imported',
+            startTime: ts,
+            endTime: new Date(ts.getTime() + 60000),
+            deviceInfo: { imported: true, originalInterviewerName: row.interviewerName, source: 'google-forms' } as any,
+            status: 'valid',
+          },
+          createdQuestions.map(cq => ({
+            questionId: cq.id,
+            value: (() => {
+              const raw = row.answers[cq.index] || '';
+              if (questionMeta[cq.index]?.type === 'multiple_choice') {
+                return raw.split(';').map((p: string) => p.trim()).filter((p: string) => p);
+              }
+              return raw;
+            })(),
+          }))
+        );
+        if (newResponse) importedCount++;
+      }
+
+      const interviewerNames = Array.from(new Set(rows.map((r: { interviewerName: string }) => r.interviewerName).filter(Boolean)));
+
+      res.status(201).json({
+        message: `${importedCount} respostas importadas com sucesso`,
+        survey: newSurvey,
+        responsesImported: importedCount,
+        questionsImported: createdQuestions.length,
+        interviewers: interviewerNames,
+      });
+    } catch (err) {
+      console.error("Erro ao importar CSV do Google Forms:", err);
+      res.status(500).json({ message: "Erro ao importar CSV" });
+    }
+  });
+
   app.post("/api/organizations/:orgId/surveys/import-template", isAuthenticated, async (req, res) => {
     try {
       const userId = await getResolvedUserId(req);

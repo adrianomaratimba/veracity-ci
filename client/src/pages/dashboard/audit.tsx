@@ -384,13 +384,22 @@ export default function AuditPage({ params }: AuditPageProps) {
                             {response.status === 'invalid' && <XCircle className="w-5 h-5 text-red-500" />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium truncate">{response.survey.title}</p>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className="font-medium truncate">{response.survey.title}</p>
+                              {(response as any).deviceInfo?.imported && (
+                                <Badge variant="outline" className="text-xs border-blue-400 text-blue-600 bg-blue-50 dark:bg-blue-950/30 shrink-0" data-testid={`badge-imported-${response.id}`}>
+                                  Importado
+                                </Badge>
+                              )}
+                            </div>
                             <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                               <span className="flex items-center gap-1">
                                 <Users className="w-3 h-3" />
-                                {(response as any).interviewer 
-                                  ? `${(response as any).interviewer.firstName || ''} ${(response as any).interviewer.lastName || ''}`.trim() || 'Sem nome'
-                                  : 'Desconhecido'}
+                                {(response as any).deviceInfo?.originalInterviewerName
+                                  ? (response as any).deviceInfo.originalInterviewerName
+                                  : (response as any).interviewer 
+                                    ? `${(response as any).interviewer.firstName || ''} ${(response as any).interviewer.lastName || ''}`.trim() || 'Sem nome'
+                                    : 'Desconhecido'}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
