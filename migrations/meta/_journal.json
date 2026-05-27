@@ -78,6 +78,13 @@
       "when": 1779847639754,
       "tag": "0010_unique_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779860000000,
+      "tag": "0013_add_platform_app_config",
+      "breakpoints": true
     }
   ]
 }

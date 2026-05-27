@@ -3264,7 +3264,10 @@ export async function registerRoutes(
   const { createCipheriv, createDecipheriv, randomBytes: cryptoRandomBytes, createHash } = await import('crypto');
 
   function getAppConfigEncryptionKey(): Buffer {
-    const secret = process.env.SESSION_SECRET || 'dev-only-fallback-key-must-be-32c';
+    const secret = process.env.SESSION_SECRET;
+    if (!secret) {
+      throw new Error('[app-store] SESSION_SECRET is required for secure config storage. Set SESSION_SECRET in environment variables.');
+    }
     return createHash('sha256').update(secret).digest();
   }
 
@@ -3452,12 +3455,16 @@ export async function registerRoutes(
       const configured = !!(configuredSha256 && configuredSha256 !== 'SHA256_FINGERPRINT_PLACEHOLDER');
 
       // Live fetch and parse the assetlinks.json endpoint
+      // Use trusted env-var-derived canonical origin — never trust request headers for SSRF-sensitive fetches
       let liveMatch = false;
       let liveError: string | null = null;
       try {
-        const host = (req.headers['x-forwarded-host'] as string) || req.get('host') || 'localhost:5000';
-        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-        const assetlinksUrl = `${protocol}://${host}/.well-known/assetlinks.json`;
+        const canonicalOrigin = process.env.REPLIT_DEPLOYMENT_DOMAIN
+          ? `https://${process.env.REPLIT_DEPLOYMENT_DOMAIN}`
+          : process.env.REPLIT_DEV_DOMAIN
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : 'http://localhost:5000';
+        const assetlinksUrl = `${canonicalOrigin}/.well-known/assetlinks.json`;
         const alRes = await fetch(assetlinksUrl);
         if (alRes.ok) {
           const alData = await alRes.json() as any[];
