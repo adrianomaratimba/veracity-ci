@@ -775,13 +775,51 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     },
   });
 
-  // AI Commentaries
+  // T007: Wave comparison queries
+  const { data: orgSurveys = [] } = useQuery<Array<{ id: number; title: string; waveLabel: string | null }>>({
+    queryKey: ['/api/organizations', orgId, 'surveys-list'],
+    queryFn: async () => {
+      const res = await fetch(`/api/surveys?organizationId=${orgId}`, { credentials: 'include' });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.surveys || data || []).filter((s: any) => s.id !== surveyId);
+    },
+  });
+
+  const { data: waveCompareData } = useQuery<any>({
+    queryKey: ['/api/surveys', compareWaveSurveyId, 'results', 'aggregated', 'wave-compare'],
+    queryFn: async () => {
+      const res = await fetch(`/api/surveys/${compareWaveSurveyId}/results/aggregated`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: compareWaveSurveyId !== 'none',
+  });
+
+  const userRole = (currentMember?.role as UserRole) || 'viewer';
+  const isViewer = isViewerRole(userRole);
+
+  // AI Commentaries — declared AFTER userRole/isViewer to avoid TDZ
   interface CommentaryData {
     id: number;
     questionId: number;
     commentText: string;
     approved: boolean;
   }
+
+  const canGenerateAI = !isViewer && ['owner', 'admin', 'coordinator'].includes(userRole);
+
+  const { data: aiStatus } = useQuery<{ openaiConfigured: boolean }>({
+    queryKey: ['/api/config/ai-status'],
+    queryFn: async () => {
+      const res = await fetch('/api/config/ai-status', { credentials: 'include' });
+      if (!res.ok) return { openaiConfigured: false };
+      return res.json();
+    },
+    enabled: canGenerateAI,
+  });
+
+  const openaiConfigured = aiStatus?.openaiConfigured ?? null;
 
   const { data: existingCommentaries = [], refetch: refetchCommentaries } = useQuery<CommentaryData[]>({
     queryKey: ['/api/organizations', orgId, 'surveys', surveyId, 'ai-commentary'],
@@ -790,7 +828,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!surveyId && !isViewer,
+    enabled: !!surveyId && canGenerateAI,
   });
 
   const approvedCommentaryMap = useMemo(() => {
@@ -798,8 +836,6 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
     existingCommentaries.filter(c => c.approved).forEach(c => { map[c.questionId] = c.commentText; });
     return map;
   }, [existingCommentaries]);
-
-  const canGenerateAI = !isViewer && ['owner', 'admin', 'coordinator'].includes(userRole);
 
   const handleGenerateAI = async () => {
     if (!aggregatedData?.questionResults?.length) {
@@ -865,30 +901,6 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       toast({ title: "Erro ao remover", variant: "destructive" });
     }
   };
-
-  // T007: Wave comparison queries
-  const { data: orgSurveys = [] } = useQuery<Array<{ id: number; title: string; waveLabel: string | null }>>({
-    queryKey: ['/api/organizations', orgId, 'surveys-list'],
-    queryFn: async () => {
-      const res = await fetch(`/api/surveys?organizationId=${orgId}`, { credentials: 'include' });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.surveys || data || []).filter((s: any) => s.id !== surveyId);
-    },
-  });
-
-  const { data: waveCompareData } = useQuery<any>({
-    queryKey: ['/api/surveys', compareWaveSurveyId, 'results', 'aggregated', 'wave-compare'],
-    queryFn: async () => {
-      const res = await fetch(`/api/surveys/${compareWaveSurveyId}/results/aggregated`, { credentials: 'include' });
-      if (!res.ok) return null;
-      return res.json();
-    },
-    enabled: compareWaveSurveyId !== 'none',
-  });
-
-  const userRole = (currentMember?.role as UserRole) || 'viewer';
-  const isViewer = isViewerRole(userRole);
 
   // Viewer settings - controls what viewers can see
   interface ViewerSettings {
@@ -1868,14 +1880,20 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
             <TabsContent value="vote-intention" className="mt-6">
               <div className="space-y-6">
                 {canGenerateAI && questionResults.length > 0 && (
-                  <div className="flex justify-end">
+                  <div className="flex justify-end items-center gap-3">
+                    {openaiConfigured === false && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1" data-testid="text-openai-not-configured">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Chave OpenAI não configurada — recurso indisponível
+                      </p>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleGenerateAI}
-                      disabled={isGeneratingAI}
+                      disabled={isGeneratingAI || openaiConfigured === false}
                       data-testid="button-generate-ai-commentary"
-                      className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/40"
+                      className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/40 disabled:opacity-50"
                     >
                       {isGeneratingAI ? (
                         <Loader2 className="w-4 h-4 animate-spin" />

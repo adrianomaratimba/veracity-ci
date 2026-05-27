@@ -3885,6 +3885,11 @@ export async function registerRoutes(
 
   // === AI COMMENTARY ROUTES ===
 
+  // GET — check if OpenAI is configured (public to authenticated users)
+  app.get("/api/config/ai-status", isAuthenticated, async (_req, res) => {
+    res.json({ openaiConfigured: !!process.env.OPENAI_API_KEY });
+  });
+
   // GET — fetch saved AI commentaries for a survey
   app.get("/api/organizations/:orgId/surveys/:surveyId/ai-commentary", isAuthenticated, async (req, res) => {
     try {
@@ -3893,6 +3898,8 @@ export async function registerRoutes(
       const surveyId = Number(req.params.surveyId);
       const member = await storage.getMemberByUserId(userId, orgId);
       if (!member) return res.status(403).json({ message: "Sem acesso" });
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey || survey.organizationId !== orgId) return res.status(404).json({ message: "Pesquisa não encontrada" });
       const commentaries = await storage.getSurveyCommentaries(surveyId);
       res.json(commentaries);
     } catch (err) {
@@ -3909,16 +3916,27 @@ export async function registerRoutes(
       }
       const userId = await getResolvedUserId(req);
       const orgId = Number(req.params.orgId);
+      const surveyId = Number(req.params.surveyId);
       const member = await storage.getMemberByUserId(userId, orgId);
       if (!member) return res.status(403).json({ message: "Sem acesso" });
       const allowedRoles = ['owner', 'admin', 'coordinator'];
       if (!allowedRoles.includes(member.role)) {
         return res.status(403).json({ message: "Apenas coordenadores e superiores podem gerar análises por IA" });
       }
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey || survey.organizationId !== orgId) return res.status(404).json({ message: "Pesquisa não encontrada" });
 
       const { surveyTitle, surveyLocation, questions } = req.body;
       if (!Array.isArray(questions) || questions.length === 0) {
         return res.status(400).json({ message: "Perguntas inválidas" });
+      }
+
+      // Verify all submitted questionIds belong to this survey
+      const surveyQuestionIds = new Set(survey.questions.map((q: any) => q.id));
+      for (const q of questions) {
+        if (!surveyQuestionIds.has(q.questionId)) {
+          return res.status(400).json({ message: `Pergunta inválida: ${q.questionId}` });
+        }
       }
 
       const { default: OpenAI } = await import('openai');
@@ -3987,6 +4005,13 @@ Responda APENAS com JSON neste formato exato, usando o questionId fornecido em c
       if (!allowedRoles.includes(member.role)) {
         return res.status(403).json({ message: "Sem permissão" });
       }
+      // Verify survey belongs to org
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey || survey.organizationId !== orgId) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      // Verify question belongs to this survey
+      const questionBelongs = survey.questions.some((q: any) => q.id === questionId);
+      if (!questionBelongs) return res.status(400).json({ message: "Pergunta não pertence a esta pesquisa" });
+
       const { commentText } = req.body;
       if (!commentText || typeof commentText !== 'string') {
         return res.status(400).json({ message: "Texto do comentário inválido" });
@@ -4018,6 +4043,13 @@ Responda APENAS com JSON neste formato exato, usando o questionId fornecido em c
       if (!allowedRoles.includes(member.role)) {
         return res.status(403).json({ message: "Sem permissão" });
       }
+      // Verify survey belongs to org
+      const survey = await storage.getSurvey(surveyId);
+      if (!survey || survey.organizationId !== orgId) return res.status(404).json({ message: "Pesquisa não encontrada" });
+      // Verify question belongs to this survey
+      const questionBelongs = survey.questions.some((q: any) => q.id === questionId);
+      if (!questionBelongs) return res.status(400).json({ message: "Pergunta não pertence a esta pesquisa" });
+
       await db.execute(sql`DELETE FROM survey_commentaries WHERE survey_id = ${surveyId} AND question_id = ${questionId}`);
       res.json({ ok: true });
     } catch (err) {
