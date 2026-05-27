@@ -24,7 +24,8 @@ import {
   messages, Message, InsertMessage,
   userPushSubscriptions, UserPushSubscription,
   customGeofences, CustomGeofence, InsertCustomGeofence,
-  uploadOwnership, UploadOwnership
+  uploadOwnership, UploadOwnership,
+  surveyCommentaries, SurveyCommentary, InsertSurveyCommentary,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
@@ -254,6 +255,10 @@ export interface IStorage {
   // Upload Ownership
   createUploadOwnership(objectId: string, userId: string, organizationId?: number): Promise<void>;
   getUploadOwnership(objectId: string): Promise<{ userId: string; organizationId: number | null } | undefined>;
+
+  // AI Commentaries
+  upsertSurveyCommentary(data: InsertSurveyCommentary): Promise<SurveyCommentary>;
+  getSurveyCommentaries(surveyId: number): Promise<SurveyCommentary[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2211,6 +2216,22 @@ export class DatabaseStorage implements IStorage {
       organizationId: uploadOwnership.organizationId,
     }).from(uploadOwnership).where(eq(uploadOwnership.objectId, objectId));
     return row;
+  }
+
+  // --- AI COMMENTARIES ---
+  async upsertSurveyCommentary(data: InsertSurveyCommentary): Promise<SurveyCommentary> {
+    const [row] = await db.insert(surveyCommentaries)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [surveyCommentaries.surveyId, surveyCommentaries.questionId],
+        set: { commentText: data.commentText, approved: data.approved },
+      })
+      .returning();
+    return row;
+  }
+
+  async getSurveyCommentaries(surveyId: number): Promise<SurveyCommentary[]> {
+    return await db.select().from(surveyCommentaries).where(eq(surveyCommentaries.surveyId, surveyId));
   }
 }
 

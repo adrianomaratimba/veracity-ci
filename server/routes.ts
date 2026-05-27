@@ -3883,6 +3883,149 @@ export async function registerRoutes(
     }
   });
 
+  // === AI COMMENTARY ROUTES ===
+
+  // GET — fetch saved AI commentaries for a survey
+  app.get("/api/organizations/:orgId/surveys/:surveyId/ai-commentary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.orgId);
+      const surveyId = Number(req.params.surveyId);
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) return res.status(403).json({ message: "Sem acesso" });
+      const commentaries = await storage.getSurveyCommentaries(surveyId);
+      res.json(commentaries);
+    } catch (err) {
+      console.error('[ai-commentary/get]', err);
+      res.status(500).json({ message: "Erro ao buscar análises" });
+    }
+  });
+
+  // POST — generate AI commentary via OpenAI
+  app.post("/api/organizations/:orgId/surveys/:surveyId/ai-commentary", isAuthenticated, async (req, res) => {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(503).json({ message: "Chave OpenAI não configurada. Configure OPENAI_API_KEY nas variáveis de ambiente." });
+      }
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.orgId);
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) return res.status(403).json({ message: "Sem acesso" });
+      const allowedRoles = ['owner', 'admin', 'coordinator'];
+      if (!allowedRoles.includes(member.role)) {
+        return res.status(403).json({ message: "Apenas coordenadores e superiores podem gerar análises por IA" });
+      }
+
+      const { surveyTitle, surveyLocation, questions } = req.body;
+      if (!Array.isArray(questions) || questions.length === 0) {
+        return res.status(400).json({ message: "Perguntas inválidas" });
+      }
+
+      const { default: OpenAI } = await import('openai');
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const questionsText = questions.map((q: any, i: number) => {
+        const resultsText = [...q.results]
+          .sort((a: any, b: any) => b.percentage - a.percentage)
+          .map((r: any) => `  - ${r.option}: ${r.count} votos (${r.percentage}%)`)
+          .join('\n');
+        return `Pergunta ${i + 1} (ID: ${q.questionId}): ${q.questionText}\nResultados:\n${resultsText}`;
+      }).join('\n\n');
+
+      const prompt = `Você é um analista político eleitoral especializado em pesquisas de opinião pública do Brasil.
+
+Analise os resultados da pesquisa eleitoral "${surveyTitle}"${surveyLocation ? ` realizada em ${surveyLocation}` : ''}.
+
+Para cada pergunta abaixo, escreva um comentário analítico político em português brasileiro de 3 a 5 frases, focando em:
+- O que os números indicam sobre a situação política local
+- Tendências e padrões relevantes
+- Riscos e oportunidades para os candidatos/gestores
+- Interpretação prática para um instituto de pesquisa eleitoral
+
+Seja objetivo, técnico e use linguagem profissional de análise política. Não inclua introduções genéricas.
+
+${questionsText}
+
+Responda APENAS com JSON neste formato exato, usando o questionId fornecido em cada pergunta:
+{
+  "commentaries": [
+    { "questionId": <número exato do ID fornecido>, "comment": "<comentário analítico>" }
+  ]
+}`;
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.7,
+        max_tokens: 4000,
+      });
+
+      const content = completion.choices[0]?.message?.content;
+      if (!content) return res.status(500).json({ message: "Resposta vazia da IA" });
+
+      const parsed = JSON.parse(content);
+      res.json(parsed);
+    } catch (err: any) {
+      console.error('[ai-commentary/generate]', err);
+      if (err?.status === 401) return res.status(503).json({ message: "Chave OpenAI inválida" });
+      if (err?.status === 429) return res.status(503).json({ message: "Limite de requisições OpenAI atingido. Tente novamente em instantes." });
+      res.status(500).json({ message: "Erro ao gerar análise por IA" });
+    }
+  });
+
+  // PUT — save/approve an AI commentary for a specific question
+  app.put("/api/organizations/:orgId/surveys/:surveyId/ai-commentary/:questionId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.orgId);
+      const surveyId = Number(req.params.surveyId);
+      const questionId = Number(req.params.questionId);
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) return res.status(403).json({ message: "Sem acesso" });
+      const allowedRoles = ['owner', 'admin', 'coordinator'];
+      if (!allowedRoles.includes(member.role)) {
+        return res.status(403).json({ message: "Sem permissão" });
+      }
+      const { commentText } = req.body;
+      if (!commentText || typeof commentText !== 'string') {
+        return res.status(400).json({ message: "Texto do comentário inválido" });
+      }
+      const commentary = await storage.upsertSurveyCommentary({
+        surveyId,
+        questionId,
+        commentText,
+        approved: true,
+        createdBy: userId,
+      });
+      res.json(commentary);
+    } catch (err) {
+      console.error('[ai-commentary/save]', err);
+      res.status(500).json({ message: "Erro ao salvar análise" });
+    }
+  });
+
+  // DELETE — remove an approved commentary
+  app.delete("/api/organizations/:orgId/surveys/:surveyId/ai-commentary/:questionId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const orgId = Number(req.params.orgId);
+      const surveyId = Number(req.params.surveyId);
+      const questionId = Number(req.params.questionId);
+      const member = await storage.getMemberByUserId(userId, orgId);
+      if (!member) return res.status(403).json({ message: "Sem acesso" });
+      const allowedRoles = ['owner', 'admin', 'coordinator'];
+      if (!allowedRoles.includes(member.role)) {
+        return res.status(403).json({ message: "Sem permissão" });
+      }
+      await db.execute(sql`DELETE FROM survey_commentaries WHERE survey_id = ${surveyId} AND question_id = ${questionId}`);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[ai-commentary/delete]', err);
+      res.status(500).json({ message: "Erro ao remover análise" });
+    }
+  });
+
   // PUBLIC endpoint: get survey results by token (no auth required)
   app.get("/api/public/:token", async (req, res) => {
     try {

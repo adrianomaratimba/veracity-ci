@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, doublePrecision, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, doublePrecision, varchar, unique } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -826,3 +826,21 @@ export const publicReportTokens = pgTable("public_report_tokens", {
 export const insertPublicReportTokenSchema = createInsertSchema(publicReportTokens).omit({ id: true, createdAt: true });
 export type InsertPublicReportToken = z.infer<typeof insertPublicReportTokenSchema>;
 export type PublicReportToken = typeof publicReportTokens.$inferSelect;
+
+// === AI COMMENTARIES ===
+
+export const surveyCommentaries = pgTable("survey_commentaries", {
+  id: serial("id").primaryKey(),
+  surveyId: integer("survey_id").references(() => surveys.id).notNull(),
+  questionId: integer("question_id").references(() => questions.id).notNull(),
+  commentText: text("comment_text").notNull(),
+  approved: boolean("approved").default(false),
+  createdBy: varchar("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueSurveyQuestion: unique().on(table.surveyId, table.questionId),
+}));
+
+export const insertSurveyCommentarySchema = createInsertSchema(surveyCommentaries).omit({ id: true, createdAt: true });
+export type InsertSurveyCommentary = z.infer<typeof insertSurveyCommentarySchema>;
+export type SurveyCommentary = typeof surveyCommentaries.$inferSelect;

@@ -17,7 +17,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
-import { Printer, Camera } from "lucide-react";
+import { Printer, Camera, Sparkles, Loader2, Pencil, CheckCircle2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   BarChart, 
   Bar, 
@@ -249,9 +250,12 @@ interface QuestionChartCardProps {
   questionResult: QuestionResultData;
   validResponses: number;
   marginOfError: number;
+  approvedComment?: string;
+  canManageComments?: boolean;
+  onDeleteComment?: () => void;
 }
 
-const QuestionChartCard = ({ questionResult: qr, validResponses, marginOfError }: QuestionChartCardProps) => {
+const QuestionChartCard = ({ questionResult: qr, validResponses, marginOfError, approvedComment, canManageComments, onDeleteComment }: QuestionChartCardProps) => {
   const chartRef = useRef<HTMLDivElement>(null);
   const sortedResults = [...qr.results].sort((a, b) => b.percentage - a.percentage);
   const displayResults = consolidateOptions(sortedResults, 10);
@@ -403,6 +407,32 @@ const QuestionChartCard = ({ questionResult: qr, validResponses, marginOfError }
               </tbody>
             </table>
           </div>
+
+          {approvedComment && (
+            <div className="mt-4 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2 flex-1">
+                  <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">Análise por IA</p>
+                    <p className="text-sm text-blue-900 dark:text-blue-100 leading-relaxed" data-testid={`text-ai-comment-${qr.questionId}`}>{approvedComment}</p>
+                  </div>
+                </div>
+                {canManageComments && onDeleteComment && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0 text-blue-500 hover:text-red-500"
+                    onClick={onDeleteComment}
+                    title="Remover análise"
+                    data-testid={`button-delete-comment-${qr.questionId}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -608,6 +638,10 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
   const [newLinkLabel, setNewLinkLabel] = useState('');
   const [newLinkExpiry, setNewLinkExpiry] = useState('30');
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [showAIDialog, setShowAIDialog] = useState(false);
+  const [aiDraft, setAiDraft] = useState<Record<number, string>>({});
+  const [aiApprovedMap, setAiApprovedMap] = useState<Record<number, boolean>>({});
   const [filters, setFilters] = useState<FilterState>({
     neighborhood: "all",
     ageRange: "all",
@@ -740,6 +774,97 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
       toast({ title: "Link removido" });
     },
   });
+
+  // AI Commentaries
+  interface CommentaryData {
+    id: number;
+    questionId: number;
+    commentText: string;
+    approved: boolean;
+  }
+
+  const { data: existingCommentaries = [], refetch: refetchCommentaries } = useQuery<CommentaryData[]>({
+    queryKey: ['/api/organizations', orgId, 'surveys', surveyId, 'ai-commentary'],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${orgId}/surveys/${surveyId}/ai-commentary`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!surveyId && !isViewer,
+  });
+
+  const approvedCommentaryMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    existingCommentaries.filter(c => c.approved).forEach(c => { map[c.questionId] = c.commentText; });
+    return map;
+  }, [existingCommentaries]);
+
+  const canGenerateAI = !isViewer && ['owner', 'admin', 'coordinator'].includes(userRole);
+
+  const handleGenerateAI = async () => {
+    if (!aggregatedData?.questionResults?.length) {
+      toast({ title: "Sem dados", description: "Não há perguntas para analisar.", variant: "destructive" });
+      return;
+    }
+    setIsGeneratingAI(true);
+    try {
+      const res = await apiRequest('POST', `/api/organizations/${orgId}/surveys/${surveyId}/ai-commentary`, {
+        surveyTitle: survey?.title || '',
+        surveyLocation: survey?.location || '',
+        questions: (aggregatedData?.questionResults || []).map((qr: any) => ({
+          questionId: qr.questionId,
+          questionText: qr.questionText,
+          results: qr.results,
+        })),
+      });
+      const data = await res.json();
+      const draft: Record<number, string> = {};
+      const approvedInit: Record<number, boolean> = {};
+      (data.commentaries || []).forEach((c: any) => {
+        draft[c.questionId] = c.comment;
+        approvedInit[c.questionId] = true;
+      });
+      setAiDraft(draft);
+      setAiApprovedMap(approvedInit);
+      setShowAIDialog(true);
+    } catch (err: any) {
+      let msg = "Não foi possível gerar a análise.";
+      try { const d = await err?.response?.json?.(); if (d?.message) msg = d.message; } catch {}
+      toast({ title: "Erro ao gerar análise", description: msg, variant: "destructive" });
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleSaveApprovedCommentaries = async () => {
+    const toSave = Object.entries(aiApprovedMap).filter(([, v]) => v).map(([k]) => Number(k));
+    if (toSave.length === 0) {
+      toast({ title: "Nenhum selecionado", description: "Marque pelo menos um comentário para salvar." });
+      return;
+    }
+    try {
+      await Promise.all(toSave.map(qId =>
+        apiRequest('PUT', `/api/organizations/${orgId}/surveys/${surveyId}/ai-commentary/${qId}`, {
+          commentText: aiDraft[qId],
+        })
+      ));
+      await refetchCommentaries();
+      setShowAIDialog(false);
+      toast({ title: "Análises salvas!", description: `${toSave.length} comentário(s) aprovado(s) e salvos.` });
+    } catch {
+      toast({ title: "Erro", description: "Não foi possível salvar os comentários.", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteCommentary = async (questionId: number) => {
+    try {
+      await apiRequest('DELETE', `/api/organizations/${orgId}/surveys/${surveyId}/ai-commentary/${questionId}`);
+      await refetchCommentaries();
+      toast({ title: "Análise removida" });
+    } catch {
+      toast({ title: "Erro ao remover", variant: "destructive" });
+    }
+  };
 
   // T007: Wave comparison queries
   const { data: orgSurveys = [] } = useQuery<Array<{ id: number; title: string; waveLabel: string | null }>>({
@@ -1742,12 +1867,35 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
 
             <TabsContent value="vote-intention" className="mt-6">
               <div className="space-y-6">
+                {canGenerateAI && questionResults.length > 0 && (
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerateAI}
+                      disabled={isGeneratingAI}
+                      data-testid="button-generate-ai-commentary"
+                      className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/40"
+                    >
+                      {isGeneratingAI ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                      {isGeneratingAI ? "Gerando análise..." : "Gerar Análise por IA"}
+                    </Button>
+                  </div>
+                )}
+
                 {questionResults.map((qr) => (
                   <QuestionChartCard
                     key={qr.questionId}
                     questionResult={qr}
                     validResponses={validResponses}
                     marginOfError={survey.marginOfError || 2}
+                    approvedComment={approvedCommentaryMap[qr.questionId]}
+                    canManageComments={canGenerateAI}
+                    onDeleteComment={() => handleDeleteCommentary(qr.questionId)}
                   />
                 ))}
                 
@@ -2522,6 +2670,67 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
           </Tabs>
         </div>
       </div>
+
+      {/* AI Commentary Review Dialog */}
+      <Dialog open={showAIDialog} onOpenChange={setShowAIDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-blue-600" />
+              Análise por IA — Revisão dos Comentários
+            </DialogTitle>
+            <DialogDescription>
+              Revise os comentários gerados pela IA. Edite se necessário e selecione quais salvar nos gráficos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            {Object.entries(aiDraft).map(([qIdStr, comment]) => {
+              const qId = Number(qIdStr);
+              const qr = aggregatedData?.questionResults?.find((q: any) => q.questionId === qId);
+              const isApproved = aiApprovedMap[qId] ?? true;
+              return (
+                <div key={qId} className={`p-4 rounded-lg border transition-colors ${isApproved ? 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30' : 'border-muted bg-muted/30'}`}>
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <p className="text-sm font-semibold text-foreground leading-tight flex-1">
+                      {qr?.questionText || `Pergunta ID ${qId}`}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`shrink-0 gap-1 ${isApproved ? 'text-blue-600' : 'text-muted-foreground'}`}
+                      onClick={() => setAiApprovedMap(prev => ({ ...prev, [qId]: !isApproved }))}
+                      data-testid={`button-toggle-ai-${qId}`}
+                    >
+                      {isApproved ? <CheckCircle2 className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4 opacity-30" />}
+                      {isApproved ? 'Selecionado' : 'Selecionar'}
+                    </Button>
+                  </div>
+                  <Textarea
+                    value={comment}
+                    onChange={e => setAiDraft(prev => ({ ...prev, [qId]: e.target.value }))}
+                    rows={4}
+                    className="text-sm resize-none"
+                    data-testid={`textarea-ai-comment-${qId}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter className="gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowAIDialog(false)} data-testid="button-ai-dialog-cancel">
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveApprovedCommentaries}
+              className="gap-2"
+              data-testid="button-ai-dialog-save"
+            >
+              <Sparkles className="w-4 h-4" />
+              Salvar Selecionados ({Object.values(aiApprovedMap).filter(Boolean).length})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* T005: Share Dialog */}
       <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
