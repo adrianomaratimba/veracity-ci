@@ -525,6 +525,77 @@ interface MainResultChartProps {
   };
 }
 
+interface OpenTextCardProps {
+  questionResult: QuestionResultData;
+  validResponses: number;
+}
+
+const OpenTextCard = ({ questionResult: qr, validResponses }: OpenTextCardProps) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const topN = 30;
+  const totalAnswered = qr.results.reduce((s, r) => s + r.count, 0);
+  const uniqueCount = qr.results.length;
+  const displayResults = qr.results.slice(0, topN);
+  const maxCount = displayResults.length > 0 ? displayResults[0].count : 1;
+
+  const handleExportImage = () => {
+    if (chartRef.current) exportCardAsImage(chartRef.current, `texto-aberto-${qr.questionId}`);
+  };
+
+  return (
+    <div ref={chartRef} className="bg-background">
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <CardTitle className="text-lg leading-tight">{qr.questionText}</CardTitle>
+              <CardDescription className="mt-1">
+                {totalAnswered} respostas preenchidas · {uniqueCount} únicas · Base: {validResponses} entrevistas
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="icon" onClick={handleExportImage} title="Exportar como imagem" data-testid={`button-export-image-ot-${qr.questionId}`}>
+              <Camera className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {displayResults.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Nenhuma resposta preenchida.</p>
+          ) : (
+            <div className="space-y-2">
+              {displayResults.map((r, i) => (
+                <div key={r.option} className="flex items-center gap-3" data-testid={`row-open-text-${qr.questionId}-${i}`}>
+                  <span className="w-5 text-xs text-muted-foreground text-right shrink-0">{i + 1}.</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <span className="text-sm truncate" title={r.option}>{r.option}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{r.count}×</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.round((r.count / maxCount) * 100)}%`,
+                          backgroundColor: CHART_COLORS[i % CHART_COLORS.length]
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {uniqueCount > topN && (
+                <p className="text-xs text-muted-foreground text-center pt-2">
+                  + {uniqueCount - topN} respostas únicas adicionais não exibidas
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 const MainResultChart = ({ questionData }: MainResultChartProps) => {
   const chartRef = useRef<HTMLDivElement>(null);
   const sortedResults = [...questionData.results].sort((a, b) => b.percentage - a.percentage);
@@ -1930,6 +2001,13 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
             <TabsContent value="vote-intention" className="mt-6">
               <div className="space-y-6">
                 {questionResults.map((qr) => (
+                  qr.questionType === 'open_text' ? (
+                    <OpenTextCard
+                      key={qr.questionId}
+                      questionResult={qr}
+                      validResponses={validResponses}
+                    />
+                  ) : (
                   <QuestionChartCard
                     key={qr.questionId}
                     questionResult={qr}
@@ -1945,6 +2023,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                     onGenerateComment={canGenerateAI && openaiConfigured !== false ? () => handleGenerateForQuestion(qr) : undefined}
                     isGeneratingComment={generatingQuestions.has(qr.questionId)}
                   />
+                  )
                 ))}
                 
                 {questionResults.length === 0 && (
@@ -2189,6 +2268,11 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
             <TabsContent value="distribution" className="mt-6">
               <div className="grid lg:grid-cols-2 gap-6">
                 {questionResults.map((qr, index) => (
+                  qr.questionType === 'open_text' ? (
+                    <div key={qr.questionId} className="lg:col-span-2">
+                      <OpenTextCard questionResult={qr} validResponses={validResponses} />
+                    </div>
+                  ) : (
                   <Card key={qr.questionId}>
                     <CardHeader>
                       <CardTitle className="text-lg">{qr.questionText}</CardTitle>
@@ -2231,6 +2315,7 @@ export default function SurveyResults({ params }: { params: { orgId: string, sur
                       </ResponsiveContainer>
                     </CardContent>
                   </Card>
+                  )
                 ))}
               </div>
             </TabsContent>

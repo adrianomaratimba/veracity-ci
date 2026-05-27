@@ -1315,6 +1315,43 @@ export class DatabaseStorage implements IStorage {
           showOptionImages: question.showOptionImages ?? false,
           results
         });
+      } else if (question.type === 'open_text') {
+        // For open_text questions, collect all non-empty answer values and their frequencies
+        const valueCounts: Record<string, number> = {};
+
+        if (validResponseIds.length > 0) {
+          const questionAnswers = await db.select()
+            .from(answers)
+            .where(and(
+              eq(answers.questionId, question.id),
+              sql`${answers.responseId} IN (${sql.join(validResponseIds.map(id => sql`${id}`), sql`, `)})`
+            ));
+
+          questionAnswers.forEach(ans => {
+            const value = ans.value as string;
+            const text = (typeof value === 'string' ? value : String(value)).trim();
+            if (text) {
+              valueCounts[text] = (valueCounts[text] || 0) + 1;
+            }
+          });
+        }
+
+        const total = Object.values(valueCounts).reduce((a, b) => a + b, 0);
+        const results = Object.entries(valueCounts)
+          .sort((a, b) => b[1] - a[1])
+          .map(([option, count]) => ({
+            option,
+            count,
+            percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+          }));
+
+        questionResults.push({
+          questionId: question.id,
+          questionText: question.text,
+          questionType: question.type,
+          showOptionImages: false,
+          results
+        });
       }
     }
 

@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { Plus, FileText, MoreVertical, Play, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive, Download, Upload, Loader2, Check, FileSpreadsheet } from "lucide-react";
+import { Plus, FileText, MoreVertical, Play, BarChart3, Edit, ExternalLink, Copy, Trash2, Pencil, RotateCcw, Archive, Download, Upload, Loader2, Check, FileSpreadsheet, CheckCircle2 } from "lucide-react";
 import { useOfflineCache } from "@/hooks/use-offline-cache";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -510,6 +510,22 @@ export default function SurveysPage({ params }: { params: { orgId: string } }) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {canEdit && survey.status === 'draft' && (
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            try {
+                              await updateSurvey.mutateAsync({ id: survey.id, orgId, data: { status: 'completed' } });
+                              toast({ title: "Sucesso", description: "Pesquisa marcada como concluída!" });
+                            } catch {
+                              toast({ title: "Erro", description: "Falha ao atualizar status", variant: "destructive" });
+                            }
+                          }}
+                          data-testid={`button-mark-completed-${survey.id}`}
+                        >
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          Marcar como Concluída
+                        </DropdownMenuItem>
+                      )}
                       {canEdit && (
                         <DropdownMenuItem onClick={() => handleOpenRename(survey)} data-testid={`button-rename-${survey.id}`}>
                           <Pencil className="w-4 h-4 mr-2" />
