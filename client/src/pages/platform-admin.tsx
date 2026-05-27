@@ -12,7 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Users, Plus, Trash2, KeyRound, Search, Building, Shield, Crown, UserCog, Eye, ClipboardList, RefreshCw, ArrowLeft, Globe } from "lucide-react";
+import { Building2, Users, Plus, Trash2, KeyRound, Search, Building, Shield, Crown, UserCog, Eye, ClipboardList, RefreshCw, ArrowLeft, Globe, Smartphone, Apple, CheckCircle2, XCircle, Loader2, ExternalLink, Settings2, Play } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import { useLocation } from "wouter";
 import { roleLabels } from "@shared/i18n/labels";
 import { useForm } from "react-hook-form";
@@ -523,6 +525,368 @@ function UsersTab() {
   );
 }
 
+type AppStoreConfig = {
+  codemagic_api_key: string;
+  codemagic_app_id: string;
+  android_sha256_fingerprint: string;
+  ios_last_build_id?: string;
+};
+
+type BuildStatus = {
+  buildId: string;
+  status: string;
+  startedAt?: string;
+  finishedAt?: string;
+  workflowId?: string;
+};
+
+const buildStatusLabel: Record<string, string> = {
+  queued: 'Na fila',
+  preparing: 'Preparando',
+  building: 'Construindo',
+  finishing: 'Finalizando',
+  finished: 'Concluído',
+  failed: 'Falhou',
+  canceled: 'Cancelado',
+  skipped: 'Ignorado',
+  timeout: 'Tempo esgotado',
+};
+
+const buildStatusColor: Record<string, string> = {
+  finished: 'text-green-600',
+  failed: 'text-red-600',
+  canceled: 'text-yellow-600',
+  timeout: 'text-red-600',
+};
+
+function AppStoresTab() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [appIdInput, setAppIdInput] = useState('');
+  const [sha256Input, setSha256Input] = useState('');
+  const [buildStatusData, setBuildStatusData] = useState<BuildStatus | null>(null);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+
+  const { data: config, isLoading: configLoading } = useQuery<AppStoreConfig>({
+    queryKey: ['/api/admin/app-store/config'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/app-store/config', { credentials: 'include' });
+      if (!res.ok) throw new Error('Erro ao buscar configurações');
+      return res.json();
+    },
+  });
+
+  const { data: assetlinks } = useQuery<{ configured: boolean; fingerprint: string | null }>({
+    queryKey: ['/api/admin/app-store/verify-assetlinks'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/app-store/verify-assetlinks', { credentials: 'include' });
+      if (!res.ok) throw new Error();
+      return res.json();
+    },
+  });
+
+  const saveConfigMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, string> = {};
+      if (apiKeyInput) body.codemagic_api_key = apiKeyInput;
+      if (appIdInput) body.codemagic_app_id = appIdInput;
+      if (sha256Input) body.android_sha256_fingerprint = sha256Input;
+      const res = await fetch('/api/admin/app-store/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.json()).message || 'Erro ao salvar');
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Configurações salvas com sucesso' });
+      setApiKeyInput('');
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/app-store/config'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/app-store/verify-assetlinks'] });
+    },
+    onError: (err: Error) => toast({ title: err.message, variant: 'destructive' }),
+  });
+
+  const triggerBuildMutation = useMutation({
+    mutationFn: async (workflowId: 'ios-app-store' | 'ios-development') => {
+      const res = await fetch('/api/admin/app-store/trigger-build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflowId }),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.json()).message || 'Erro ao disparar build');
+      return res.json() as Promise<{ buildId: string; buildUrl: string }>;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: 'Build iOS disparado!',
+        description: `Build ID: ${data.buildId}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/app-store/config'] });
+      setBuildStatusData({ buildId: data.buildId, status: 'queued' });
+    },
+    onError: (err: Error) => toast({ title: err.message, variant: 'destructive' }),
+  });
+
+  const checkBuildStatus = async (buildId: string) => {
+    setCheckingStatus(true);
+    try {
+      const res = await fetch(`/api/admin/app-store/build-status/${buildId}`, { credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Erro ao consultar status');
+      setBuildStatusData(data);
+    } catch (err: any) {
+      toast({ title: err.message, variant: 'destructive' });
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  const lastBuildId = config?.ios_last_build_id;
+
+  return (
+    <div className="space-y-6">
+      {/* Config card */}
+      <Card data-testid="card-app-store-config">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Settings2 className="w-5 h-5 text-primary" />
+            <CardTitle>Configurações de CI/CD</CardTitle>
+          </div>
+          <CardDescription>
+            Credenciais para integração com o Codemagic (iOS) e verificação Android TWA.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {configLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="input-codemagic-api-key">Codemagic API Key</Label>
+                <Input
+                  id="input-codemagic-api-key"
+                  data-testid="input-codemagic-api-key"
+                  type="password"
+                  placeholder={config?.codemagic_api_key || 'Cole sua API Key do Codemagic'}
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                />
+                {config?.codemagic_api_key && (
+                  <p className="text-xs text-muted-foreground">
+                    Chave atual: {config.codemagic_api_key} — deixe em branco para manter
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="input-codemagic-app-id">Codemagic App ID</Label>
+                <Input
+                  id="input-codemagic-app-id"
+                  data-testid="input-codemagic-app-id"
+                  placeholder="Ex: 6123abc456def789..."
+                  value={appIdInput || config?.codemagic_app_id || ''}
+                  onChange={(e) => setAppIdInput(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Encontrado em Codemagic → App Settings → App ID
+                </p>
+              </div>
+              <Separator />
+              <div className="space-y-2">
+                <Label htmlFor="input-sha256">SHA-256 do Certificado Android</Label>
+                <Input
+                  id="input-sha256"
+                  data-testid="input-sha256-fingerprint"
+                  placeholder="AB:CD:EF:12:..."
+                  value={sha256Input || config?.android_sha256_fingerprint || ''}
+                  onChange={(e) => setSha256Input(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Fingerprint SHA-256 do certificado de assinatura do Play Store (para assetlinks.json)
+                </p>
+              </div>
+            </>
+          )}
+        </CardContent>
+        <CardFooter>
+          <Button
+            data-testid="button-save-app-store-config"
+            onClick={() => saveConfigMutation.mutate()}
+            disabled={saveConfigMutation.isPending}
+          >
+            {saveConfigMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            Salvar Configurações
+          </Button>
+        </CardFooter>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* iOS Card */}
+        <Card data-testid="card-ios-builds">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Apple className="w-5 h-5" />
+              <CardTitle>iOS (TestFlight)</CardTitle>
+            </div>
+            <CardDescription>
+              Dispare builds iOS via Codemagic. O app será enviado para o TestFlight automaticamente.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-2">
+              <Button
+                data-testid="button-trigger-ios-appstore"
+                onClick={() => triggerBuildMutation.mutate('ios-app-store')}
+                disabled={triggerBuildMutation.isPending || !config?.codemagic_api_key || !config?.codemagic_app_id}
+                className="w-full"
+              >
+                {triggerBuildMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+                Disparar Build → TestFlight
+              </Button>
+              <Button
+                variant="outline"
+                data-testid="button-trigger-ios-dev"
+                onClick={() => triggerBuildMutation.mutate('ios-development')}
+                disabled={triggerBuildMutation.isPending || !config?.codemagic_api_key || !config?.codemagic_app_id}
+                className="w-full"
+              >
+                {triggerBuildMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+                Disparar Build de Desenvolvimento
+              </Button>
+            </div>
+
+            {(!config?.codemagic_api_key || !config?.codemagic_app_id) && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Configure API Key e App ID do Codemagic para habilitar os builds.
+              </p>
+            )}
+
+            {(lastBuildId || buildStatusData) && (
+              <div className="rounded-md border p-3 space-y-2 bg-muted/40" data-testid="card-build-status">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Último Build</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => checkBuildStatus(buildStatusData?.buildId || lastBuildId!)}
+                    disabled={checkingStatus}
+                    data-testid="button-check-build-status"
+                  >
+                    {checkingStatus ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground font-mono">
+                  ID: {buildStatusData?.buildId || lastBuildId}
+                </p>
+                {buildStatusData?.status && (
+                  <p className={`text-sm font-medium ${buildStatusColor[buildStatusData.status] || 'text-muted-foreground'}`}>
+                    Status: {buildStatusLabel[buildStatusData.status] || buildStatusData.status}
+                  </p>
+                )}
+                {buildStatusData?.finishedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Concluído em: {new Date(buildStatusData.finishedAt).toLocaleString('pt-BR')}
+                  </p>
+                )}
+                {config?.codemagic_app_id && (lastBuildId || buildStatusData?.buildId) && (
+                  <a
+                    href={`https://codemagic.io/app/${config.codemagic_app_id}/build/${buildStatusData?.buildId || lastBuildId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    data-testid="link-codemagic-build"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Ver no Codemagic
+                  </a>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Android Card */}
+        <Card data-testid="card-android-twa">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Smartphone className="w-5 h-5 text-green-600" />
+              <CardTitle>Android (TWA / Google Play)</CardTitle>
+            </div>
+            <CardDescription>
+              O app Android é gerado via Bubblewrap/TWA a partir do PWA publicado.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-md border p-3 space-y-3 bg-muted/40">
+              <p className="text-sm font-medium">Verificação do assetlinks.json</p>
+              <div className="flex items-center gap-2">
+                {assetlinks?.configured ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-600" data-testid="icon-assetlinks-ok" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-500" data-testid="icon-assetlinks-missing" />
+                )}
+                <span className="text-sm">
+                  {assetlinks?.configured
+                    ? 'SHA-256 configurado — assetlinks.json ativo'
+                    : 'SHA-256 não configurado — TWA não verificado'}
+                </span>
+              </div>
+              {assetlinks?.fingerprint && (
+                <p className="text-xs font-mono text-muted-foreground break-all">
+                  {assetlinks.fingerprint}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">Passos para publicar no Google Play:</p>
+              <ol className="list-decimal list-inside space-y-1 text-xs">
+                <li>Configure o SHA-256 do certificado acima</li>
+                <li>Execute <code className="bg-muted px-1 rounded">bubblewrap build</code> localmente</li>
+                <li>Faça upload do APK/AAB no Google Play Console</li>
+                <li>Obtenha o SHA-256 da assinatura do Play Store e atualize acima</li>
+              </ol>
+            </div>
+
+            <div className="flex gap-2">
+              <a
+                href="https://play.google.com/console"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="link-play-console"
+              >
+                <Button variant="outline" size="sm">
+                  <ExternalLink className="w-3 h-3 mr-2" />
+                  Google Play Console
+                </Button>
+              </a>
+              <a
+                href={`${window.location.origin}/.well-known/assetlinks.json`}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="link-assetlinks"
+              >
+                <Button variant="outline" size="sm">
+                  <ExternalLink className="w-3 h-3 mr-2" />
+                  Ver assetlinks.json
+                </Button>
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 export default function PlatformAdminPage() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
@@ -555,6 +919,10 @@ export default function PlatformAdminPage() {
               <Users className="w-4 h-4" />
               Usuários
             </TabsTrigger>
+            <TabsTrigger value="lojas" className="flex items-center gap-2" data-testid="tab-lojas">
+              <Smartphone className="w-4 h-4" />
+              Lojas
+            </TabsTrigger>
           </TabsList>
           <div className="flex gap-2">
             <Button
@@ -586,6 +954,9 @@ export default function PlatformAdminPage() {
         </TabsContent>
         <TabsContent value="users">
           <UsersTab />
+        </TabsContent>
+        <TabsContent value="lojas">
+          <AppStoresTab />
         </TabsContent>
       </Tabs>
     </div>

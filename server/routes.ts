@@ -3256,6 +3256,147 @@ export async function registerRoutes(
     }
   });
 
+  // ==========================================
+  // APP STORE MANAGEMENT (platform admin only)
+  // ==========================================
+
+  // GET /api/admin/app-store/config — return config (API key masked)
+  app.get("/api/admin/app-store/config", isAuthenticated, requirePlatformAdmin, async (_req, res) => {
+    try {
+      const config = await storage.getPlatformAppConfigs();
+      const masked: Record<string, string> = {};
+      for (const [k, v] of Object.entries(config)) {
+        masked[k] = k === 'codemagic_api_key' ? (v ? '••••••••' + v.slice(-4) : '') : v;
+      }
+      // Always include known keys so the frontend can render fields
+      const knownKeys = ['codemagic_api_key', 'codemagic_app_id', 'android_sha256_fingerprint'];
+      for (const k of knownKeys) {
+        if (!(k in masked)) masked[k] = '';
+      }
+      res.json(masked);
+    } catch (err) {
+      console.error('[app-store/config] error:', err);
+      res.status(500).json({ message: "Erro ao buscar configurações" });
+    }
+  });
+
+  // POST /api/admin/app-store/config — save config key-values
+  const appStoreConfigSchema = z.object({
+    codemagic_api_key: z.string().optional(),
+    codemagic_app_id: z.string().optional(),
+    android_sha256_fingerprint: z.string().optional(),
+  });
+
+  app.post("/api/admin/app-store/config", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const userId = await getResolvedUserId(req);
+      const input = appStoreConfigSchema.parse(req.body);
+      for (const [key, value] of Object.entries(input)) {
+        if (value !== undefined) {
+          // Skip if it's a masked placeholder (user didn't change it)
+          if (value.startsWith('••••')) continue;
+          await storage.setPlatformAppConfig(key, value, userId);
+        }
+      }
+      res.json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      console.error('[app-store/config/save] error:', err);
+      res.status(500).json({ message: "Erro ao salvar configurações" });
+    }
+  });
+
+  // POST /api/admin/app-store/trigger-build — trigger Codemagic build
+  const triggerBuildSchema = z.object({
+    workflowId: z.enum(['ios-app-store', 'ios-development']),
+  });
+
+  app.post("/api/admin/app-store/trigger-build", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const input = triggerBuildSchema.parse(req.body);
+      const apiKey = await storage.getPlatformAppConfig('codemagic_api_key');
+      const appId = await storage.getPlatformAppConfig('codemagic_app_id');
+
+      if (!apiKey || !appId) {
+        return res.status(400).json({ message: "Codemagic API Key e App ID devem ser configurados antes de disparar builds" });
+      }
+
+      const response = await fetch('https://api.codemagic.io/builds', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': apiKey,
+        },
+        body: JSON.stringify({
+          appId,
+          workflowId: input.workflowId,
+        }),
+      });
+
+      const data = await response.json() as any;
+      if (!response.ok) {
+        console.error('[app-store/trigger-build] Codemagic error:', data);
+        return res.status(502).json({ message: data.message || "Erro ao disparar build no Codemagic" });
+      }
+
+      const buildId: string = data.buildId || data.id;
+      const userId = await getResolvedUserId(req);
+      await storage.setPlatformAppConfig(`ios_last_build_id`, buildId, userId);
+
+      res.json({ buildId, buildUrl: `https://codemagic.io/app/${appId}/build/${buildId}` });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json(err.errors);
+      console.error('[app-store/trigger-build] error:', err);
+      res.status(500).json({ message: "Erro ao disparar build" });
+    }
+  });
+
+  // GET /api/admin/app-store/build-status/:buildId — check Codemagic build status
+  app.get("/api/admin/app-store/build-status/:buildId", isAuthenticated, requirePlatformAdmin, async (req, res) => {
+    try {
+      const { buildId } = req.params;
+      const apiKey = await storage.getPlatformAppConfig('codemagic_api_key');
+
+      if (!apiKey) {
+        return res.status(400).json({ message: "Codemagic API Key não configurada" });
+      }
+
+      const response = await fetch(`https://api.codemagic.io/builds/${buildId}`, {
+        headers: { 'x-auth-token': apiKey },
+      });
+
+      const data = await response.json() as any;
+      if (!response.ok) {
+        return res.status(502).json({ message: data.message || "Erro ao consultar status" });
+      }
+
+      const build = data.build || data;
+      res.json({
+        buildId,
+        status: build.status,
+        startedAt: build.startedAt,
+        finishedAt: build.finishedAt,
+        workflowId: build.workflowId,
+        appId: build.appId,
+      });
+    } catch (err) {
+      console.error('[app-store/build-status] error:', err);
+      res.status(500).json({ message: "Erro ao consultar status do build" });
+    }
+  });
+
+  // GET /api/admin/app-store/verify-assetlinks — check assetlinks configured
+  app.get("/api/admin/app-store/verify-assetlinks", isAuthenticated, requirePlatformAdmin, async (_req, res) => {
+    try {
+      const sha256 = await storage.getPlatformAppConfig('android_sha256_fingerprint')
+        || process.env.ANDROID_SHA256_FINGERPRINT;
+      const configured = !!(sha256 && sha256 !== 'SHA256_FINGERPRINT_PLACEHOLDER');
+      res.json({ configured, fingerprint: configured ? sha256 : null });
+    } catch (err) {
+      res.status(500).json({ message: "Erro ao verificar assetlinks" });
+    }
+  });
+
   // === INTERVIEWER ANALYTICS ===
   const { 
     getIndividualInterviewerMetrics, 

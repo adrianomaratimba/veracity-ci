@@ -827,6 +827,16 @@ export const insertPublicReportTokenSchema = createInsertSchema(publicReportToke
 export type InsertPublicReportToken = z.infer<typeof insertPublicReportTokenSchema>;
 export type PublicReportToken = typeof publicReportTokens.$inferSelect;
 
+// === PLATFORM APP CONFIG (key-value store for super admin settings) ===
+
+export const platformAppConfig = pgTable("platform_app_config", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by").references(() => users.id),
+});
+export type PlatformAppConfig = typeof platformAppConfig.$inferSelect;
+
 // === AI COMMENTARIES ===
 
 export const surveyCommentaries = pgTable("survey_commentaries", {

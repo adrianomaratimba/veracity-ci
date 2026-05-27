@@ -26,6 +26,7 @@ import {
   customGeofences, CustomGeofence, InsertCustomGeofence,
   uploadOwnership, UploadOwnership,
   surveyCommentaries, SurveyCommentary, InsertSurveyCommentary,
+  platformAppConfig, PlatformAppConfig,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
@@ -259,6 +260,11 @@ export interface IStorage {
   // AI Commentaries
   upsertSurveyCommentary(data: InsertSurveyCommentary): Promise<SurveyCommentary>;
   getSurveyCommentaries(surveyId: number): Promise<SurveyCommentary[]>;
+
+  // Platform App Config
+  getPlatformAppConfig(key: string): Promise<string | undefined>;
+  getPlatformAppConfigs(keys?: string[]): Promise<Record<string, string>>;
+  setPlatformAppConfig(key: string, value: string, updatedBy?: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2232,6 +2238,32 @@ export class DatabaseStorage implements IStorage {
 
   async getSurveyCommentaries(surveyId: number): Promise<SurveyCommentary[]> {
     return await db.select().from(surveyCommentaries).where(eq(surveyCommentaries.surveyId, surveyId));
+  }
+
+  // --- PLATFORM APP CONFIG ---
+  async getPlatformAppConfig(key: string): Promise<string | undefined> {
+    const [row] = await db.select().from(platformAppConfig).where(eq(platformAppConfig.key, key));
+    return row?.value;
+  }
+
+  async getPlatformAppConfigs(keys?: string[]): Promise<Record<string, string>> {
+    const rows = keys
+      ? await db.select().from(platformAppConfig).where(inArray(platformAppConfig.key, keys))
+      : await db.select().from(platformAppConfig);
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  }
+
+  async setPlatformAppConfig(key: string, value: string, updatedBy?: string): Promise<void> {
+    await db.insert(platformAppConfig)
+      .values({ key, value, updatedBy: updatedBy ?? null, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: platformAppConfig.key,
+        set: { value, updatedBy: updatedBy ?? null, updatedAt: new Date() },
+      });
   }
 }
 
