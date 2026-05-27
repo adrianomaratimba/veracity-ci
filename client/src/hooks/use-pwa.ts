@@ -152,5 +152,6 @@ export function usePWA() {
     dismissAndroidInstructions,
     dismissIOSChromeInstructions,
     installApp,
+    promptInstall: installApp,
   };
 }

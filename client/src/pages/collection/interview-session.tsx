@@ -31,6 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { savePendingInterview, generateInterviewId, generateClientId, getPendingCount } from "@/lib/offlineStorage";
 import { syncAllPending } from "@/lib/syncQueue";
 import type { QuestionLogic, SkipLogicRule } from "@shared/schema";
+import { InstallBanner } from "@/components/pwa/InstallBanner";
 
 interface QuestionOption {
   text: string;
@@ -1368,6 +1369,8 @@ export default function InterviewSession({ params }: InterviewSessionProps) {
                 </div>
               )}
             </div>
+
+            <InstallBanner orgId={interviewOrgId} />
 
             <Button 
               className="w-full h-12 text-lg" 
