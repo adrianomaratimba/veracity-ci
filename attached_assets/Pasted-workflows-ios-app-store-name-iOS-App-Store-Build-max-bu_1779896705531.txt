@@ -1,0 +1,156 @@
+workflows:
+  ios-app-store:
+    name: iOS App Store Build
+    max_build_duration: 60
+    environment:
+      # -----------------------------------------------------------------------
+      # Configure these variables in the Codemagic dashboard under
+      # App Settings > Environment variables (mark all as "secure"):
+      #
+      #   APP_STORE_CONNECT_ISSUER_ID      — Issuer ID from App Store Connect API
+      #   APP_STORE_CONNECT_KEY_IDENTIFIER — Key ID from App Store Connect API
+      #   APP_STORE_CONNECT_PRIVATE_KEY    — Contents of the .p8 private key file
+      #   CERTIFICATE_PRIVATE_KEY          — RSA private key for the signing cert
+      #   APP_STORE_PROVISIONING_PROFILE   — Base64-encoded .mobileprovision file
+      # -----------------------------------------------------------------------
+      vars:
+        BUNDLE_ID: br.com.dataveracity.app
+        XCODE_WORKSPACE: ios/App/App.xcworkspace
+        XCODE_SCHEME: App
+      node: v20.11.0
+      xcode: latest
+      cocoapods: default
+    cache:
+      cache_paths:
+        - node_modules
+        - ios/App/Pods
+    scripts:
+      - name: Install Node dependencies
+        script: npm ci
+
+      - name: Build web assets
+        script: npm run build
+
+      - name: Initialize Capacitor iOS (if missing)
+        script: |
+          if [ ! -f "ios/App/App.xcodeproj/project.pbxproj" ]; then
+            echo "Xcode project not found — running cap add ios..."
+            rm -rf ios
+            npx cap add ios
+          else
+            echo "Xcode project present — skipping cap add ios."
+          fi
+
+      - name: Sync Capacitor
+        script: npx cap sync ios
+
+      - name: Install CocoaPods
+        script: |
+          cd ios/App
+          pod install
+
+      - name: Set build number
+        script: |
+          cd ios/App
+          agvtool new-version -all $PROJECT_BUILD_NUMBER
+
+      - name: Set up signing certificate
+        script: |
+          echo "$CERTIFICATE_PRIVATE_KEY" > /tmp/cert.p8
+          echo "$APP_STORE_PROVISIONING_PROFILE" | base64 --decode > /tmp/profile.mobileprovision
+
+      - name: Build and sign IPA for App Store
+        script: |
+          keychain initialize
+          keychain add-certificates --certificate /tmp/cert.p8
+          xcode-project use-profiles --profile /tmp/profile.mobileprovision
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+  ios-development:
+    name: iOS Development Build
+    max_build_duration: 30
+    environment:
+      vars:
+        BUNDLE_ID: br.com.dataveracity.app
+        XCODE_WORKSPACE: ios/App/App.xcworkspace
+        XCODE_SCHEME: App
+      node: v20.11.0
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install Node dependencies
+        script: npm ci
+      - name: Build web assets
+        script: npm run build
+      - name: Sync Capacitor
+        script: npx cap sync ios
+      - name: Install CocoaPods
+        script: |
+          cd ios/App
+          pod install
+      - name: Build development IPA
+        script: |
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+
+  android-twa:
+    name: Android TWA (Google Play)
+    max_build_duration: 45
+    environment:
+      # -----------------------------------------------------------------------
+      # Configure these variables in the Codemagic dashboard under
+      # App Settings > Environment variables:
+      #
+      #   ANDROID_KEYSTORE          — Base64-encoded .jks keystore file
+      #   ANDROID_KEYSTORE_PASSWORD — Password for the keystore
+      #   ANDROID_KEY_ALIAS         — Key alias inside the keystore
+      #   ANDROID_KEY_PASSWORD      — Password for the key
+      # -----------------------------------------------------------------------
+      node: v20.11.0
+      java: 17
+    cache:
+      cache_paths:
+        - node_modules
+        - android/.gradle
+    scripts:
+      - name: Install Node dependencies
+        script: npm ci
+
+      - name: Install Bubblewrap CLI
+        script: npm install -g @bubblewrap/cli
+
+      - name: Build web assets
+        script: npm run build
+
+      - name: Initialize Bubblewrap project (if not yet done)
+        script: |
+          if [ ! -f "android/app/build.gradle" ]; then
+            echo "Android project not found — running bubblewrap init..."
+            bubblewrap init --manifest https://veracity.replit.app/manifest.json \
+              --directory android \
+              --packageId br.com.dataveracity.app
+          else
+            echo "Android project present — skipping bubblewrap init."
+          fi
+
+      - name: Decode keystore from env
+        script: |
+          echo "$ANDROID_KEYSTORE" | base64 --decode > android/app/release.jks
+
+      - name: Build signed AAB
+        script: |
+          bubblewrap build --skipPwaValidation --directory android
+
+    artifacts:
+      - android/app-release.aab
+      - android/app-release.apk

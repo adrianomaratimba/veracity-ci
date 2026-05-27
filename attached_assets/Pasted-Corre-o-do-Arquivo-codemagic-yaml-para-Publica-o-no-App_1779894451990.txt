@@ -1,0 +1,74 @@
+Correção do Arquivo codemagic.yaml para Publicação no App Store Connect
+
+O erro "extra fields not permitted" que você encontrou indica que a estrutura do seu arquivo codemagic.yaml precisa ser ajustada. A configuração para o app_store_connect deve estar aninhada corretamente dentro da seção publishing de um workflow específico, e não diretamente sob environment ou no nível superior do workflow.
+
+Além disso, a mensagem "auth -> 'integration' requires workflow -> integrations -> app_store_connect" sugere que a forma como as credenciais de integração estão sendo referenciadas também precisa ser revista, geralmente através de grupos de variáveis de ambiente.
+
+Análise do Erro
+
+No seu codemagic.yaml atual, a seção app_store_connect está provavelmente posicionada de forma incorreta. Para a publicação no App Store Connect, o Codemagic espera que as configurações de API Key (key_id, issuer_id, private_key) estejam dentro de um bloco app_store_connect que, por sua vez, está dentro de um bloco publishing de um workflow.
+
+Versão Corrigida do codemagic.yaml
+
+Abaixo está um exemplo de como seu codemagic.yaml deve ser estruturado para um workflow de iOS, com a seção app_store_connect corretamente posicionada. Você precisará adaptar este exemplo ao seu arquivo existente, focando na seção ios-app-store ou no workflow de iOS que você está usando.
+
+YAML
+
+
+# ... (outras configurações do seu codemagic.yaml, como triggers, etc.) ...
+
+workflows:
+  ios-app-store:
+    name: iOS App Store Release
+    environment:
+      groups:
+        - app_store_credentials # Certifique-se de que este grupo foi criado no Codemagic com suas credenciais
+      vars:
+        XCODE_WORKSPACE: 'Runner.xcworkspace' # Exemplo, ajuste conforme seu projeto
+        XCODE_SCHEME: 'Runner' # Exemplo, ajuste conforme seu projeto
+
+    # ... (seções de scripts para build, testes, etc.) ...
+
+    publishing:
+      app_store_connect:
+        api_key:
+          key_id: $APP_STORE_CONNECT_KEY_ID
+          issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+          private_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        # Opcional: Configurações adicionais para publicação
+        # build_number: 1 # Para especificar o número da build
+        # version: 1.0.0 # Para especificar a versão
+        # submit_for_review: true # Para enviar automaticamente para revisão
+        # automatic_release: true # Para liberar automaticamente após aprovação
+        # teams: # Opcional: para especificar equipes do TestFlight
+        #   - 'Minha Equipe TestFlight'
+        # notify_team: true # Opcional: para notificar a equipe
+
+    # ... (outras seções, como post_build_scripts, etc.) ...
+
+
+
+Explicação das Mudanças
+
+1.
+publishing Section: A principal mudança é que a configuração app_store_connect agora está aninhada sob a chave publishing dentro do seu workflow ios-app-store. Esta é a estrutura esperada pelo Codemagic para configurações de publicação [1].
+
+2.
+environment.groups: A seção environment deve conter a referência ao grupo de variáveis de ambiente (app_store_credentials) que você criou no Codemagic para suas chaves do App Store Connect. Isso garante que as variáveis $APP_STORE_CONNECT_KEY_ID, $APP_STORE_CONNECT_ISSUER_ID e $APP_STORE_CONNECT_PRIVATE_KEY estejam disponíveis para a seção publishing [2].
+
+3.
+Remoção de Campos Incorretos: Certifique-se de que não há campos app_store_connect ou api_key duplicados ou em locais incorretos no seu arquivo. O erro "extra fields not permitted" geralmente ocorre por isso.
+
+Próximos Passos
+
+1.
+Edite seu codemagic.yaml: Abra seu repositório GitHub (replit_dataveracity), navegue até o arquivo codemagic.yaml e edite-o para refletir a estrutura correta, conforme o exemplo acima. Atenção à indentação YAML, que é crucial!
+
+2.
+Commit e Push: Salve as alterações e faça um commit e push para o seu repositório GitHub.
+
+3.
+Reinicie o Build no Codemagic: Volte para o Codemagic, vá para as configurações do seu aplicativo replit_dataveracity e tente iniciar um novo build. O Codemagic irá buscar a versão atualizada do seu codemagic.yaml e, se a sintaxe estiver correta, o erro deverá ser resolvido.
+
+Se o erro persistir ou se você tiver dúvidas sobre como adaptar o exemplo ao seu arquivo, por favor, me mostre o conteúdo completo do seu codemagic.yaml atual para que eu possa te ajudar de forma mais precisa.
+
