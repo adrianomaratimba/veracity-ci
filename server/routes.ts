@@ -61,7 +61,26 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  
+
+  // Digital Asset Links — required for Android TWA verification.
+  // Replace SHA256_FINGERPRINT_PLACEHOLDER with the actual SHA-256 certificate
+  // fingerprint from your Play Store signing key (see APP_STORE_GUIDE.md Step 4).
+  // You can also set ANDROID_SHA256_FINGERPRINT as an environment variable.
+  app.get("/.well-known/assetlinks.json", (_req, res) => {
+    const fingerprint = process.env.ANDROID_SHA256_FINGERPRINT || "SHA256_FINGERPRINT_PLACEHOLDER";
+    res.setHeader("Content-Type", "application/json");
+    res.json([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: "br.com.dataveracity.app",
+          sha256_cert_fingerprints: [fingerprint],
+        },
+      },
+    ]);
+  });
+
   // 1. Setup Auth & Object Storage integrations
   await setupAuth(app);
   registerAuthRoutes(app);

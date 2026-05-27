@@ -1,0 +1,56 @@
+{
+  "packageId": "br.com.dataveracity.app",
+  "host": "veracity.replit.app",
+  "name": "Data Veracity",
+  "launcherName": "Data Veracity",
+  "display": "standalone",
+  "themeColor": "#1e40af",
+  "navigationColor": "#1e40af",
+  "navigationColorDark": "#0f172a",
+  "navigationDividerColor": "#1e293b",
+  "navigationDividerColorDark": "#0f172a",
+  "backgroundColor": "#0f172a",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://veracity.replit.app/icon-512.png",
+  "maskableIconUrl": "https://veracity.replit.app/icon-512.png",
+  "monochromeIconUrl": "https://veracity.replit.app/icon-192.png",
+  "splashScreenFadeOutDuration": 300,
+  "signing": {
+    "keystore": null
+  },
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "shortcuts": [
+    {
+      "name": "Iniciar Coleta",
+      "short_name": "Coletar",
+      "url": "/",
+      "icons": [
+        {
+          "src": "https://veracity.replit.app/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://veracity.replit.app/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://veracity.replit.app/",
+  "minSdkVersion": 19,
+  "targetSdkVersion": 34,
+  "orientation": "portrait",
+  "fingerprints": []
+}

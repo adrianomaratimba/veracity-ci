@@ -1,0 +1,112 @@
+workflows:
+  ios-app-store:
+    name: iOS App Store Build
+    max_build_duration: 60
+    environment:
+      # -----------------------------------------------------------------------
+      # Configure these variables in the Codemagic dashboard under
+      # App Settings > Environment variables:
+      #
+      #   APP_STORE_CONNECT_ISSUER_ID   — Issuer ID from App Store Connect API
+      #   APP_STORE_CONNECT_KEY_IDENTIFIER — Key ID from App Store Connect API
+      #   APP_STORE_CONNECT_PRIVATE_KEY — Contents of the .p8 private key file
+      #   CERTIFICATE_PRIVATE_KEY       — RSA private key for the signing cert
+      #
+      # These are marked as "secure" (encrypted) in Codemagic.
+      # See APP_STORE_GUIDE.md for how to obtain these values.
+      # -----------------------------------------------------------------------
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: br.com.dataveracity.app
+      node: v20.11.0
+      xcode: latest
+      cocoapods: default
+    cache:
+      cache_paths:
+        - node_modules
+        - ios/App/Pods
+    scripts:
+      - name: Install Node dependencies
+        script: npm ci
+
+      - name: Build web assets
+        script: npm run build
+
+      - name: Initialize Capacitor iOS platform (if not yet generated)
+        script: |
+          # The ios/ project is committed to the repository.
+          # Only re-initialize if the Xcode project file is somehow missing.
+          if [ ! -f "ios/App/App.xcodeproj/project.pbxproj" ]; then
+            echo "Xcode project not found — running cap add ios..."
+            rm -rf ios
+            npx cap add ios
+          else
+            echo "Xcode project present — skipping cap add ios."
+          fi
+
+      - name: Sync Capacitor
+        script: npx cap sync ios
+
+      - name: Install CocoaPods
+        script: |
+          cd ios/App
+          pod install
+
+      - name: Set build number from Codemagic
+        script: |
+          BUILD_NUMBER=$PROJECT_BUILD_NUMBER
+          agvtool new-version -all $BUILD_NUMBER
+        working_directory: ios/App
+
+      - name: Build and sign iOS app
+        script: |
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --workspace ios/App/App.xcworkspace \
+            --scheme App
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        submit_to_app_store: false
+        # Set submit_to_app_store: true to go directly to App Store review
+
+  ios-development:
+    name: iOS Development Build
+    max_build_duration: 30
+    environment:
+      ios_signing:
+        distribution_type: development
+        bundle_identifier: br.com.dataveracity.app
+      node: v20.11.0
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install Node dependencies
+        script: npm ci
+      - name: Build web assets
+        script: npm run build
+      - name: Sync Capacitor
+        script: npx cap sync ios
+      - name: Install CocoaPods
+        script: |
+          cd ios/App
+          pod install
+      - name: Build development IPA
+        script: |
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --workspace ios/App/App.xcworkspace \
+            --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa

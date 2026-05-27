@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary brand blue — matches theme_color in manifest.json -->
+    <color name="colorPrimary">#1e40af</color>
+    <!-- Dark navy — matches background_color in manifest.json -->
+    <color name="colorPrimaryDark">#0f172a</color>
+    <color name="colorAccent">#3b82f6</color>
+    <color name="splashBackground">#0f172a</color>
+</resources>

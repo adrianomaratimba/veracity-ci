@@ -1,0 +1,36 @@
+// App-level build.gradle for Data Veracity Android TWA.
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 34
+    namespace "br.com.dataveracity.app"
+
+    defaultConfig {
+        applicationId "br.com.dataveracity.app"
+        minSdkVersion 19
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Signing config is supplied via environment variables in build-android.sh
+            // signingConfig signingConfigs.release
+        }
+        debug {
+            applicationIdSuffix ".debug"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}
