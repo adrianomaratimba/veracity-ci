@@ -1,0 +1,50 @@
+
+> Task :app:packageReleaseResources
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:parseReleaseLocalResources
+> Task :app:javaPreCompileRelease
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:mergeReleaseArtProfile
+> Task :app:extractProguardFiles
+> Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:mergeReleaseNativeLibs NO-SOURCE
+> Task :app:stripReleaseDebugSymbols NO-SOURCE
+> Task :app:writeReleaseAppMetadata
+> Task :app:collectReleaseDependencies
+> Task :app:configureReleaseDependencies
+> Task :app:extractReleaseNativeSymbolTables NO-SOURCE
+> Task :app:validateSigningRelease
+> Task :app:parseReleaseIntegrityConfig
+> Task :app:processReleaseManifestForPackage
+> Task :app:mergeReleaseJavaResource
+> Task :app:processReleaseResources FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:processReleaseResources'.
+> A failure occurred while executing com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$TaskAction
+   > Android resource linking failed
+     error: resource style/Theme.SplashScreen (aka br.com.dataveracity.app:style/Theme.SplashScreen) not found.
+     br.com.dataveracity.app-mergeReleaseResources-5:/values/values.xml:115: error: style attribute 'attr/windowSplashScreenBackground (aka br.com.dataveracity.app:attr/windowSplashScreenBackground)' not found.
+     br.com.dataveracity.app-mergeReleaseResources-5:/values/values.xml:116: error: style attribute 'attr/windowSplashScreenAnimatedIcon (aka br.com.dataveracity.app:attr/windowSplashScreenAnimatedIcon)' not found.
+     br.com.dataveracity.app-mergeReleaseResources-5:/values/values.xml:117: error: style attribute 'attr/postSplashScreenTheme (aka br.com.dataveracity.app:attr/postSplashScreenTheme)' not found.
+     error: failed linking references.
+
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 26s
+26 actionable tasks: 26 executed
+
+
+Build failed :|
+Step 6 script `Build signed AAB with Gradle` exited with status code 1
