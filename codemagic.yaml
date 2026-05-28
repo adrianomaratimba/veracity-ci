@@ -149,7 +149,8 @@ workflows:
 
       - name: Build signed AAB
         script: |
-          echo "No" | bubblewrap build --skipPwaValidation --directory android
+          JAVA_PATH=$(dirname $(dirname $(readlink -f $(which java))))
+          printf "No\n${JAVA_PATH}\n" | bubblewrap build --skipPwaValidation --directory android
 
     artifacts:
       - android/app-release.aab
