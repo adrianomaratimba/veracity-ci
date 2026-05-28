@@ -5,6 +5,16 @@ android {
     compileSdkVersion 34
     namespace "br.com.dataveracity.app"
 
+    signingConfigs {
+        release {
+            storeFile file('/tmp/release.jks')
+            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            keyAlias System.getenv('ANDROID_KEY_ALIAS')
+            keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            storeType 'PKCS12'
+        }
+    }
+
     defaultConfig {
         applicationId "br.com.dataveracity.app"
         minSdkVersion 21
@@ -17,8 +27,7 @@ android {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // Signing config is supplied via environment variables in build-android.sh
-            // signingConfig signingConfigs.release
+            signingConfig signingConfigs.release
         }
         debug {
             applicationIdSuffix ".debug"

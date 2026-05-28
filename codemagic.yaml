@@ -137,11 +137,7 @@ workflows:
         script: |
           cd android
           chmod +x gradlew
-          ./gradlew bundleRelease \
-            -Pandroid.injected.signing.store.file=/tmp/release.jks \
-            -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
-            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
-            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+          ./gradlew bundleRelease
 
     artifacts:
       - android/app/build/outputs/bundle/release/app-release.aab
