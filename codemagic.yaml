@@ -126,31 +126,22 @@ workflows:
       - name: Install Node dependencies
         script: npm ci
 
-      - name: Install Bubblewrap CLI
-        script: npm install -g @bubblewrap/cli
-
       - name: Build web assets
         script: npm run build
-
-      - name: Initialize Bubblewrap project (if not yet done)
-        script: |
-          if [ ! -f "android/app/build.gradle" ]; then
-            echo "Android project not found — running bubblewrap init..."
-            bubblewrap init --manifest https://veracity.replit.app/manifest.json \
-              --directory android \
-              --packageId br.com.dataveracity.app
-          else
-            echo "Android project present — skipping bubblewrap init."
-          fi
 
       - name: Decode keystore from env
         script: |
           echo "$ANDROID_KEYSTORE" | base64 --decode > android/app/release.jks
 
-      - name: Build signed AAB
+      - name: Build signed AAB with Gradle
         script: |
-          printf "No\n${JAVA_HOME}\n" | bubblewrap build --skipPwaValidation --directory android
+          cd android
+          chmod +x gradlew
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file=app/release.jks \
+            -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
 
     artifacts:
-      - android/app-release.aab
-      - android/app-release.apk
+      - android/app/build/outputs/bundle/release/app-release.aab
