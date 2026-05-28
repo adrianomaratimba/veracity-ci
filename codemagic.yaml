@@ -149,7 +149,7 @@ workflows:
 
       - name: Build signed AAB
         script: |
-          bubblewrap build --skipPwaValidation --directory android
+          echo "No" | bubblewrap build --skipPwaValidation --directory android
 
     artifacts:
       - android/app-release.aab
