@@ -5,8 +5,7 @@
   After generating the project with Bubblewrap, this file will be managed
   by Bubblewrap. Manual edits may be overwritten.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="br.com.dataveracity.app">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
